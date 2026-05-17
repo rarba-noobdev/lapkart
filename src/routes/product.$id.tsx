@@ -110,7 +110,7 @@ function ProductPage() {
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-bold">Highlights</h3>
               <ul className="space-y-1.5 text-sm">
-                {p.highlights.map((h) => (
+                {p.highlights.map((h: string) => (
                   <li key={h} className="flex gap-2">
                     <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
                     {h}
