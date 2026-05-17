@@ -72,14 +72,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "LapKart" },
+      { name: "description", content: "**LapKart** is a smart e-commerce platform for laptop spare parts and hardware components. Users can easily search, compare, and purchase compatible laptop part" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "LapKart" },
+      { property: "og:description", content: "**LapKart** is a smart e-commerce platform for laptop spare parts and hardware components. Users can easily search, compare, and purchase compatible laptop part" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "LapKart" },
+      { name: "twitter:description", content: "**LapKart** is a smart e-commerce platform for laptop spare parts and hardware components. Users can easily search, compare, and purchase compatible laptop part" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/51bd8745-2111-4d21-b5d7-4796ae6a3c2a/id-preview-e0366819--46d13f7e-33f4-4eb6-870b-7b970604b19c.lovable.app-1778983816158.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/51bd8745-2111-4d21-b5d7-4796ae6a3c2a/id-preview-e0366819--46d13f7e-33f4-4eb6-870b-7b970604b19c.lovable.app-1778983816158.png" },
     ],
     links: [
       {
