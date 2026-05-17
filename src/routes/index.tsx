@@ -5,6 +5,15 @@ import { ProductCard } from "@/components/ProductCard";
 import { categories, products } from "@/lib/catalog";
 import { Truck, ShieldCheck, RotateCcw, Headphones, ArrowRight, Zap } from "lucide-react";
 import hero from "@/assets/hero.jpg";
+import bannerSsd from "@/assets/banner-ssd.jpg";
+import bannerRam from "@/assets/banner-ram.jpg";
+import bannerBattery from "@/assets/banner-battery.jpg";
+import bannerDisplay from "@/assets/banner-display.jpg";
+import bannerMega from "@/assets/banner-mega.jpg";
+import brandIntel from "@/assets/brand-intel.jpg";
+import brandSamsung from "@/assets/brand-samsung.jpg";
+import brandHp from "@/assets/brand-hp.jpg";
+import brandDell from "@/assets/brand-dell.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
