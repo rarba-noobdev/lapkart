@@ -5,6 +5,15 @@ import { ProductCard } from "@/components/ProductCard";
 import { categories, products } from "@/lib/catalog";
 import { Truck, ShieldCheck, RotateCcw, Headphones, ArrowRight, Zap } from "lucide-react";
 import hero from "@/assets/hero.jpg";
+import bannerSsd from "@/assets/banner-ssd.jpg";
+import bannerRam from "@/assets/banner-ram.jpg";
+import bannerBattery from "@/assets/banner-battery.jpg";
+import bannerDisplay from "@/assets/banner-display.jpg";
+import bannerMega from "@/assets/banner-mega.jpg";
+import brandIntel from "@/assets/brand-intel.jpg";
+import brandSamsung from "@/assets/brand-samsung.jpg";
+import brandHp from "@/assets/brand-hp.jpg";
+import brandDell from "@/assets/brand-dell.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -130,23 +139,98 @@ function Home() {
         </div>
       </section>
 
-      {/* Flash sale banner */}
-      <section className="container mx-auto px-4">
-        <div className="overflow-hidden rounded-xl bg-[var(--gradient-saffron)] p-6 text-saffron-foreground sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest">Limited time</p>
-              <h3 className="font-display text-2xl font-bold sm:text-3xl">
-                Big Component Days — Min 40% off Storage & RAM
-              </h3>
-            </div>
+      {/* Flipkart-style 4-tile promo grid */}
+      <section className="container mx-auto px-4 pt-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { img: bannerSsd, tag: "Min 50% Off", title: "NVMe SSDs", sub: "Samsung · WD · Crucial", cat: "ssd", tint: "from-blue-900/85 via-blue-800/40" },
+            { img: bannerRam, tag: "From ₹2,499", title: "Laptop RAM", sub: "DDR4 · DDR5 · SODIMM", cat: "ram", tint: "from-orange-900/85 via-orange-700/40" },
+            { img: bannerBattery, tag: "Up to 40% Off", title: "Batteries", sub: "Original · BIS certified", cat: "batteries", tint: "from-emerald-900/85 via-emerald-700/40" },
+            { img: bannerDisplay, tag: "New Arrivals", title: "Displays", sub: "FHD · IPS · 14\"–17\"", cat: "displays", tint: "from-fuchsia-900/85 via-fuchsia-700/40" },
+          ].map((t) => (
             <Link
+              key={t.title}
               to="/products"
-              className="rounded-sm bg-foreground px-5 py-2.5 text-sm font-bold text-background"
+              search={{ category: t.cat }}
+              className="group relative block aspect-[4/3] overflow-hidden rounded-xl shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)]"
             >
-              Grab Deals
+              <img
+                src={t.img}
+                alt={t.title}
+                loading="lazy"
+                width={1024}
+                height={512}
+                className="absolute inset-0 size-full object-cover transition duration-500 group-hover:scale-110"
+              />
+              <div className={`absolute inset-0 bg-gradient-to-t ${t.tint} to-transparent`} />
+              <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+                <span className="inline-block rounded-sm bg-saffron px-2 py-0.5 text-[10px] font-bold text-saffron-foreground">
+                  {t.tag}
+                </span>
+                <h3 className="mt-2 font-display text-xl font-bold drop-shadow">{t.title}</h3>
+                <p className="text-xs text-white/90">{t.sub}</p>
+              </div>
             </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Mega deal wide banner */}
+      <section className="container mx-auto px-4 pt-6">
+        <Link to="/products" className="relative block overflow-hidden rounded-xl shadow-[var(--shadow-card)]">
+          <img
+            src={bannerMega}
+            alt="Mega component deals"
+            loading="lazy"
+            width={1600}
+            height={512}
+            className="h-44 w-full object-cover sm:h-56 md:h-64"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-foreground/90 via-foreground/50 to-transparent" />
+          <div className="absolute inset-y-0 left-0 flex flex-col justify-center gap-2 p-6 text-background sm:p-10">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-saffron">Big Component Days</span>
+            <h3 className="font-display text-2xl font-bold leading-tight sm:text-4xl">
+              10,000+ Parts. <br /> One Cart.
+            </h3>
+            <p className="max-w-sm text-sm text-background/80">
+              Storage, memory, displays, batteries — every part your laptop deserves.
+            </p>
+            <span className="mt-1 inline-flex w-fit items-center gap-2 rounded-sm bg-saffron px-4 py-2 text-xs font-bold text-saffron-foreground">
+              Shop the sale <ArrowRight className="size-3.5" />
+            </span>
           </div>
+        </Link>
+      </section>
+
+      {/* Top Brands */}
+      <section className="container mx-auto px-4 py-10">
+        <div className="mb-5">
+          <h2 className="text-2xl font-bold">Top Brands</h2>
+          <p className="text-sm text-muted-foreground">Genuine parts from the names you trust.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          {[
+            { img: brandIntel, name: "Intel", cat: "processors" },
+            { img: brandSamsung, name: "Samsung", cat: "ssd" },
+            { img: brandHp, name: "HP", cat: "chargers" },
+            { img: brandDell, name: "Dell", cat: "motherboards" },
+            { img: brandIntel, name: "AMD", cat: "processors" },
+            { img: brandSamsung, name: "Kingston", cat: "ram" },
+            { img: brandHp, name: "Lenovo", cat: "batteries" },
+            { img: brandDell, name: "WD", cat: "ssd" },
+          ].map((b) => (
+            <Link
+              key={b.name}
+              to="/products"
+              search={{ category: b.cat }}
+              className="group flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-3 transition hover:border-primary/40 hover:shadow-[var(--shadow-card-hover)]"
+            >
+              <div className="aspect-square w-full overflow-hidden rounded-md bg-white">
+                <img src={b.img} alt={b.name} loading="lazy" width={512} height={512} className="size-full object-contain p-3 transition group-hover:scale-110" />
+              </div>
+              <span className="text-xs font-semibold">{b.name}</span>
+            </Link>
+          ))}
         </div>
       </section>
 
