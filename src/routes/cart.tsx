@@ -136,9 +136,12 @@ function CartPage() {
               You save {formatINR(savings)} on this order
             </p>
           )}
-          <button className="mt-5 w-full rounded-sm bg-[oklch(0.7_0.18_40)] py-3 text-sm font-bold text-white shadow-md transition hover:brightness-105">
+          <Link
+            to="/checkout"
+            className="mt-5 block w-full rounded-sm bg-[oklch(0.7_0.18_40)] py-3 text-center text-sm font-bold text-white shadow-md transition hover:brightness-105"
+          >
             PLACE ORDER
-          </button>
+          </Link>
           <p className="mt-3 text-center text-xs text-muted-foreground">
             Safe & secure payments · Easy returns
           </p>
