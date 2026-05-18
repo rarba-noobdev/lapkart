@@ -1,13 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import { Star } from "lucide-react";
+import { motion } from "framer-motion";
 import { type Product, discountPct, formatINR } from "@/lib/catalog";
 
 export function ProductCard({ p }: { p: Product }) {
   return (
+    <motion.div
+      whileHover={{ y: -4, rotateX: 2, rotateY: -2 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      style={{ transformStyle: "preserve-3d", perspective: 800 }}
+    >
     <Link
       to="/product/$id"
       params={{ id: p.id }}
-      className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-hover)]"
+      className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)]"
     >
       <div className="aspect-square overflow-hidden bg-white">
         <img
@@ -37,5 +43,6 @@ export function ProductCard({ p }: { p: Product }) {
         </div>
       </div>
     </Link>
+    </motion.div>
   );
 }
