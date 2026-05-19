@@ -15,8 +15,12 @@ import { Route as CartRouteImport } from './routes/cart'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProductIdRouteImport } from './routes/product.$id'
+import { Route as AuthenticatedVendorRouteImport } from './routes/_authenticated/vendor'
+import { Route as AuthenticatedTradeInRouteImport } from './routes/_authenticated/trade-in'
+import { Route as AuthenticatedRepairRouteImport } from './routes/_authenticated/repair'
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedOrderIdRouteImport } from './routes/_authenticated/order.$id'
 
 const ProductsRoute = ProductsRouteImport.update({
@@ -48,6 +52,21 @@ const ProductIdRoute = ProductIdRouteImport.update({
   path: '/product/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedVendorRoute = AuthenticatedVendorRouteImport.update({
+  id: '/vendor',
+  path: '/vendor',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTradeInRoute = AuthenticatedTradeInRouteImport.update({
+  id: '/trade-in',
+  path: '/trade-in',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRepairRoute = AuthenticatedRepairRouteImport.update({
+  id: '/repair',
+  path: '/repair',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
@@ -56,6 +75,11 @@ const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
 const AuthenticatedCheckoutRoute = AuthenticatedCheckoutRouteImport.update({
   id: '/checkout',
   path: '/checkout',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedOrderIdRoute = AuthenticatedOrderIdRouteImport.update({
@@ -69,8 +93,12 @@ export interface FileRoutesByFullPath {
   '/cart': typeof CartRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
+  '/repair': typeof AuthenticatedRepairRoute
+  '/trade-in': typeof AuthenticatedTradeInRoute
+  '/vendor': typeof AuthenticatedVendorRoute
   '/product/$id': typeof ProductIdRoute
   '/order/$id': typeof AuthenticatedOrderIdRoute
 }
@@ -79,8 +107,12 @@ export interface FileRoutesByTo {
   '/cart': typeof CartRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
+  '/repair': typeof AuthenticatedRepairRoute
+  '/trade-in': typeof AuthenticatedTradeInRoute
+  '/vendor': typeof AuthenticatedVendorRoute
   '/product/$id': typeof ProductIdRoute
   '/order/$id': typeof AuthenticatedOrderIdRoute
 }
@@ -91,8 +123,12 @@ export interface FileRoutesById {
   '/cart': typeof CartRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
+  '/_authenticated/repair': typeof AuthenticatedRepairRoute
+  '/_authenticated/trade-in': typeof AuthenticatedTradeInRoute
+  '/_authenticated/vendor': typeof AuthenticatedVendorRoute
   '/product/$id': typeof ProductIdRoute
   '/_authenticated/order/$id': typeof AuthenticatedOrderIdRoute
 }
@@ -103,8 +139,12 @@ export interface FileRouteTypes {
     | '/cart'
     | '/login'
     | '/products'
+    | '/admin'
     | '/checkout'
     | '/orders'
+    | '/repair'
+    | '/trade-in'
+    | '/vendor'
     | '/product/$id'
     | '/order/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -113,8 +153,12 @@ export interface FileRouteTypes {
     | '/cart'
     | '/login'
     | '/products'
+    | '/admin'
     | '/checkout'
     | '/orders'
+    | '/repair'
+    | '/trade-in'
+    | '/vendor'
     | '/product/$id'
     | '/order/$id'
   id:
@@ -124,8 +168,12 @@ export interface FileRouteTypes {
     | '/cart'
     | '/login'
     | '/products'
+    | '/_authenticated/admin'
     | '/_authenticated/checkout'
     | '/_authenticated/orders'
+    | '/_authenticated/repair'
+    | '/_authenticated/trade-in'
+    | '/_authenticated/vendor'
     | '/product/$id'
     | '/_authenticated/order/$id'
   fileRoutesById: FileRoutesById
@@ -183,6 +231,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/vendor': {
+      id: '/_authenticated/vendor'
+      path: '/vendor'
+      fullPath: '/vendor'
+      preLoaderRoute: typeof AuthenticatedVendorRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/trade-in': {
+      id: '/_authenticated/trade-in'
+      path: '/trade-in'
+      fullPath: '/trade-in'
+      preLoaderRoute: typeof AuthenticatedTradeInRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/repair': {
+      id: '/_authenticated/repair'
+      path: '/repair'
+      fullPath: '/repair'
+      preLoaderRoute: typeof AuthenticatedRepairRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/orders': {
       id: '/_authenticated/orders'
       path: '/orders'
@@ -197,6 +266,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCheckoutRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/order/$id': {
       id: '/_authenticated/order/$id'
       path: '/order/$id'
@@ -208,14 +284,22 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedCheckoutRoute: typeof AuthenticatedCheckoutRoute
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
+  AuthenticatedRepairRoute: typeof AuthenticatedRepairRoute
+  AuthenticatedTradeInRoute: typeof AuthenticatedTradeInRoute
+  AuthenticatedVendorRoute: typeof AuthenticatedVendorRoute
   AuthenticatedOrderIdRoute: typeof AuthenticatedOrderIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedCheckoutRoute: AuthenticatedCheckoutRoute,
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
+  AuthenticatedRepairRoute: AuthenticatedRepairRoute,
+  AuthenticatedTradeInRoute: AuthenticatedTradeInRoute,
+  AuthenticatedVendorRoute: AuthenticatedVendorRoute,
   AuthenticatedOrderIdRoute: AuthenticatedOrderIdRoute,
 }
 
