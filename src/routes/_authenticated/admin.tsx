@@ -77,31 +77,51 @@ function AdminPage() {
 
   const addProduct = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    if (!imageFile) return toast.error("Please choose a product image");
     setBusy(true);
-    const { error } = await supabase.from("products").insert({
-      title: String(fd.get("title")),
-      brand: String(fd.get("brand")),
-      category: String(fd.get("category")),
-      image: String(fd.get("image")),
-      price: Number(fd.get("price")),
-      mrp: Number(fd.get("mrp")),
-      stock: Number(fd.get("stock")),
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Product added");
-    setShowAdd(false);
-    (e.currentTarget as HTMLFormElement).reset();
-    const { data } = await supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false });
-    setProducts((data as typeof products) ?? []);
+    setUploading(true);
+    try {
+      const ext = imageFile.name.split(".").pop() || "jpg";
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("product-images").upload(path, imageFile, {
+        cacheControl: "3600",
+        contentType: imageFile.type,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("product-images").getPublicUrl(path);
+
+      const { error } = await supabase.from("products").insert({
+        title: String(fd.get("title")),
+        brand: String(fd.get("brand")),
+        category: String(fd.get("category")),
+        image: pub.publicUrl,
+        price: Number(fd.get("price")),
+        mrp: Number(fd.get("mrp")),
+        stock: Number(fd.get("stock")),
+      });
+      if (error) throw error;
+      toast.success("Product added");
+      setShowAdd(false);
+      form.reset();
+      setImageFile(null);
+      setImagePreview("");
+      const { data } = await supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false });
+      setProducts((data as typeof products) ?? []);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save product");
+    } finally {
+      setBusy(false);
+      setUploading(false);
+    }
   };
 
   const tiles = [
     { label: "Revenue", value: formatINR(stats.revenue), icon: IndianRupee, color: "from-emerald-500 to-teal-600" },
     { label: "Orders", value: stats.orders, icon: ShoppingBag, color: "from-blue-500 to-indigo-600" },
     { label: "Products", value: stats.products, icon: Package, color: "from-purple-500 to-pink-600" },
-    { label: "Repairs", value: stats.repairs, icon: Wrench, color: "from-orange-500 to-red-600" },
+    { label: "Users", value: stats.users || "—", icon: Users, color: "from-orange-500 to-red-600" },
   ];
 
   return (
