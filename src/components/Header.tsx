@@ -85,9 +85,6 @@ export function Header() {
                     <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted">
                       <Package className="size-4" /> Admin Dashboard
                     </Link>
-                    <Link to="/vendor" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted">
-                      <Package className="size-4" /> Vendor Portal
-                    </Link>
                     <button
                       onClick={async () => { setOpen(false); await signOut(); navigate({ to: "/" }); }}
                       className="flex w-full items-center gap-2 border-t border-border px-4 py-2.5 text-sm text-destructive hover:bg-destructive/5"
