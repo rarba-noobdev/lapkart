@@ -175,7 +175,7 @@ function AdminPage() {
                   <input required name="mrp" type="number" placeholder="MRP" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="stock" type="number" placeholder="Stock" defaultValue={25} className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                 </div>
-                <button type="submit" disabled={busy} className="rounded bg-primary py-1.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy ? "..." : "Save"}</button>
+                <button type="submit" disabled={busy} className="flex items-center justify-center gap-2 rounded bg-primary py-1.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy ? <><Loader2 className="size-3 animate-spin" /> {uploading ? "Uploading…" : "Saving…"}</> : "Save product"}</button>
               </form>
             )}
             <div className="max-h-80 overflow-y-auto">
