@@ -54,8 +54,6 @@ export function Header() {
 
         <nav className="ml-auto flex items-center gap-1 sm:gap-2">
           <Link to="/products" className="hidden rounded-sm px-2.5 py-2 text-sm font-semibold hover:bg-white/10 sm:inline-block">Shop</Link>
-          <Link to="/repair" className="hidden rounded-sm px-2.5 py-2 text-sm font-semibold hover:bg-white/10 md:inline-block">Repair</Link>
-          <Link to="/trade-in" className="hidden rounded-sm px-2.5 py-2 text-sm font-semibold hover:bg-white/10 md:inline-block">Trade-In</Link>
 
           {user ? (
             <div ref={ref} className="relative">
@@ -86,9 +84,6 @@ export function Header() {
                     </Link>
                     <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted">
                       <Package className="size-4" /> Admin Dashboard
-                    </Link>
-                    <Link to="/vendor" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted">
-                      <Package className="size-4" /> Vendor Portal
                     </Link>
                     <button
                       onClick={async () => { setOpen(false); await signOut(); navigate({ to: "/" }); }}

@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, Package, ShoppingBag, Users, IndianRupee, Plus, Loader2, ShieldAlert, Wrench } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Users, IndianRupee, Plus, Loader2, ShieldAlert, Upload, ImageIcon } from "lucide-react";
 import { formatINR } from "@/lib/catalog";
 import { toast } from "sonner";
 
@@ -17,11 +17,20 @@ export const Route = createFileRoute("/_authenticated/admin")({
 function AdminPage() {
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [stats, setStats] = useState({ orders: 0, revenue: 0, products: 0, users: 0, repairs: 0 });
+  const [stats, setStats] = useState({ orders: 0, revenue: 0, products: 0, users: 0 });
   const [orders, setOrders] = useState<Array<{ id: string; total: number; status: string; created_at: string; shipping_name: string }>>([]);
   const [products, setProducts] = useState<Array<{ id: string; title: string; brand: string; price: number; stock: number }>>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+
+  const onImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setImageFile(f);
+    setImagePreview(f ? URL.createObjectURL(f) : "");
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -33,10 +42,9 @@ function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     (async () => {
-      const [ord, prod, repairs] = await Promise.all([
+      const [ord, prod] = await Promise.all([
         supabase.from("orders").select("id,total,status,created_at,shipping_name").order("created_at", { ascending: false }),
         supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false }),
-        supabase.from("repair_bookings").select("id", { count: "exact", head: true }),
       ]);
       const ordList = (ord.data as typeof orders) ?? [];
       const prodList = (prod.data as typeof products) ?? [];
@@ -47,7 +55,6 @@ function AdminPage() {
         revenue: ordList.reduce((s, o) => s + Number(o.total), 0),
         products: prodList.length,
         users: 0,
-        repairs: repairs.count ?? 0,
       });
     })();
   }, [isAdmin]);
@@ -70,31 +77,51 @@ function AdminPage() {
 
   const addProduct = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    if (!imageFile) return toast.error("Please choose a product image");
     setBusy(true);
-    const { error } = await supabase.from("products").insert({
-      title: String(fd.get("title")),
-      brand: String(fd.get("brand")),
-      category: String(fd.get("category")),
-      image: String(fd.get("image")),
-      price: Number(fd.get("price")),
-      mrp: Number(fd.get("mrp")),
-      stock: Number(fd.get("stock")),
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Product added");
-    setShowAdd(false);
-    (e.currentTarget as HTMLFormElement).reset();
-    const { data } = await supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false });
-    setProducts((data as typeof products) ?? []);
+    setUploading(true);
+    try {
+      const ext = imageFile.name.split(".").pop() || "jpg";
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("product-images").upload(path, imageFile, {
+        cacheControl: "3600",
+        contentType: imageFile.type,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("product-images").getPublicUrl(path);
+
+      const { error } = await supabase.from("products").insert({
+        title: String(fd.get("title")),
+        brand: String(fd.get("brand")),
+        category: String(fd.get("category")),
+        image: pub.publicUrl,
+        price: Number(fd.get("price")),
+        mrp: Number(fd.get("mrp")),
+        stock: Number(fd.get("stock")),
+      });
+      if (error) throw error;
+      toast.success("Product added");
+      setShowAdd(false);
+      form.reset();
+      setImageFile(null);
+      setImagePreview("");
+      const { data } = await supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false });
+      setProducts((data as typeof products) ?? []);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save product");
+    } finally {
+      setBusy(false);
+      setUploading(false);
+    }
   };
 
   const tiles = [
     { label: "Revenue", value: formatINR(stats.revenue), icon: IndianRupee, color: "from-emerald-500 to-teal-600" },
     { label: "Orders", value: stats.orders, icon: ShoppingBag, color: "from-blue-500 to-indigo-600" },
     { label: "Products", value: stats.products, icon: Package, color: "from-purple-500 to-pink-600" },
-    { label: "Repairs", value: stats.repairs, icon: Wrench, color: "from-orange-500 to-red-600" },
+    { label: "Users", value: stats.users || "—", icon: Users, color: "from-orange-500 to-red-600" },
   ];
 
   return (
@@ -131,13 +158,24 @@ function AdminPage() {
                   <input required name="brand" placeholder="Brand" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="category" placeholder="Category slug" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                 </div>
-                <input required name="image" placeholder="Image URL" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
+                <label className="flex cursor-pointer items-center gap-2 rounded border border-dashed border-border bg-background px-2 py-2 text-xs hover:border-primary">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="" className="size-12 rounded object-contain" />
+                  ) : (
+                    <div className="grid size-12 place-items-center rounded bg-muted"><ImageIcon className="size-5 text-muted-foreground" /></div>
+                  )}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 font-semibold text-primary"><Upload className="size-3" /> {imageFile ? "Change image" : "Upload product image"}</div>
+                    <p className="truncate text-[11px] text-muted-foreground">{imageFile?.name ?? "PNG, JPG up to 5MB"}</p>
+                  </div>
+                  <input type="file" accept="image/*" onChange={onImageChange} className="hidden" />
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   <input required name="price" type="number" placeholder="Price" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="mrp" type="number" placeholder="MRP" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="stock" type="number" placeholder="Stock" defaultValue={25} className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                 </div>
-                <button type="submit" disabled={busy} className="rounded bg-primary py-1.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy ? "..." : "Save"}</button>
+                <button type="submit" disabled={busy} className="flex items-center justify-center gap-2 rounded bg-primary py-1.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy ? <><Loader2 className="size-3 animate-spin" /> {uploading ? "Uploading…" : "Saving…"}</> : "Save product"}</button>
               </form>
             )}
             <div className="max-h-80 overflow-y-auto">
