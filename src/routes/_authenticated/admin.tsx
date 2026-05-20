@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, Package, ShoppingBag, Users, IndianRupee, Plus, Loader2, ShieldAlert, Wrench } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Users, IndianRupee, Plus, Loader2, ShieldAlert, Upload, ImageIcon } from "lucide-react";
 import { formatINR } from "@/lib/catalog";
 import { toast } from "sonner";
 
