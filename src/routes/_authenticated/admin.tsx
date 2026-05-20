@@ -33,10 +33,9 @@ function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     (async () => {
-      const [ord, prod, repairs] = await Promise.all([
+      const [ord, prod] = await Promise.all([
         supabase.from("orders").select("id,total,status,created_at,shipping_name").order("created_at", { ascending: false }),
         supabase.from("products").select("id,title,brand,price,stock").order("created_at", { ascending: false }),
-        supabase.from("repair_bookings").select("id", { count: "exact", head: true }),
       ]);
       const ordList = (ord.data as typeof orders) ?? [];
       const prodList = (prod.data as typeof products) ?? [];
@@ -47,7 +46,6 @@ function AdminPage() {
         revenue: ordList.reduce((s, o) => s + Number(o.total), 0),
         products: prodList.length,
         users: 0,
-        repairs: repairs.count ?? 0,
       });
     })();
   }, [isAdmin]);
