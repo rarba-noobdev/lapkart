@@ -158,7 +158,18 @@ function AdminPage() {
                   <input required name="brand" placeholder="Brand" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="category" placeholder="Category slug" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                 </div>
-                <input required name="image" placeholder="Image URL" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
+                <label className="flex cursor-pointer items-center gap-2 rounded border border-dashed border-border bg-background px-2 py-2 text-xs hover:border-primary">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="" className="size-12 rounded object-contain" />
+                  ) : (
+                    <div className="grid size-12 place-items-center rounded bg-muted"><ImageIcon className="size-5 text-muted-foreground" /></div>
+                  )}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 font-semibold text-primary"><Upload className="size-3" /> {imageFile ? "Change image" : "Upload product image"}</div>
+                    <p className="truncate text-[11px] text-muted-foreground">{imageFile?.name ?? "PNG, JPG up to 5MB"}</p>
+                  </div>
+                  <input type="file" accept="image/*" onChange={onImageChange} className="hidden" />
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   <input required name="price" type="number" placeholder="Price" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
                   <input required name="mrp" type="number" placeholder="MRP" className="rounded border border-border bg-background px-2 py-1.5 text-sm" />
