@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
 function AdminPage() {
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [stats, setStats] = useState({ orders: 0, revenue: 0, products: 0, users: 0, repairs: 0 });
+  const [stats, setStats] = useState({ orders: 0, revenue: 0, products: 0, users: 0 });
   const [orders, setOrders] = useState<Array<{ id: string; total: number; status: string; created_at: string; shipping_name: string }>>([]);
   const [products, setProducts] = useState<Array<{ id: string; title: string; brand: string; price: number; stock: number }>>([]);
   const [showAdd, setShowAdd] = useState(false);
