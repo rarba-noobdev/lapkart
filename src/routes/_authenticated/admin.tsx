@@ -22,6 +22,15 @@ function AdminPage() {
   const [products, setProducts] = useState<Array<{ id: string; title: string; brand: string; price: number; stock: number }>>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+
+  const onImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setImageFile(f);
+    setImagePreview(f ? URL.createObjectURL(f) : "");
+  };
 
   useEffect(() => {
     if (!user) return;
