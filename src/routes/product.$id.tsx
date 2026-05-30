@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { discountPct, formatINR } from "@/lib/catalog";
-import { useProduct, useProducts } from "@/lib/products-db";
+import { useProduct, useProducts, productByIdQuery, productsQuery } from "@/lib/products-db";
 import { ProductCard } from "@/components/ProductCard";
 import { cart } from "@/lib/cart-store";
 import { Star, ShoppingCart, Zap, ShieldCheck, Truck, RotateCcw, Check, ArrowUpRight, Loader2 } from "lucide-react";
@@ -10,6 +10,10 @@ import { useState } from "react";
 
 export const Route = createFileRoute("/product/$id")({
   head: () => ({ meta: [{ title: "Product — lapkart" }] }),
+  loader: ({ context, params }) => {
+    void context.queryClient.prefetchQuery(productsQuery());
+    return context.queryClient.ensureQueryData(productByIdQuery(params.id));
+  },
   component: ProductPage,
 });
 

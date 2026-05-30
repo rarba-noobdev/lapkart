@@ -3,7 +3,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
 import { categories, discountPct, formatINR, type Product } from "@/lib/catalog";
-import { useProducts } from "@/lib/products-db";
+import { useProducts, productsQuery } from "@/lib/products-db";
 import { Loader2 } from "lucide-react";
 import {
   ArrowRight,
@@ -41,6 +41,7 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "lapkart — laptop parts marketplace" },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(productsQuery()),
   component: Home,
 });
 

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Product } from "@/lib/catalog";
 
@@ -42,8 +42,8 @@ function normalize(r: Row): Product {
 
 const SELECT = "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights";
 
-export function useProducts() {
-  return useQuery({
+export const productsQuery = () =>
+  queryOptions({
     queryKey: ["products", "all"],
     queryFn: async (): Promise<Product[]> => {
       const { data, error } = await supabase
@@ -53,12 +53,12 @@ export function useProducts() {
       if (error) throw error;
       return (data as Row[]).map(normalize);
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   });
-}
 
-export function useProduct(id: string | undefined) {
-  return useQuery({
+export const productByIdQuery = (id: string | undefined) =>
+  queryOptions({
     queryKey: ["products", "by-id", id],
     enabled: !!id,
     queryFn: async (): Promise<Product | null> => {
@@ -70,8 +70,16 @@ export function useProduct(id: string | undefined) {
       if (error) throw error;
       return data ? normalize(data as Row) : null;
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   });
+
+export function useProducts() {
+  return useQuery(productsQuery());
+}
+
+export function useProduct(id: string | undefined) {
+  return useQuery(productByIdQuery(id));
 }
 
 export function useProductsByIds(ids: string[]) {
@@ -87,6 +95,7 @@ export function useProductsByIds(ids: string[]) {
       if (error) throw error;
       return (data as Row[]).map(normalize);
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   });
 }
