@@ -4,6 +4,12 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist/client",
   "installCommand": "npm install",
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs20.x",
+      "includeFiles": "dist/server/**"
+    }
+  },
   "rewrites": [
     { "source": "/((?!assets/|favicon.ico|fonts/|api/).*)", "destination": "/api/index" }
   ]
