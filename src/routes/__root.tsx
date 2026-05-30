@@ -15,21 +15,24 @@ import { Toaster } from "sonner";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background-base)] px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <span className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--heat-100)]">
+          404 / not_found
+        </span>
+        <h1 className="mt-2 font-display text-[88px] leading-none font-medium text-foreground tracking-tighter">
+          4<span className="text-gradient-heat">0</span>4
+        </h1>
+        <h2 className="mt-4 font-display text-title-h4 text-foreground">Page not found</h2>
+        <p className="mt-2 text-body-medium text-[var(--black-alpha-56)]">
           The page you're looking for doesn't exist or has been moved.
         </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go home
-          </Link>
-        </div>
+        <Link
+          to="/"
+          className="button button-primary mt-6 inline-flex items-center gap-2 rounded-md px-5 h-11 text-label-medium"
+        >
+          Go home
+        </Link>
       </div>
     </div>
   );
@@ -40,27 +43,25 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background-base)] px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+        <span className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--accent-crimson)]">
+          500 / error
+        </span>
+        <h1 className="mt-2 font-display text-title-h3 text-foreground">This page didn't load</h1>
+        <p className="mt-3 text-body-medium text-[var(--black-alpha-56)]">
+          Something went wrong on our end. Try refreshing or head back home.
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button
-            onClick={() => {
-              router.invalidate();
-              reset();
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            onClick={() => { router.invalidate(); reset(); }}
+            className="button button-primary inline-flex items-center gap-2 rounded-md px-5 h-11 text-label-medium"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-5 h-11 text-label-medium text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] transition-colors"
           >
             Go home
           </a>

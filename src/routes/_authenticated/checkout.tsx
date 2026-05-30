@@ -4,14 +4,15 @@ import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { cart, useCart } from "@/lib/cart-store";
-import { formatINR, getProduct } from "@/lib/catalog";
+import { formatINR } from "@/lib/catalog";
+import { useProductsByIds } from "@/lib/products-db";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { Loader2, CreditCard, Truck, ShieldCheck, MapPin } from "lucide-react";
+import { Loader2, CreditCard, Truck, ShieldCheck, MapPin, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/checkout")({
-  head: () => ({ meta: [{ title: "Checkout — LapKart" }] }),
+  head: () => ({ meta: [{ title: "Checkout — lapkart" }] }),
   component: Checkout,
 });
 
@@ -30,9 +31,11 @@ function Checkout() {
     pincode: "",
   });
 
+  const { data: prods = [] } = useProductsByIds(items.map((i) => i.id));
+  const byId = new Map(prods.map((p) => [p.id, p]));
   const rows = items
-    .map((i) => ({ p: getProduct(i.id), qty: i.qty }))
-    .filter((r): r is { p: NonNullable<ReturnType<typeof getProduct>>; qty: number } => !!r.p);
+    .map((i) => ({ p: byId.get(i.id), qty: i.qty }))
+    .filter((r): r is { p: NonNullable<typeof r.p>; qty: number } => !!r.p);
 
   const subtotal = rows.reduce((s, r) => s + r.p.price * r.qty, 0);
   const shipping = subtotal > 999 || subtotal === 0 ? 0 : 49;
@@ -50,7 +53,6 @@ function Checkout() {
       const addressLine = [form.line1, form.line2, form.city, form.state, form.pincode]
         .filter(Boolean)
         .join(", ");
-
       const { data: order, error } = await supabase
         .from("orders")
         .insert({
@@ -72,7 +74,7 @@ function Checkout() {
       const itemsPayload = rows.map((r) => ({
         order_id: order.id,
         title: r.p.title,
-        image: r.p.image,
+        image: (r.p.images?.[0]) ?? r.p.image,
         brand: r.p.brand,
         price: r.p.price,
         qty: r.qty,
@@ -80,7 +82,6 @@ function Checkout() {
       const { error: itErr } = await supabase.from("order_items").insert(itemsPayload);
       if (itErr) throw itErr;
 
-      // also save address (best effort)
       await supabase.from("addresses").insert({
         user_id: user.id,
         full_name: form.full_name,
@@ -93,7 +94,7 @@ function Checkout() {
       });
 
       cart.clear();
-      toast.success("Order placed!");
+      toast.success("Order placed");
       navigate({ to: "/order/$id", params: { id: order.id } });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Order failed");
@@ -102,81 +103,131 @@ function Checkout() {
     }
   };
 
+  const inputCls =
+    "w-full h-11 rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground outline-none focus:border-[var(--heat-100)] focus:shadow-[0_0_0_3px_var(--heat-12)] transition-all placeholder:text-[var(--black-alpha-32)]";
+
   return (
-    <div className="min-h-screen bg-muted/40">
+    <div className="min-h-screen bg-[var(--background-base)]">
       <Header />
-      <div className="container mx-auto grid gap-6 px-4 py-6 lg:grid-cols-[1fr_360px]">
-        <motion.form
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          onSubmit={placeOrder}
-          className="space-y-4"
-        >
-          <div className="rounded-lg bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-4 flex items-center gap-2 font-bold"><MapPin className="size-4 text-primary" /> Shipping Address</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input required placeholder="Full name" value={form.full_name} onChange={set("full_name")} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary sm:col-span-2" />
-              <input required placeholder="Phone (10 digits)" value={form.phone} onChange={set("phone")} pattern="[0-9]{10}" className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary sm:col-span-2" />
-              <input required placeholder="Address line 1" value={form.line1} onChange={set("line1")} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary sm:col-span-2" />
-              <input placeholder="Address line 2 (optional)" value={form.line2} onChange={set("line2")} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary sm:col-span-2" />
-              <input required placeholder="City" value={form.city} onChange={set("city")} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-              <input required placeholder="State" value={form.state} onChange={set("state")} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-              <input required placeholder="Pincode" value={form.pincode} onChange={set("pincode")} pattern="[0-9]{6}" className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-            </div>
-          </div>
+      <div className="container mx-auto px-4 py-10">
+        <div className="mb-8">
+          <span className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--heat-100)]">checkout</span>
+          <h1 className="mt-2 font-display text-title-h3 text-foreground">Confirm your order</h1>
+        </div>
 
-          <div className="rounded-lg bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-3 flex items-center gap-2 font-bold"><CreditCard className="size-4 text-primary" /> Payment</h2>
-            <label className="flex items-start gap-3 rounded-md border-2 border-primary bg-primary/5 p-3">
-              <input type="radio" defaultChecked className="mt-1" />
-              <div>
-                <p className="font-semibold">Mock Payment (Demo)</p>
-                <p className="text-xs text-muted-foreground">Click Place Order to simulate a successful payment. Real Stripe coming soon.</p>
+        <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+          <motion.form
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onSubmit={placeOrder}
+            id="checkout-form"
+            className="space-y-5"
+          >
+            <Card>
+              <CardTitle icon={MapPin}>Shipping address</CardTitle>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input required placeholder="Full name" value={form.full_name} onChange={set("full_name")} className={`${inputCls} sm:col-span-2`} />
+                <input required placeholder="Phone (10 digits)" value={form.phone} onChange={set("phone")} pattern="[0-9]{10}" className={`${inputCls} sm:col-span-2`} />
+                <input required placeholder="Address line 1" value={form.line1} onChange={set("line1")} className={`${inputCls} sm:col-span-2`} />
+                <input placeholder="Address line 2 (optional)" value={form.line2} onChange={set("line2")} className={`${inputCls} sm:col-span-2`} />
+                <input required placeholder="City" value={form.city} onChange={set("city")} className={inputCls} />
+                <input required placeholder="State" value={form.state} onChange={set("state")} className={inputCls} />
+                <input required placeholder="Pincode" value={form.pincode} onChange={set("pincode")} pattern="[0-9]{6}" className={`${inputCls} sm:col-span-2`} />
               </div>
-            </label>
-          </div>
+            </Card>
 
-          <div className="rounded-lg bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-3 font-bold">Items ({rows.length})</h2>
-            <ul className="divide-y divide-border">
-              {rows.map((r) => (
-                <li key={r.p.id} className="flex gap-3 py-3">
-                  <img src={r.p.image} alt="" className="size-14 rounded bg-white object-contain p-1" />
-                  <div className="flex-1 text-sm">
-                    <p className="line-clamp-1 font-medium">{r.p.title}</p>
-                    <p className="text-xs text-muted-foreground">{r.p.brand} · Qty {r.qty}</p>
-                  </div>
-                  <p className="text-sm font-bold">{formatINR(r.p.price * r.qty)}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
+            <Card>
+              <CardTitle icon={CreditCard}>Payment</CardTitle>
+              <label className="flex items-start gap-3 rounded-md border border-[var(--heat-100)] bg-[var(--heat-4)] p-4">
+                <input type="radio" defaultChecked className="mt-1 accent-[var(--heat-100)]" />
+                <div>
+                  <p className="text-label-medium text-foreground">Mock payment <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)] ml-1">demo</span></p>
+                  <p className="mt-0.5 text-body-small text-[var(--black-alpha-56)]">
+                    Click place order to simulate payment. Real Stripe integration coming soon.
+                  </p>
+                </div>
+              </label>
+            </Card>
 
-          <button type="submit" disabled={busy || rows.length === 0} className="hidden w-full rounded-sm bg-[oklch(0.7_0.18_40)] py-3 text-sm font-bold text-white shadow-md transition hover:brightness-105 disabled:opacity-50 lg:block">
-            {busy ? <Loader2 className="mx-auto size-4 animate-spin" /> : `PLACE ORDER · ${formatINR(total)}`}
-          </button>
-        </motion.form>
+            <Card>
+              <CardTitle>Items ({rows.length})</CardTitle>
+              <ul className="divide-y divide-[var(--border-faint)]">
+                {rows.map((r) => (
+                  <li key={r.p.id} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+                    <img src={(r.p.images?.[0]) ?? r.p.image} alt="" className="size-14 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] object-contain p-1.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="line-clamp-1 text-label-small text-foreground">{r.p.title}</p>
+                      <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)] mt-0.5">
+                        {r.p.brand} · qty {r.qty}
+                      </p>
+                    </div>
+                    <p className="text-label-medium font-medium">{formatINR(r.p.price * r.qty)}</p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </motion.form>
 
-        <aside className="h-fit space-y-4 lg:sticky lg:top-24">
-          <div className="rounded-lg bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-muted-foreground">Price Details</h2>
-            <dl className="space-y-2.5 text-sm">
-              <div className="flex justify-between"><dt>Subtotal</dt><dd>{formatINR(subtotal)}</dd></div>
-              <div className="flex justify-between"><dt>Delivery</dt><dd className={shipping === 0 ? "text-success" : ""}>{shipping === 0 ? "FREE" : formatINR(shipping)}</dd></div>
-              <div className="border-t border-dashed border-border pt-3" />
-              <div className="flex justify-between text-base font-bold"><dt>Total</dt><dd>{formatINR(total)}</dd></div>
-            </dl>
-            <button form="" onClick={placeOrder as unknown as React.MouseEventHandler<HTMLButtonElement>} disabled={busy || rows.length === 0} className="mt-5 w-full rounded-sm bg-[oklch(0.7_0.18_40)] py-3 text-sm font-bold text-white shadow-md transition hover:brightness-105 disabled:opacity-50 lg:hidden">
-              {busy ? <Loader2 className="mx-auto size-4 animate-spin" /> : "PLACE ORDER"}
-            </button>
-          </div>
-          <div className="rounded-lg bg-card p-4 text-xs text-muted-foreground shadow-[var(--shadow-card)]">
-            <div className="flex items-center gap-2 py-1"><Truck className="size-4 text-primary" /> Free delivery on orders above ₹999</div>
-            <div className="flex items-center gap-2 py-1"><ShieldCheck className="size-4 text-primary" /> 100% genuine, tested parts</div>
-          </div>
-        </aside>
+          <aside className="h-fit space-y-4 lg:sticky lg:top-28">
+            <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
+              <h2 className="mb-5 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">
+                Price details
+              </h2>
+              <dl className="space-y-3 text-body-medium">
+                <Line k="Subtotal" v={formatINR(subtotal)} />
+                <Line
+                  k="Delivery"
+                  v={shipping === 0 ? "FREE" : formatINR(shipping)}
+                  accent={shipping === 0}
+                />
+                <div className="border-t border-dashed border-[var(--border-muted)] pt-3 mt-3 flex justify-between items-baseline">
+                  <dt className="text-label-large text-foreground">Total</dt>
+                  <dd className="font-display text-title-h4 text-foreground">{formatINR(total)}</dd>
+                </div>
+              </dl>
+              <button
+                type="submit"
+                form="checkout-form"
+                disabled={busy || rows.length === 0}
+                className="button button-primary mt-5 flex w-full items-center justify-center gap-2 rounded-md h-12 text-label-medium disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <>Place order <ArrowRight className="size-4" /></>}
+              </button>
+            </div>
+            <div className="rounded-lg border border-[var(--border-faint)] bg-white p-5 space-y-3 text-body-small text-[var(--black-alpha-72)]">
+              <div className="flex items-center gap-2.5">
+                <Truck className="size-4 text-[var(--heat-100)]" /> Free delivery on orders ₹999+
+              </div>
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="size-4 text-[var(--heat-100)]" /> 100% genuine, tested parts
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
       <Footer />
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">{children}</div>;
+}
+
+function CardTitle({ icon: Icon, children }: { icon?: typeof MapPin; children: React.ReactNode }) {
+  return (
+    <h2 className="mb-5 flex items-center gap-2 text-label-large text-foreground">
+      {Icon && <Icon className="size-4 text-[var(--heat-100)]" />}
+      {children}
+    </h2>
+  );
+}
+
+function Line({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-[var(--black-alpha-72)]">{k}</dt>
+      <dd className={accent ? "text-[var(--accent-forest)]" : "text-foreground"}>{v}</dd>
     </div>
   );
 }

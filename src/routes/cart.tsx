@@ -2,19 +2,22 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { cart, useCart } from "@/lib/cart-store";
-import { formatINR, getProduct } from "@/lib/catalog";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { formatINR } from "@/lib/catalog";
+import { useProductsByIds } from "@/lib/products-db";
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/cart")({
-  head: () => ({ meta: [{ title: "Your Cart — LapKart" }] }),
+  head: () => ({ meta: [{ title: "Your cart — lapkart" }] }),
   component: CartPage,
 });
 
 function CartPage() {
   const items = useCart();
+  const { data: prods = [] } = useProductsByIds(items.map((i) => i.id));
+  const byId = new Map(prods.map((p) => [p.id, p]));
   const rows = items
-    .map((i) => ({ p: getProduct(i.id), qty: i.qty }))
-    .filter((r): r is { p: NonNullable<ReturnType<typeof getProduct>>; qty: number } => !!r.p);
+    .map((i) => ({ p: byId.get(i.id), qty: i.qty }))
+    .filter((r): r is { p: NonNullable<typeof r.p>; qty: number } => !!r.p);
 
   const subtotal = rows.reduce((s, r) => s + r.p.price * r.qty, 0);
   const mrp = rows.reduce((s, r) => s + r.p.mrp * r.qty, 0);
@@ -24,19 +27,17 @@ function CartPage() {
 
   if (rows.length === 0) {
     return (
-      <div className="min-h-screen bg-muted/40">
+      <div className="min-h-screen bg-[var(--background-base)]">
         <Header />
-        <div className="container mx-auto flex flex-col items-center justify-center px-4 py-20 text-center">
-          <div className="grid size-20 place-items-center rounded-full bg-primary/10 text-primary">
-            <ShoppingBag className="size-10" />
+        <div className="container mx-auto flex flex-col items-center justify-center px-4 py-32 text-center">
+          <div className="grid size-20 place-items-center rounded-full border border-[var(--border-muted)] bg-white text-[var(--heat-100)]">
+            <ShoppingBag className="size-9" strokeWidth={1.8} />
           </div>
-          <h1 className="mt-4 text-2xl font-bold">Your cart is empty</h1>
-          <p className="mt-1 text-muted-foreground">Add laptop parts to get started.</p>
-          <Link
-            to="/products"
-            className="mt-6 inline-block rounded-sm bg-primary px-6 py-3 text-sm font-bold text-primary-foreground"
-          >
-            Shop Components
+          <p className="mt-6 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">empty_state</p>
+          <h1 className="mt-2 font-display text-title-h3 text-foreground">Your cart is empty</h1>
+          <p className="mt-2 text-body-medium text-[var(--black-alpha-56)]">Add laptop parts to get started.</p>
+          <Link to="/products" className="button button-primary mt-8 inline-flex items-center gap-2 rounded-md px-6 h-12 text-label-medium">
+            Shop components <ArrowRight className="size-4" />
           </Link>
         </div>
         <Footer />
@@ -45,109 +46,120 @@ function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/40">
+    <div className="min-h-screen bg-[var(--background-base)]">
       <Header />
-      <div className="container mx-auto grid gap-6 px-4 py-6 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-lg bg-card shadow-[var(--shadow-card)]">
-          <div className="border-b border-border p-4">
-            <h1 className="text-lg font-bold">My Cart ({rows.length})</h1>
-          </div>
-          <ul>
-            {rows.map(({ p, qty }) => (
-              <li key={p.id} className="flex gap-4 border-b border-border p-4 last:border-0">
-                <Link
-                  to="/product/$id"
-                  params={{ id: p.id }}
-                  className="size-24 shrink-0 overflow-hidden rounded-md bg-white"
-                >
-                  <img src={p.image} alt={p.title} className="size-full object-contain p-2" />
-                </Link>
-                <div className="min-w-0 flex-1">
+      <div className="container mx-auto px-4 py-10">
+        <div className="mb-8">
+          <span className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--heat-100)]">cart</span>
+          <h1 className="mt-2 font-display text-title-h3 text-foreground">
+            Your selection <span className="text-[var(--black-alpha-40)]">({rows.length})</span>
+          </h1>
+        </div>
+
+        <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+          <div className="rounded-lg border border-[var(--border-muted)] bg-white">
+            <ul>
+              {rows.map(({ p, qty }) => (
+                <li key={p.id} className="flex gap-5 border-b border-[var(--border-faint)] p-5 last:border-0">
                   <Link
                     to="/product/$id"
                     params={{ id: p.id }}
-                    className="line-clamp-2 text-sm font-medium hover:text-primary"
+                    className="size-24 shrink-0 overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)]"
                   >
-                    {p.title}
+                    <img src={(p.images?.[0]) ?? p.image} alt={p.title} className="size-full object-contain p-2" />
                   </Link>
-                  <p className="text-xs text-muted-foreground">{p.brand}</p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="font-bold">{formatINR(p.price)}</span>
-                    <span className="text-xs text-muted-foreground line-through">{formatINR(p.mrp)}</span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-4">
-                    <div className="flex items-center rounded-full border border-border">
-                      <button
-                        onClick={() => cart.setQty(p.id, qty - 1)}
-                        className="grid size-7 place-items-center text-muted-foreground hover:text-foreground"
-                        aria-label="Decrease"
-                      >
-                        <Minus className="size-3" />
-                      </button>
-                      <span className="w-7 text-center text-sm font-semibold">{qty}</span>
-                      <button
-                        onClick={() => cart.setQty(p.id, qty + 1)}
-                        className="grid size-7 place-items-center text-muted-foreground hover:text-foreground"
-                        aria-label="Increase"
-                      >
-                        <Plus className="size-3" />
-                      </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">{p.brand}</p>
+                    <Link
+                      to="/product/$id"
+                      params={{ id: p.id }}
+                      className="mt-0.5 block line-clamp-2 text-label-medium text-foreground hover:text-[var(--heat-100)] transition-colors"
+                    >
+                      {p.title}
+                    </Link>
+                    <div className="mt-3 flex items-center justify-between gap-4">
+                      <div className="flex items-center rounded-md border border-[var(--border-muted)] bg-white">
+                        <button
+                          onClick={() => cart.setQty(p.id, qty - 1)}
+                          className="grid size-9 place-items-center text-[var(--black-alpha-48)] hover:text-[var(--heat-100)] transition-colors"
+                          aria-label="Decrease"
+                        >
+                          <Minus className="size-3.5" />
+                        </button>
+                        <span className="w-8 text-center text-mono-small font-medium text-foreground">{qty}</span>
+                        <button
+                          onClick={() => cart.setQty(p.id, qty + 1)}
+                          className="grid size-9 place-items-center text-[var(--black-alpha-48)] hover:text-[var(--heat-100)] transition-colors"
+                          aria-label="Increase"
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-label-large font-medium text-foreground">{formatINR(p.price * qty)}</span>
+                        <p className="text-mono-x-small text-[var(--black-alpha-40)] line-through">{formatINR(p.mrp * qty)}</p>
+                      </div>
                     </div>
                     <button
                       onClick={() => cart.remove(p.id)}
-                      className="flex items-center gap-1 text-xs font-semibold text-destructive hover:underline"
+                      className="mt-3 inline-flex items-center gap-1.5 text-mono-x-small uppercase tracking-wider text-[var(--accent-crimson)] hover:underline"
                     >
-                      <Trash2 className="size-3.5" /> Remove
+                      <Trash2 className="size-3" /> Remove
                     </button>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-        <aside className="h-fit rounded-lg bg-card p-5 shadow-[var(--shadow-card)] lg:sticky lg:top-24">
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-            Price Details
-          </h2>
-          <dl className="space-y-2.5 text-sm">
-            <div className="flex justify-between">
-              <dt>Price ({rows.length} items)</dt>
-              <dd>{formatINR(mrp)}</dd>
+          <aside className="h-fit space-y-4 lg:sticky lg:top-28">
+            <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
+              <h2 className="mb-5 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">
+                Order summary
+              </h2>
+              <dl className="space-y-3 text-body-medium">
+                <Row k={`Subtotal (${rows.length} items)`} v={formatINR(mrp)} />
+                <Row k="Discount" v={`− ${formatINR(savings)}`} accent="forest" />
+                <Row
+                  k="Delivery"
+                  v={shipping === 0 ? "FREE" : formatINR(shipping)}
+                  accent={shipping === 0 ? "forest" : undefined}
+                />
+                <div className="border-t border-dashed border-[var(--border-muted)] pt-3 mt-3">
+                  <div className="flex justify-between items-baseline">
+                    <dt className="text-label-large text-foreground">Total</dt>
+                    <dd className="font-display text-title-h4 text-foreground">{formatINR(total)}</dd>
+                  </div>
+                </div>
+              </dl>
+              {savings > 0 && (
+                <div className="mt-4 rounded-md bg-[var(--accent-forest)]/8 px-3 py-2 text-mono-small text-[var(--accent-forest)]">
+                  You save {formatINR(savings)} on this order
+                </div>
+              )}
+              <Link
+                to="/checkout"
+                className="button button-primary mt-5 flex w-full items-center justify-center gap-2 rounded-md h-12 text-label-medium"
+              >
+                Proceed to checkout <ArrowRight className="size-4" />
+              </Link>
+              <p className="mt-3 text-center text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-40)]">
+                Safe payments · Easy returns
+              </p>
             </div>
-            <div className="flex justify-between text-success">
-              <dt>Discount</dt>
-              <dd>− {formatINR(savings)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Delivery Charges</dt>
-              <dd className={shipping === 0 ? "text-success" : ""}>
-                {shipping === 0 ? "FREE" : formatINR(shipping)}
-              </dd>
-            </div>
-            <div className="border-t border-dashed border-border pt-3" />
-            <div className="flex justify-between text-base font-bold">
-              <dt>Total Amount</dt>
-              <dd>{formatINR(total)}</dd>
-            </div>
-          </dl>
-          {savings > 0 && (
-            <p className="mt-3 text-sm font-semibold text-success">
-              You save {formatINR(savings)} on this order
-            </p>
-          )}
-          <Link
-            to="/checkout"
-            className="mt-5 block w-full rounded-sm bg-[oklch(0.7_0.18_40)] py-3 text-center text-sm font-bold text-white shadow-md transition hover:brightness-105"
-          >
-            PLACE ORDER
-          </Link>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            Safe & secure payments · Easy returns
-          </p>
-        </aside>
+          </aside>
+        </div>
       </div>
       <Footer />
+    </div>
+  );
+}
+
+function Row({ k, v, accent }: { k: string; v: string; accent?: "forest" }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-[var(--black-alpha-72)]">{k}</dt>
+      <dd className={accent === "forest" ? "text-[var(--accent-forest)]" : "text-foreground"}>{v}</dd>
     </div>
   );
 }

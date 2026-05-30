@@ -20,8 +20,8 @@ function Guard() {
 
   if (loading || !user) {
     return (
-      <div className="grid min-h-screen place-items-center bg-background">
-        <Loader2 className="size-8 animate-spin text-primary" />
+      <div className="grid min-h-screen place-items-center bg-[var(--background-base)]">
+        <Loader2 className="size-7 animate-spin text-[var(--heat-100)]" />
       </div>
     );
   }
