@@ -1,7 +1,7 @@
 // Vercel Node serverless function wrapping the TanStack Start SSR server.
-// `dist/server/server.js` exports `{ fetch(request, env, ctx) }`.
+// `dist/server/index.js` exports `{ fetch(request, env, ctx) }`.
 // We adapt Node IncomingMessage/ServerResponse to/from Web Request/Response.
-import server from "../dist/server/server.js";
+import server from "../dist/server/index.js";
 
 function buildRequest(req) {
   const proto = req.headers["x-forwarded-proto"] || "https";

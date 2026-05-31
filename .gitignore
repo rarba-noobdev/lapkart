@@ -41,3 +41,5 @@ runtime/
 *.zip
 dev-server.*.log
 api/api-server.*.log
+
+.vercel

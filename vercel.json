@@ -4,5 +4,11 @@
   "framework": "vite",
   "env": {
     "VITE_API_BASE_URL": "https://lapkart-ai-api.onrender.com"
-  }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index"
+    }
+  ]
 }
