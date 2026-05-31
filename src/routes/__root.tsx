@@ -7,22 +7,11 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
+import { AiChat } from "@/components/AiChat";
 import { Toaster } from "sonner";
-
-const AiChat = lazy(() => import("@/components/AiChat").then((m) => ({ default: m.AiChat })));
-
-const SUPABASE_ORIGIN = (() => {
-  try {
-    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    return url ? new URL(url).origin : undefined;
-  } catch {
-    return undefined;
-  }
-})();
 
 function NotFoundComponent() {
   return (
@@ -101,13 +90,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/51bd8745-2111-4d21-b5d7-4796ae6a3c2a/id-preview-e0366819--46d13f7e-33f4-4eb6-870b-7b970604b19c.lovable.app-1778983816158.png" },
     ],
     links: [
-      { rel: "stylesheet", href: appCss },
-      ...(SUPABASE_ORIGIN
-        ? [
-            { rel: "preconnect", href: SUPABASE_ORIGIN, crossOrigin: "anonymous" } as const,
-            { rel: "dns-prefetch", href: SUPABASE_ORIGIN } as const,
-          ]
-        : []),
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -137,9 +123,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
-        <Suspense fallback={null}>
-          <AiChat />
-        </Suspense>
+        <AiChat />
         <Toaster richColors position="top-center" />
       </AuthProvider>
     </QueryClientProvider>

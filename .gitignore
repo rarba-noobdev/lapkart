@@ -33,3 +33,11 @@ dist-ssr
 
 # MCP (contains API keys)
 .mcp.json
+
+# Local secrets and generated runtime artifacts
+.env
+api/.env
+runtime/
+*.zip
+dev-server.*.log
+api/api-server.*.log

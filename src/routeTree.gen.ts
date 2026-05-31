@@ -9,9 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RepairRouteImport } from './routes/repair'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DeliveryRouteImport } from './routes/delivery'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CartRouteImport } from './routes/cart'
+import { Route as AiDetectionRouteImport } from './routes/ai-detection'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProductIdRouteImport } from './routes/product.$id'
@@ -21,6 +25,11 @@ import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedOrderIdRouteImport } from './routes/_authenticated/order.$id'
 
+const RepairRoute = RepairRouteImport.update({
+  id: '/repair',
+  path: '/repair',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProductsRoute = ProductsRouteImport.update({
   id: '/products',
   path: '/products',
@@ -31,9 +40,24 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeliveryRoute = DeliveryRouteImport.update({
+  id: '/delivery',
+  path: '/delivery',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CartRoute = CartRouteImport.update({
   id: '/cart',
   path: '/cart',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AiDetectionRoute = AiDetectionRouteImport.update({
+  id: '/ai-detection',
+  path: '/ai-detection',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -78,9 +102,13 @@ const AuthenticatedOrderIdRoute = AuthenticatedOrderIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ai-detection': typeof AiDetectionRoute
   '/cart': typeof CartRoute
+  '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/repair': typeof RepairRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
@@ -90,9 +118,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-detection': typeof AiDetectionRoute
   '/cart': typeof CartRoute
+  '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/repair': typeof RepairRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
@@ -104,9 +136,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/ai-detection': typeof AiDetectionRoute
   '/cart': typeof CartRoute
+  '/dashboard': typeof DashboardRoute
+  '/delivery': typeof DeliveryRoute
   '/login': typeof LoginRoute
   '/products': typeof ProductsRoute
+  '/repair': typeof RepairRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
@@ -118,9 +154,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ai-detection'
     | '/cart'
+    | '/dashboard'
+    | '/delivery'
     | '/login'
     | '/products'
+    | '/repair'
     | '/admin'
     | '/checkout'
     | '/orders'
@@ -130,9 +170,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-detection'
     | '/cart'
+    | '/dashboard'
+    | '/delivery'
     | '/login'
     | '/products'
+    | '/repair'
     | '/admin'
     | '/checkout'
     | '/orders'
@@ -143,9 +187,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/ai-detection'
     | '/cart'
+    | '/dashboard'
+    | '/delivery'
     | '/login'
     | '/products'
+    | '/repair'
     | '/_authenticated/admin'
     | '/_authenticated/checkout'
     | '/_authenticated/orders'
@@ -157,14 +205,25 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  AiDetectionRoute: typeof AiDetectionRoute
   CartRoute: typeof CartRoute
+  DashboardRoute: typeof DashboardRoute
+  DeliveryRoute: typeof DeliveryRoute
   LoginRoute: typeof LoginRoute
   ProductsRoute: typeof ProductsRoute
+  RepairRoute: typeof RepairRoute
   ProductIdRoute: typeof ProductIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/repair': {
+      id: '/repair'
+      path: '/repair'
+      fullPath: '/repair'
+      preLoaderRoute: typeof RepairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/products': {
       id: '/products'
       path: '/products'
@@ -179,11 +238,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/delivery': {
+      id: '/delivery'
+      path: '/delivery'
+      fullPath: '/delivery'
+      preLoaderRoute: typeof DeliveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cart': {
       id: '/cart'
       path: '/cart'
       fullPath: '/cart'
       preLoaderRoute: typeof CartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ai-detection': {
+      id: '/ai-detection'
+      path: '/ai-detection'
+      fullPath: '/ai-detection'
+      preLoaderRoute: typeof AiDetectionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -268,9 +348,13 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  AiDetectionRoute: AiDetectionRoute,
   CartRoute: CartRoute,
+  DashboardRoute: DashboardRoute,
+  DeliveryRoute: DeliveryRoute,
   LoginRoute: LoginRoute,
   ProductsRoute: ProductsRoute,
+  RepairRoute: RepairRoute,
   ProductIdRoute: ProductIdRoute,
 }
 export const routeTree = rootRouteImport

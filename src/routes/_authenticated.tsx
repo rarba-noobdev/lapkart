@@ -11,12 +11,17 @@ function Guard() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
+  const demoRoutes = ["/admin", "/checkout"];
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !demoRoutes.includes(loc.pathname)) {
       navigate({ to: "/login", search: { redirect: loc.pathname } });
     }
   }, [user, loading, navigate, loc.pathname]);
+
+  if (demoRoutes.includes(loc.pathname)) {
+    return <Outlet />;
+  }
 
   if (loading || !user) {
     return (

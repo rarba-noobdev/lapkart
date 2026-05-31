@@ -88,6 +88,24 @@ export function Header() {
           >
             Shop
           </Link>
+          <Link
+            to="/repair"
+            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
+          >
+            Repair
+          </Link>
+          <Link
+            to="/delivery"
+            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
+          >
+            Delivery
+          </Link>
+          <Link
+            to="/ai-detection"
+            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
+          >
+            AI Detect
+          </Link>
 
           {user ? (
             <div ref={ref} className="relative">
@@ -117,6 +135,8 @@ export function Header() {
                       <p className="truncate text-label-small mt-0.5 text-foreground">{user.email}</p>
                     </div>
                     <MenuItem to="/orders" icon={Package} label="My orders" onClick={() => setOpen(false)} />
+                    <MenuItem to="/dashboard" icon={Package} label="Customer dashboard" onClick={() => setOpen(false)} />
+                    <MenuItem to="/vendor" icon={Package} label="Vendor dashboard" onClick={() => setOpen(false)} />
                     <MenuItem to="/admin" icon={Package} label="Admin dashboard" onClick={() => setOpen(false)} />
                     <button
                       onClick={async () => { setOpen(false); await signOut(); navigate({ to: "/" }); }}

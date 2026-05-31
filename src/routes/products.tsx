@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
 import { categories } from "@/lib/catalog";
-import { useProducts, productsQuery } from "@/lib/products-db";
+import { useProducts } from "@/lib/products-db";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 
 const search = z.object({
@@ -20,7 +20,6 @@ export const Route = createFileRoute("/products")({
       { name: "description", content: "Browse RAM, SSDs, batteries, displays, processors and more." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(productsQuery()),
   component: ProductsPage,
 });
 

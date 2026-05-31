@@ -56,6 +56,84 @@ export type Database = {
         }
         Relationships: []
       }
+      component_detections: {
+        Row: {
+          approved_at: string | null
+          brand: string | null
+          category: string
+          component_name: string
+          confidence_score: number | null
+          compatible_models: string[]
+          created_at: string
+          condition: string | null
+          id: string
+          image_url: string
+          keywords: string[]
+          model_number: string | null
+          ocr_text: string | null
+          product_description: string | null
+          product_id: string | null
+          product_title: string | null
+          seo_tags: string[]
+          similar_products: string[]
+          specifications: Json
+          status: string
+          tags: string[]
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          brand?: string | null
+          category: string
+          component_name: string
+          confidence_score?: number | null
+          compatible_models?: string[]
+          created_at?: string
+          condition?: string | null
+          id?: string
+          image_url: string
+          keywords?: string[]
+          model_number?: string | null
+          ocr_text?: string | null
+          product_description?: string | null
+          product_id?: string | null
+          product_title?: string | null
+          seo_tags?: string[]
+          similar_products?: string[]
+          specifications?: Json
+          status?: string
+          tags?: string[]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          brand?: string | null
+          category?: string
+          component_name?: string
+          confidence_score?: number | null
+          compatible_models?: string[]
+          created_at?: string
+          condition?: string | null
+          id?: string
+          image_url?: string
+          keywords?: string[]
+          model_number?: string | null
+          ocr_text?: string | null
+          product_description?: string | null
+          product_id?: string | null
+          product_title?: string | null
+          seo_tags?: string[]
+          similar_products?: string[]
+          specifications?: Json
+          status?: string
+          tags?: string[]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           brand: string
@@ -151,10 +229,12 @@ export type Database = {
           highlights: string[] | null
           id: string
           image: string
+          images: string[] | null
           mrp: number
           price: number
           rating: number
           reviews: number
+          source_url: string | null
           stock: number
           title: string
           warranty: string | null
@@ -167,10 +247,12 @@ export type Database = {
           highlights?: string[] | null
           id?: string
           image: string
+          images?: string[] | null
           mrp: number
           price: number
           rating?: number
           reviews?: number
+          source_url?: string | null
           stock?: number
           title: string
           warranty?: string | null
@@ -183,10 +265,12 @@ export type Database = {
           highlights?: string[] | null
           id?: string
           image?: string
+          images?: string[] | null
           mrp?: number
           price?: number
           rating?: number
           reviews?: number
+          source_url?: string | null
           stock?: number
           title?: string
           warranty?: string | null
