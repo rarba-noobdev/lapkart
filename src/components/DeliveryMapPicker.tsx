@@ -384,9 +384,13 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
           src={olaStaticMapUrl(center)}
           alt=""
           aria-hidden="true"
-          className="absolute inset-0 size-full object-cover"
+          className="pointer-events-none absolute inset-0 size-full object-cover"
         />
-        <div ref={containerRef} className="absolute inset-0 z-[1]" />
+        <div
+          ref={containerRef}
+          className="absolute inset-0 z-[1] size-full touch-none"
+          style={{ position: "absolute" }}
+        />
         <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center">
           <div className="grid size-12 place-items-center rounded-full bg-[var(--heat-100)] text-white shadow-[0_10px_30px_rgba(249,115,22,0.32)]">
             <MapPin className="size-6" />

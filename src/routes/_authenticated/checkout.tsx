@@ -31,9 +31,14 @@ import { motion, AnimatePresence } from "framer-motion";
 
 declare global {
   interface Window {
-    Razorpay?: new (options: RazorpayOptions) => { open: () => void };
+    Razorpay?: new (options: RazorpayOptions) => RazorpayCheckout;
   }
 }
+
+type RazorpayCheckout = {
+  open: () => void;
+  on?: (event: "payment.failed", handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
+};
 
 type RazorpayOptions = {
   key: string;
@@ -370,7 +375,7 @@ function CheckoutPage() {
           }
         },
       });
-      (checkout as any).on?.("payment.failed", (response: { error?: { description?: string; reason?: string } }) => {
+      checkout.on?.("payment.failed", (response) => {
         const message = response.error?.description ?? response.error?.reason ?? "Payment failed";
         setError(message);
         toast.error(message);
@@ -857,12 +862,13 @@ function StepIndicator({ steps, activeIndex }: { steps: { label: string; icon: R
             >
               <motion.div
                 animate={{
-                  backgroundColor: isActive ? "var(--heat-100)" : "var(--background-lighter)",
-                  color: isActive ? "#ffffff" : "var(--black-alpha-48)",
-                  borderColor: isActive ? "var(--heat-100)" : "var(--border-faint)",
                   scale: isCurrent ? 1.1 : 1,
                 }}
-                className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 shadow-sm transition-colors"
+                className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 shadow-sm transition-colors ${
+                  isActive
+                    ? "border-[var(--heat-100)] bg-[var(--heat-100)] text-white"
+                    : "border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-48)]"
+                }`}
               >
                 {isActive && i < activeIndex ? (
                   <Check className="size-5" />
