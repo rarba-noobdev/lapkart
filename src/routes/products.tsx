@@ -2,10 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { z } from "zod";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { ProductGridSkeleton } from "@/components/LoadingSkeletons";
 import { ProductCard } from "@/components/ProductCard";
 import { categories } from "@/lib/catalog";
 import { useProducts } from "@/lib/products-db";
-import { Loader2, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 
 const search = z.object({
   category: z.string().optional(),
@@ -112,9 +113,7 @@ function ProductsPage() {
 
         <main>
           {isLoading ? (
-            <div className="grid place-items-center py-24">
-              <Loader2 className="size-7 animate-spin text-[var(--heat-100)]" />
-            </div>
+            <ProductGridSkeleton />
           ) : filtered.length === 0 ? (
             <div className="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center">
               <p className="text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">no_match</p>

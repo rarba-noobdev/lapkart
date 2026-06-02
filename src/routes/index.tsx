@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { HomeLoadingSkeleton } from "@/components/LoadingSkeletons";
 import { ProductCard } from "@/components/ProductCard";
 import { categories, discountPct, formatINR, type Product } from "@/lib/catalog";
 import { useProducts } from "@/lib/products-db";
-import { Loader2 } from "lucide-react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -70,23 +70,23 @@ function Home() {
       <Header />
 
       {isLoading && products.length === 0 ? (
-        <div className="grid place-items-center py-32 bg-[var(--accent-black)]">
-          <Loader2 className="size-7 animate-spin text-[var(--heat-100)]" />
-        </div>
+        <HomeLoadingSkeleton />
       ) : (
-        <Hero picks={heroPicks} />
+        <>
+          <Hero picks={heroPicks} />
+          <Marquee />
+          <CategoryStrip products={products} />
+          {deals.length > 0 && <HotDeals items={deals} />}
+          {memory.length + power.length + compute.length > 0 && (
+            <BuildYourLaptop memory={memory} power={power} compute={compute} />
+          )}
+          {editorsPicks.length > 0 && <EditorsPicks items={editorsPicks} />}
+          <SpecBanner />
+          {trending.length > 0 && <Trending items={trending} />}
+          <BrandStrip />
+          <Newsletter />
+        </>
       )}
-      <Marquee />
-      <CategoryStrip products={products} />
-      {deals.length > 0 && <HotDeals items={deals} />}
-      {memory.length + power.length + compute.length > 0 && (
-        <BuildYourLaptop memory={memory} power={power} compute={compute} />
-      )}
-      {editorsPicks.length > 0 && <EditorsPicks items={editorsPicks} />}
-      <SpecBanner />
-      {trending.length > 0 && <Trending items={trending} />}
-      <BrandStrip />
-      <Newsletter />
 
       <Footer />
     </div>

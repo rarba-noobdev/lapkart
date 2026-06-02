@@ -52,6 +52,10 @@ export const cart = {
 };
 
 export function useCart() {
+  return useCartState().items;
+}
+
+export function useCartState() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   const snap = useSyncExternalStore(
@@ -59,5 +63,5 @@ export function useCart() {
     () => items,
     () => EMPTY_CART,
   );
-  return hydrated ? snap : EMPTY_CART;
+  return { items: hydrated ? snap : EMPTY_CART, isHydrated: hydrated };
 }

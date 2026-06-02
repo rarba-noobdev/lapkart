@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { cart, useCart } from "@/lib/cart-store";
+import { CartPageSkeleton } from "@/components/LoadingSkeletons";
+import { cart, useCartState } from "@/lib/cart-store";
 import { formatINR } from "@/lib/catalog";
 import { useProductsByIds } from "@/lib/products-db";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
@@ -12,8 +13,8 @@ export const Route = createFileRoute("/cart")({
 });
 
 function CartPage() {
-  const items = useCart();
-  const { data: prods = [] } = useProductsByIds(items.map((i) => i.id));
+  const { items, isHydrated } = useCartState();
+  const { data: prods = [], isLoading: productsLoading } = useProductsByIds(items.map((i) => i.id));
   const byId = new Map(prods.map((p) => [p.id, p]));
   const rows = items
     .map((i) => ({ p: byId.get(i.id), qty: i.qty }))
@@ -24,6 +25,16 @@ function CartPage() {
   const savings = mrp - subtotal;
   const shipping = subtotal > 999 || subtotal === 0 ? 0 : 49;
   const total = subtotal + shipping;
+
+  if (!isHydrated || (items.length > 0 && productsLoading)) {
+    return (
+      <div className="min-h-screen bg-[var(--background-base)]">
+        <Header />
+        <CartPageSkeleton />
+        <Footer />
+      </div>
+    );
+  }
 
   if (rows.length === 0) {
     return (

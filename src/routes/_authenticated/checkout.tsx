@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
+import { CheckoutCartSkeleton } from "@/components/LoadingSkeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DeliveryMapPicker,
   type DeliveryPin,
@@ -9,7 +11,7 @@ import {
 } from "@/components/DeliveryMapPicker";
 import { supabase } from "@/integrations/supabase/client";
 import { formatINR } from "@/lib/catalog";
-import { cart, useCart } from "@/lib/cart-store";
+import { cart, useCartState } from "@/lib/cart-store";
 import { useAuth } from "@/lib/auth";
 import { useProductsByIds } from "@/lib/products-db";
 import {
@@ -133,8 +135,8 @@ export const Route = createFileRoute("/_authenticated/checkout")({
 function CheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const items = useCart();
-  const { data: products = [] } = useProductsByIds(items.map((item) => item.id));
+  const { items, isHydrated: isCartHydrated } = useCartState();
+  const { data: products = [], isLoading: productsLoading } = useProductsByIds(items.map((item) => item.id));
   const [busy, setBusy] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +172,7 @@ function CheckoutPage() {
   const shipping = subtotal > 999 || subtotal === 0 ? 0 : 49;
   const total = subtotal + shipping;
   const amountPaise = Math.round(total * 100);
+  const cartLoading = !isCartHydrated || (items.length > 0 && productsLoading);
   const hasValidAddress =
     address.fullName.trim().length > 1 &&
     address.line1.trim().length > 5 &&
@@ -233,6 +236,7 @@ function CheckoutPage() {
       setDeliveryEstimate(null);
       setSelectedQuoteId(null);
       setEstimateError(null);
+      setEstimateLoading(false);
       return;
     }
 
@@ -273,7 +277,7 @@ function CheckoutPage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [address.latitude, address.longitude, address.pincode, rows.length, subtotal]);
+  }, [address.latitude, address.longitude, address.pincode, hasDeliveryPin, rows.length, subtotal]);
 
   const pay = async () => {
     setError(null);
@@ -696,78 +700,98 @@ function CheckoutPage() {
             <div className="sticky top-6 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
               <div className="border-b border-[var(--border-faint)] bg-gradient-to-r from-[var(--heat-100)] to-[var(--heat-200)] px-6 py-4">
                 <p className="text-mono-x-small uppercase tracking-[0.2em] text-white/80">Order Summary</p>
-                <h2 className="mt-1 font-display text-title-h5 text-white">{formatINR(total)}</h2>
+                {cartLoading ? (
+                  <Skeleton className="mt-2 h-7 w-28 bg-white/20" />
+                ) : (
+                  <h2 className="mt-1 font-display text-title-h5 text-white">{formatINR(total)}</h2>
+                )}
               </div>
 
               <div className="p-6">
                 {/* Cart items */}
                 <div className="space-y-4">
-                  <AnimatePresence mode="popLayout">
-                    {rows.map(({ product, qty }) => (
-                      <motion.div
-                        key={product.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="flex items-start gap-3"
-                      >
-                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)]">
-                          {product.images?.[0] || product.image ? (
-                            <img
-                              src={product.images?.[0] ?? product.image}
-                              alt={product.title}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <Package className="size-5 text-[var(--black-alpha-24)]" />
+                  {cartLoading ? (
+                    <CheckoutCartSkeleton />
+                  ) : (
+                    <>
+                      <AnimatePresence mode="popLayout">
+                        {rows.map(({ product, qty }) => (
+                          <motion.div
+                            key={product.id}
+                            layout
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="flex items-start gap-3"
+                          >
+                            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)]">
+                              {product.images?.[0] || product.image ? (
+                                <img
+                                  src={product.images?.[0] ?? product.image}
+                                  alt={product.title}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center">
+                                  <Package className="size-5 text-[var(--black-alpha-24)]" />
+                                </div>
+                              )}
                             </div>
-                          )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-label-small text-foreground">{product.title}</p>
+                              <p className="mt-0.5 text-body-small text-[var(--black-alpha-48)]">{product.brand}</p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-label-small text-foreground">{formatINR(product.price)}</span>
+                                <span className="rounded-sm bg-[var(--background-lighter)] px-1.5 py-0.5 text-mono-x-small text-[var(--black-alpha-48)]">x{qty}</span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                      {rows.length === 0 && (
+                        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-muted)] py-8 text-center">
+                          <Package className="size-8 text-[var(--black-alpha-16)]" />
+                          <p className="mt-2 text-body-small text-[var(--black-alpha-48)]">Your cart is empty</p>
+                          <Link
+                            to="/products"
+                            className="mt-3 inline-flex items-center gap-1 text-label-small text-[var(--heat-100)] hover:underline"
+                          >
+                            Browse products <ChevronRight className="size-3" />
+                          </Link>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-label-small text-foreground">{product.title}</p>
-                          <p className="mt-0.5 text-body-small text-[var(--black-alpha-48)]">{product.brand}</p>
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="text-label-small text-foreground">{formatINR(product.price)}</span>
-                            <span className="rounded-sm bg-[var(--background-lighter)] px-1.5 py-0.5 text-mono-x-small text-[var(--black-alpha-48)]">x{qty}</span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                  {rows.length === 0 && (
-                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-muted)] py-8 text-center">
-                      <Package className="size-8 text-[var(--black-alpha-16)]" />
-                      <p className="mt-2 text-body-small text-[var(--black-alpha-48)]">Your cart is empty</p>
-                      <Link
-                        to="/products"
-                        className="mt-3 inline-flex items-center gap-1 text-label-small text-[var(--heat-100)] hover:underline"
-                      >
-                        Browse products <ChevronRight className="size-3" />
-                      </Link>
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
 
-                <div className="mt-5 space-y-2 border-t border-[var(--border-faint)] pt-5">
-                  <SummaryRow label="Subtotal" value={formatINR(subtotal)} />
-                  <SummaryRow label="Shipping" value={shipping === 0 ? "FREE" : formatINR(shipping)} highlight={shipping === 0} />
-                  <SummaryRow label="Taxes" value="Included" />
-                </div>
+                {cartLoading ? (
+                  <div className="mt-5 space-y-3 border-t border-[var(--border-faint)] pt-5">
+                    <Skeleton className="h-4 w-full bg-[var(--black-alpha-8)]" />
+                    <Skeleton className="h-4 w-full bg-[var(--black-alpha-8)]" />
+                    <Skeleton className="h-7 w-full bg-[var(--black-alpha-8)]" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-5 space-y-2 border-t border-[var(--border-faint)] pt-5">
+                      <SummaryRow label="Subtotal" value={formatINR(subtotal)} />
+                      <SummaryRow label="Shipping" value={shipping === 0 ? "FREE" : formatINR(shipping)} highlight={shipping === 0} />
+                      <SummaryRow label="Taxes" value="Included" />
+                    </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-[var(--border-faint)] pt-4">
-                  <span className="text-label-medium text-foreground">Total</span>
-                  <motion.span
-                    key={total}
-                    initial={{ scale: 1.1, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="font-display text-title-h5 text-foreground"
-                  >
-                    {formatINR(total)}
-                  </motion.span>
-                </div>
+                    <div className="mt-4 flex items-center justify-between border-t border-[var(--border-faint)] pt-4">
+                      <span className="text-label-medium text-foreground">Total</span>
+                      <motion.span
+                        key={total}
+                        initial={{ scale: 1.1, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="font-display text-title-h5 text-foreground"
+                      >
+                        {formatINR(total)}
+                      </motion.span>
+                    </div>
+                  </>
+                )}
 
                 {selectedCourier && (
                   <motion.div
@@ -817,7 +841,7 @@ function CheckoutPage() {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={pay}
-                  disabled={busy || Boolean(orderId) || rows.length === 0 || estimateLoading || !selectedCourier}
+                  disabled={cartLoading || busy || Boolean(orderId) || rows.length === 0 || estimateLoading || !selectedCourier}
                   className="button button-primary mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-label-medium disabled:opacity-60"
                 >
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
