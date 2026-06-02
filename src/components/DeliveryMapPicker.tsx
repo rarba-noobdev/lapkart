@@ -392,8 +392,12 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
           style={{ position: "absolute" }}
         />
         <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center">
-          <div className="grid size-12 place-items-center rounded-full bg-[var(--heat-100)] text-white shadow-[0_10px_30px_rgba(249,115,22,0.32)]">
-            <MapPin className="size-6" />
+          <div className="relative -translate-y-1/2 drop-shadow-[0_8px_7px_rgba(0,0,0,0.28)]">
+            <MapPin
+              className="size-14 fill-[var(--heat-100)] stroke-white"
+              strokeWidth={2.25}
+            />
+            <span className="absolute left-1/2 top-[38%] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[var(--heat-100)]" />
           </div>
         </div>
         {(loading || mapError) && (
