@@ -50,7 +50,7 @@ type OlaMap = {
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? "";
 const olaMapsStyleUrl = import.meta.env.VITE_OLA_MAPS_STYLE_URL ?? "";
-const defaultOlaMapsStyleUrl = "https://api.olamaps.io/tiles/vector/v1/styles/default-light-lite/style.json?key=0.4.0";
+const defaultOlaMapsStyleUrl = "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json";
 const defaultCenter = { latitude: 12.9716, longitude: 77.5946 };
 const fallbackRasterStyle = {
   version: 8,
@@ -67,6 +67,13 @@ const fallbackRasterStyle = {
 
 function roundCoordinate(value: number) {
   return Number(value.toFixed(6));
+}
+
+function olaStaticMapUrl(pin: { latitude: number; longitude: number }) {
+  const params = new URLSearchParams({
+    api_key: olaMapsKey,
+  });
+  return `https://api.olamaps.io/tiles/v1/styles/default-light-standard/static/${pin.longitude},${pin.latitude},15/1000x640.png?${params.toString()}`;
 }
 
 export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressLabel }: Props) {
@@ -373,15 +380,21 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
         </div>
       </div>
       <div className="relative h-[320px] bg-[var(--background-lighter)]">
-        <div ref={containerRef} className="absolute inset-0" />
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+        <img
+          src={olaStaticMapUrl(center)}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 size-full object-cover"
+        />
+        <div ref={containerRef} className="absolute inset-0 z-[1]" />
+        <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center">
           <div className="grid size-12 place-items-center rounded-full bg-[var(--heat-100)] text-white shadow-[0_10px_30px_rgba(249,115,22,0.32)]">
             <MapPin className="size-6" />
           </div>
         </div>
         {(loading || mapError) && (
-          <div className="absolute inset-0 grid place-items-center bg-white/80 px-6 text-center backdrop-blur-sm">
-            <p className="text-body-small text-[var(--black-alpha-72)]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] flex justify-center px-4 pb-4 text-center">
+            <p className="rounded-md border border-[var(--border-faint)] bg-white/90 px-3 py-2 text-body-small text-[var(--black-alpha-72)] shadow-sm backdrop-blur-sm">
               {mapError ?? "Loading Ola Maps"}
             </p>
           </div>
