@@ -4,6 +4,6 @@ import { config } from "./config.js";
 export const supabaseAdmin =
   config.supabaseUrl && config.supabaseServiceRoleKey
     ? createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       })
     : null;

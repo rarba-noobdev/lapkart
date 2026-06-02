@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 type CartItem = { id: string; qty: number };
 const KEY = "lapkart_cart_v1";
+const EMPTY_CART: CartItem[] = [];
 
 let items: CartItem[] = [];
 const listeners = new Set<() => void>();
@@ -56,7 +57,7 @@ export function useCart() {
   const snap = useSyncExternalStore(
     cart.subscribe,
     () => items,
-    () => [] as CartItem[],
+    () => EMPTY_CART,
   );
-  return hydrated ? snap : [];
+  return hydrated ? snap : EMPTY_CART;
 }

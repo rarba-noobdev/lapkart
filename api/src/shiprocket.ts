@@ -50,6 +50,18 @@ type ShiprocketAwbPayload = {
   courier_id?: number;
 };
 
+export type ShiprocketPickupAddress = Record<string, unknown> & {
+  id?: number;
+  pickup_location?: string;
+  pin_code?: string;
+  city?: string;
+  state?: string;
+  lat?: string | number;
+  long?: string | number;
+  is_primary_location?: number;
+  status?: number;
+};
+
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
 function ensureShiprocketConfig() {
@@ -137,6 +149,42 @@ export async function generateShiprocketLabels(shipmentIds: number[]) {
     method: "POST",
     body: JSON.stringify({ shipment_id: shipmentIds }),
   });
+}
+
+export async function requestShiprocketPickup(shipmentId: number) {
+  return shiprocketRequest<Record<string, unknown>>("/courier/generate/pickup", {
+    method: "POST",
+    body: JSON.stringify({ shipment_id: [shipmentId] }),
+  });
+}
+
+export async function generateShiprocketManifest(shipmentIds: number[]) {
+  return shiprocketRequest<Record<string, unknown>>("/manifests/generate", {
+    method: "POST",
+    body: JSON.stringify({ shipment_id: shipmentIds }),
+  });
+}
+
+export async function getShiprocketTracking(shipmentId: number) {
+  return shiprocketRequest<Record<string, unknown>>(`/courier/track/shipment/${shipmentId}`);
+}
+
+export async function getShiprocketPickupLocations() {
+  return shiprocketRequest<{
+    data?: {
+      shipping_address?: ShiprocketPickupAddress[];
+    };
+  }>("/settings/company/pickup");
+}
+
+export async function getShiprocketWalletBalance() {
+  const response = await shiprocketRequest<{
+    data?: {
+      balance_amount?: number | string;
+    };
+  }>("/account/details/wallet-balance");
+  const balance = Number(response.data?.balance_amount ?? 0);
+  return Number.isFinite(balance) ? balance : 0;
 }
 
 export async function getShiprocketServiceability(input: {
@@ -334,7 +382,7 @@ export function toShiprocketOrderPayload(input: {
       hsn: "",
     })),
     payment_method: String(order.payment_method ?? "").toLowerCase().includes("cod") ? "COD" : "Prepaid",
-    shipping_charges: Number(order.shipping ?? 0),
+    shipping_charges: Number(order.shipping_charge_estimate ?? 0),
     giftwrap_charges: 0,
     transaction_charges: 0,
     total_discount: 0,

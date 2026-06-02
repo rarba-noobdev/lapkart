@@ -35,6 +35,18 @@ type Props = {
   addressLabel?: string;
 };
 
+type OlaMap = {
+  remove?: () => void;
+  setStyle?: (style: unknown) => void;
+  hasImage?: (id: string) => boolean;
+  addImage?: (id: string, image: { width: number; height: number; data: Uint8Array }) => void;
+  loaded?: () => boolean;
+  addControl?: (control: unknown, position: string) => void;
+  easeTo?: (options: { center: [number, number]; zoom: number }) => void;
+  getCenter?: () => { lat: number; lng: number };
+  on?: <T>(event: string, handler: (event: T) => void) => void;
+};
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? "";
 const olaMapsStyleUrl = import.meta.env.VITE_OLA_MAPS_STYLE_URL ?? "";
@@ -59,7 +71,7 @@ function roundCoordinate(value: number) {
 
 export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressLabel }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<OlaMap | null>(null);
   const suppressNextSearchRef = useRef(false);
   const [loading, setLoading] = useState(Boolean(olaMapsKey));
   const [mapError, setMapError] = useState<string | null>(null);
@@ -93,10 +105,10 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
           map = await olaMaps.init({
             ...options,
             style: olaMapsStyleUrl || defaultOlaMapsStyleUrl,
-          });
+          }) as OlaMap;
         } catch {
           fallbackActive = true;
-          map = await olaMaps.init({ ...options, style: fallbackRasterStyle });
+          map = await olaMaps.init({ ...options, style: fallbackRasterStyle }) as OlaMap;
         }
 
         if (!active) {
@@ -104,7 +116,7 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
           return;
         }
 
-        const useFallbackStyle = () => {
+        const activateFallbackStyle = () => {
           if (fallbackActive) return;
           fallbackActive = true;
           map.setStyle?.(fallbackRasterStyle);
@@ -113,7 +125,7 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
         };
         mapRef.current = map;
         map.on?.("styleimagemissing", (event: { id?: string }) => {
-          if (!event.id || map.hasImage?.(event.id)) return;
+          if (typeof event.id !== "string" || map.hasImage?.(event.id)) return;
           map.addImage?.(event.id, {
             width: 1,
             height: 1,
@@ -126,10 +138,10 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
           setMapError(null);
         });
         map.on?.("error", () => {
-          if (!map.loaded?.()) useFallbackStyle();
+          if (!map.loaded?.()) activateFallbackStyle();
         });
         loadTimer = window.setTimeout(() => {
-          if (!map.loaded?.()) useFallbackStyle();
+          if (!map.loaded?.()) activateFallbackStyle();
         }, 7000);
         map.addControl?.(olaMaps.addNavigationControls({ showCompass: false }), "top-right");
         map.on?.("moveend", () => {
