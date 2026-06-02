@@ -8,20 +8,19 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function Guard() {
-  const { user, loading } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
-  const demoRoutes = ["/admin", "/checkout"];
 
   useEffect(() => {
-    if (!loading && !user && !demoRoutes.includes(loc.pathname)) {
+    if (!loading && !user) {
       navigate({ to: "/login", search: { redirect: loc.pathname } });
+      return;
     }
-  }, [user, loading, navigate, loc.pathname]);
-
-  if (demoRoutes.includes(loc.pathname)) {
-    return <Outlet />;
-  }
+    if (!loading && user && loc.pathname.startsWith("/admin") && role !== "admin") {
+      navigate({ to: "/dashboard" });
+    }
+  }, [user, role, loading, navigate, loc.pathname]);
 
   if (loading || !user) {
     return (

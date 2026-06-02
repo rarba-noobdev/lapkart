@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { toast } from "sonner";
 import { Loader2, Mail, Lock, ArrowRight, Flame, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -26,8 +25,9 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const redirectPath = redirect?.startsWith("/") ? redirect : "/";
 
-  if (user) navigate({ to: redirect || "/" });
+  if (user) navigate({ to: redirectPath });
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back");
-        navigate({ to: redirect || "/" });
+        navigate({ to: redirectPath });
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -61,10 +61,13 @@ function LoginPage() {
   const google = async () => {
     setBusy(true);
     try {
-      const r = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin + (redirect || "/"),
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${redirectPath}`,
+        },
       });
-      if (r.error) throw r.error;
+      if (error) throw error;
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Google sign-in failed");
       setBusy(false);

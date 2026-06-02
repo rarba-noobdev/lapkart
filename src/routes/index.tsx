@@ -515,8 +515,8 @@ function SpecBanner() {
               <span className="text-gradient-heat">We'll find the part.</span>
             </h3>
             <p className="mt-5 max-w-md text-body-large text-white/65">
-              Our AI assistant matches your model number to compatible RAM, SSDs, batteries,
-              and displays — instantly.
+              Use catalog filters and compatibility notes to match your model number with RAM, SSDs, batteries,
+              and displays.
             </p>
 
             <div className="mt-7 flex flex-wrap gap-3">
@@ -525,7 +525,7 @@ function SpecBanner() {
                 className="button button-primary inline-flex items-center gap-2 rounded-md px-6 h-12 text-label-medium text-white"
               >
                 <Sparkles className="size-4" />
-                Try the parts assistant
+                Find compatible parts
               </Link>
               <Link
                 to="/products"

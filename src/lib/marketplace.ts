@@ -1,17 +1,12 @@
 import {
-  BadgeCheck,
   BarChart3,
-  Bot,
   Boxes,
-  Camera,
   CreditCard,
-  Headphones,
-  MapPinned,
   PackageCheck,
+  Settings,
   ShieldAlert,
-  Truck,
+  ShoppingBag,
   Users,
-  Wrench,
 } from "lucide-react";
 
 export const kpis = [
@@ -23,34 +18,34 @@ export const kpis = [
 
 export const commerceModules = [
   {
-    title: "AI product recognition",
-    body: "Image recognition, OCR, brand detection, compatibility checks, similar product search, and structured confidence output.",
-    icon: Camera,
+    title: "Product catalog",
+    body: "Create, edit, price, stock, and publish laptop parts across RAM, SSDs, batteries, displays, chargers, and accessories.",
+    icon: ShoppingBag,
   },
   {
     title: "Razorpay checkout",
-    body: "UPI, GPay, PhonePe, Paytm, cards, EMI, net banking, signature verification, invoices, refunds, and order webhooks.",
+    body: "UPI, GPay, PhonePe, Paytm, cards, EMI, net banking, signature verification, refunds, and order webhooks.",
     icon: CreditCard,
   },
   {
-    title: "Delivery command center",
-    body: "Partner assignment, route optimization hooks, live status events, proof-of-delivery uploads, ETA, and earnings.",
-    icon: Truck,
+    title: "Order operations",
+    body: "Track order states, payment status, Shiprocket shipping details, delivery estimates, returns, refunds, and customer support follow-up.",
+    icon: PackageCheck,
   },
   {
-    title: "Repair services",
-    body: "Laptop and issue image upload, AI damage triage, estimated cost, technician assignment, and repair lifecycle tracking.",
-    icon: Wrench,
-  },
-  {
-    title: "Vendor ecosystem",
-    body: "Vendor onboarding, KYC documents, product approvals, stock controls, sales forecasting, and demand insights.",
+    title: "Inventory controls",
+    body: "Monitor stock health, low inventory, pricing, product availability, and category coverage from one admin workspace.",
     icon: Boxes,
   },
   {
-    title: "AI support chatbot",
-    body: "Product discovery, order tracking, refund support, repair advice, fraud escalation, and admin handoff.",
-    icon: Bot,
+    title: "Customer accounts",
+    body: "Review user profiles, addresses, order history, payment status, and account support requests.",
+    icon: Users,
+  },
+  {
+    title: "Role policy",
+    body: "Accounts have exactly one role: user or admin. New signups default to user; admin promotion is a direct database update.",
+    icon: Settings,
   },
 ];
 
@@ -63,28 +58,6 @@ export const orderStatuses = [
   "Delivered",
 ];
 
-export const deliveryEvents = [
-  { label: "Order picked", location: "Vendor dock, Nehru Place", time: "09:10" },
-  { label: "Reached hub", location: "Delhi NCR sort center", time: "11:35" },
-  { label: "Out for delivery", location: "Route BLR-44", time: "15:20" },
-  { label: "Delivered", location: "Customer proof pending", time: "ETA 18:40" },
-];
-
-export const aiPrediction = {
-  product: "Samsung DDR4 RAM",
-  category: "RAM",
-  confidence: "98%",
-  brand: "Samsung",
-  compatibleWith: ["Dell Latitude 5420", "HP ProBook 440", "Lenovo ThinkPad E14"],
-};
-
-export const repairPrediction = {
-  issue: "Screen damage",
-  severity: "Medium",
-  estimatedCost: "Rs. 3,500",
-  turnaround: "2-3 days",
-};
-
 export const analyticsSeries = [
   { month: "Jan", revenue: 18, orders: 580 },
   { month: "Feb", revenue: 24, orders: 760 },
@@ -95,27 +68,15 @@ export const analyticsSeries = [
 
 export const rolePanels = [
   {
-    role: "Customer",
-    title: "Orders, wishlist, profile, repairs, AI recommendations",
-    icon: Headphones,
-    metrics: ["3 active orders", "12 wishlist items", "2 repair tickets"],
-  },
-  {
-    role: "Vendor",
-    title: "Products, stock, sales analytics, AI pricing insights",
-    icon: BadgeCheck,
-    metrics: ["248 SKUs", "94% fill rate", "Rs. 8.7L revenue"],
-  },
-  {
-    role: "Delivery partner",
-    title: "Assigned orders, optimized routes, earnings, proof uploads",
-    icon: MapPinned,
-    metrics: ["18 assigned", "96% on-time", "Rs. 2,840 today"],
+    role: "User",
+    title: "Shop products, manage cart, checkout, orders, addresses, payments, and profile",
+    icon: Users,
+    metrics: ["default signup role", "self-service account", "no admin access"],
   },
   {
     role: "Admin",
-    title: "Users, vendors, products, refunds, reports, AI insights",
+    title: "Manage products, orders, users, payments, refunds, and reports",
     icon: ShieldAlert,
-    metrics: ["32 approvals", "7 disputes", "4 fraud alerts"],
+    metrics: ["manual database role", "restricted dashboard", "catalog control"],
   },
 ];

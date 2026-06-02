@@ -4,190 +4,30 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import multer from "multer";
 import { z } from "zod";
-import { detectComponentFromImage, detectProductFromImage, generateProductCopy, scoreFraud } from "./ai.js";
 import { config } from "./config.js";
+import { autocompleteOlaPlaces, getOlaDeliveryRoute, reverseGeocodeOlaPlace } from "./ola-maps.js";
 import { createRazorpayOrder, verifyRazorpaySignature } from "./payments.js";
+import { scoreFraud } from "./risk.js";
+import {
+  assignShiprocketAwb,
+  createShiprocketOrder,
+  generateShiprocketLabels,
+  getShiprocketDeliveryQuotes,
+  getShiprocketToken,
+  toShiprocketOrderPayload,
+} from "./shiprocket.js";
 import { supabaseAdmin } from "./supabase.js";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 app.use(helmet());
-app.use(cors({ origin: config.webOrigin, credentials: true }));
+app.use(cors({ origin: config.webOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "lapkart-ai-api" });
-});
-
-app.post("/ai/detect-product", upload.single("image"), async (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "image is required" });
-    const prediction = await detectProductFromImage(req.file);
-    if (!supabaseAdmin) return res.json({ prediction, record: null });
-    const { data, error } = await supabaseAdmin.from("ai_predictions").insert({
-      prediction_type: "product_image",
-      input_url: null,
-      output: prediction,
-      confidence: Number.parseFloat(prediction.confidence),
-    }).select().single();
-    if (error) throw error;
-    res.json({ prediction, record: data });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/components/detect", upload.single("image"), async (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "image is required" });
-    if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-
-    const folder = z.enum(["uploads/products", "uploads/components", "uploads/vendors"])
-      .default("uploads/components")
-      .parse(req.body.folder || "uploads/components");
-    const userId = z.string().uuid().optional().safeParse(req.body.user_id).success ? req.body.user_id : null;
-    const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${folder}/${Date.now()}-${safeName}`;
-
-    const uploadResult = await supabaseAdmin.storage.from("product-images").upload(path, req.file.buffer, {
-      contentType: req.file.mimetype,
-      upsert: false,
-    });
-    if (uploadResult.error) throw uploadResult.error;
-
-    const { data: publicUrl } = supabaseAdmin.storage.from("product-images").getPublicUrl(path);
-    const detection = await detectComponentFromImage(req.file);
-    const insertResult = await supabaseAdmin
-      .from("component_detections")
-      .insert({
-        user_id: userId,
-        image_url: publicUrl.publicUrl,
-        component_name: detection.component_name,
-        category: detection.category,
-        brand: detection.brand,
-        model_number: detection.model_number,
-        specifications: detection.specifications,
-        condition: detection.condition,
-        confidence_score: detection.confidence_score,
-        ocr_text: detection.ocr_text,
-        tags: detection.tags,
-        keywords: detection.keywords,
-        compatible_models: detection.compatible_models,
-        similar_products: detection.similar_products,
-        product_title: detection.product_title,
-        product_description: detection.product_description,
-        seo_tags: detection.seo_tags,
-        status: "draft",
-      })
-      .select()
-      .single();
-    if (insertResult.error) throw insertResult.error;
-
-    res.json({ detection: insertResult.data });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.patch("/components/detections/:id", async (req, res, next) => {
-  try {
-    if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-    const id = z.string().uuid().parse(req.params.id);
-    const body = z.object({
-      component_name: z.string().optional(),
-      category: z.string().optional(),
-      brand: z.string().optional(),
-      model_number: z.string().optional(),
-      specifications: z.record(z.string()).optional(),
-      condition: z.string().optional(),
-      confidence_score: z.number().optional(),
-      ocr_text: z.string().optional(),
-      tags: z.array(z.string()).optional(),
-      keywords: z.array(z.string()).optional(),
-      product_title: z.string().optional(),
-      product_description: z.string().optional(),
-      seo_tags: z.array(z.string()).optional(),
-      status: z.string().optional(),
-    }).parse(req.body);
-    const { data, error } = await supabaseAdmin
-      .from("component_detections")
-      .update({ ...body, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select()
-      .single();
-    if (error) throw error;
-    res.json({ detection: data });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/components/detections/:id/create-product", async (req, res, next) => {
-  try {
-    if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-    const id = z.string().uuid().parse(req.params.id);
-    const { data: detection, error } = await supabaseAdmin.from("component_detections").select("*").eq("id", id).single();
-    if (error) throw error;
-
-    const price = Number(req.body.price ?? 999);
-    const mrp = Number(req.body.mrp ?? Math.round(price * 1.25));
-    const { data: product, error: productError } = await supabaseAdmin
-      .from("products")
-      .insert({
-        title: detection.product_title ?? detection.component_name,
-        brand: detection.brand ?? "LAPKART",
-        category: String(detection.category ?? "components").toLowerCase().replace(/\s+/g, "_"),
-        image: detection.image_url,
-        images: [detection.image_url],
-        description: detection.product_description,
-        price,
-        mrp,
-        stock: Number(req.body.stock ?? 1),
-        compatibility: Array.isArray(detection.compatible_models) ? detection.compatible_models.join(", ") : "",
-        warranty: "AI verified listing - warranty assigned after approval",
-        highlights: Array.isArray(detection.tags) ? detection.tags.slice(0, 5) : [],
-        ai_tags: detection.seo_tags ?? detection.tags ?? [],
-        search_keywords: detection.keywords ?? detection.tags ?? [],
-        status: "pending_approval",
-      })
-      .select()
-      .single();
-    if (productError) throw productError;
-    await supabaseAdmin
-      .from("component_detections")
-      .update({
-        status: "product_created",
-        product_id: product.id,
-        approved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-    res.json({ product });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get("/components/detections", async (_req, res, next) => {
-  try {
-    if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-    const { data, error } = await supabaseAdmin
-      .from("component_detections")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    res.json({ detections: data });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/ai/product-copy", async (req, res) => {
-  const input = z.object({ name: z.string(), brand: z.string().optional(), category: z.string().optional() }).parse(req.body);
-  res.json(generateProductCopy(input));
+  res.json({ ok: true, service: "lapkart-api" });
 });
 
 app.post("/fraud/score", async (req, res) => {
@@ -217,11 +57,104 @@ const verifyPaymentBodySchema = z.object({
   orderRecordId: z.string().uuid().optional(),
 });
 
+const createShiprocketShipmentSchema = z.object({
+  orderId: z.string().uuid(),
+  pickupLocation: z.string().trim().min(1).optional(),
+  package: z
+    .object({
+      weightKg: z.number().positive().optional(),
+      lengthCm: z.number().positive().optional(),
+      breadthCm: z.number().positive().optional(),
+      heightCm: z.number().positive().optional(),
+    })
+    .optional(),
+});
+
+const assignAwbSchema = z.object({
+  shipmentId: z.string().uuid(),
+  courierId: z.number().int().positive().optional(),
+});
+
+const labelsSchema = z.object({
+  shipmentIds: z.array(z.string().uuid()).min(1).max(50),
+});
+
+const latitudeSchema = z.coerce.number().min(-90).max(90);
+const longitudeSchema = z.coerce.number().min(-180).max(180);
+const autocompleteQuerySchema = z.object({
+  input: z.string().trim().min(3).max(500).transform((value) => value.slice(0, 160)),
+  latitude: latitudeSchema.optional(),
+  longitude: longitudeSchema.optional(),
+});
+const reverseGeocodeQuerySchema = z.object({
+  latitude: latitudeSchema,
+  longitude: longitudeSchema,
+});
+const deliveryEstimateQuerySchema = reverseGeocodeQuerySchema.extend({
+  pincode: z.string().trim().regex(/^[0-9]{6}$/),
+  weightKg: z.coerce.number().positive().max(100).optional(),
+  declaredValue: z.coerce.number().nonnegative().max(10_000_000).optional(),
+});
+
 function isRazorpayAuthError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const statusCode = "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : undefined;
   const httpStatusCode = "httpStatusCode" in error ? Number((error as { httpStatusCode?: unknown }).httpStatusCode) : undefined;
   return statusCode === 401 || httpStatusCode === 401;
+}
+
+function normalizeShipmentStatus(status: string) {
+  const value = status.toLowerCase();
+  if (value.includes("delivered") && value.includes("rto")) return "rto_delivered";
+  if (value.includes("rto")) return "rto_initiated";
+  if (value.includes("out") && value.includes("delivery")) return "out_for_delivery";
+  if (value.includes("delivered")) return "delivered";
+  if (value.includes("cancel")) return "cancelled";
+  if (value.includes("return")) return "returned";
+  if (value.includes("lost")) return "lost";
+  if (value.includes("damage")) return "damaged";
+  if (value.includes("pickup")) return "pickup_scheduled";
+  if (value.includes("shipped")) return "shipped";
+  if (value.includes("transit") || value.includes("manifest") || value.includes("assigned")) return "in_transit";
+  return "in_transit";
+}
+
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    if (!supabaseAdmin) {
+      res.status(503).json({ error: "Supabase service credentials are not configured" });
+      return;
+    }
+
+    const authHeader = req.header("authorization") ?? "";
+    const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1];
+    if (!token) {
+      res.status(401).json({ error: "Authorization bearer token is required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data.user) {
+      res.status(401).json({ error: "Invalid authorization token" });
+      return;
+    }
+
+    const { data: roleRow, error: roleError } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+
+    if (roleError) throw roleError;
+    if (roleRow?.role !== "admin") {
+      res.status(403).json({ error: "Admin role is required" });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 app.post("/api/create-order", async (req, res) => {
@@ -350,11 +283,307 @@ app.post("/payments/razorpay/verify", async (req, res) => {
   }
 });
 
+app.get("/maps/autocomplete", async (req, res, next) => {
+  try {
+    const input = autocompleteQuerySchema.parse(req.query);
+    const suggestions = await autocompleteOlaPlaces(
+      input.input,
+      input.latitude !== undefined && input.longitude !== undefined
+        ? { latitude: input.latitude, longitude: input.longitude }
+        : undefined,
+    );
+    res.json({ suggestions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/maps/reverse-geocode", async (req, res, next) => {
+  try {
+    const input = reverseGeocodeQuerySchema.parse(req.query);
+    res.json(await reverseGeocodeOlaPlace(input.latitude, input.longitude));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/maps/delivery-estimate", async (req, res, next) => {
+  try {
+    const input = deliveryEstimateQuerySchema.parse(req.query);
+    const [route, couriers] = await Promise.all([
+      getOlaDeliveryRoute(input),
+      getShiprocketDeliveryQuotes({
+        deliveryPincode: input.pincode,
+        deliveryLatitude: input.latitude,
+        deliveryLongitude: input.longitude,
+        weightKg: input.weightKg,
+        declaredValue: input.declaredValue,
+      }),
+    ]);
+    res.json({
+      dispatch: {
+        pickupLocation: config.shiprocketPickupLocation,
+        pincode: config.lapkartDispatchPincode,
+      },
+      route,
+      couriers,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/shiprocket/status", requireAdmin, async (req, res, next) => {
+  try {
+    const verify = req.query.verify === "1" || req.query.verify === "true";
+    if (!verify) {
+      res.json({
+        configured: Boolean(config.shiprocketEmail && config.shiprocketPassword && config.shiprocketPickupLocation),
+        pickupLocationConfigured: Boolean(config.shiprocketPickupLocation),
+      });
+      return;
+    }
+
+    await getShiprocketToken({ forceRefresh: true });
+    res.json({ configured: true, authenticated: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) => {
+  try {
+    if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    const input = createShiprocketShipmentSchema.parse(req.body);
+
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from("orders")
+      .select("*")
+      .eq("id", input.orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    const { data: items, error: itemsError } = await supabaseAdmin
+      .from("order_items")
+      .select("*, products(sku)")
+      .eq("order_id", input.orderId);
+    if (itemsError) throw itemsError;
+    if (!items?.length) {
+      res.status(400).json({ error: "Order has no items" });
+      return;
+    }
+
+    const { data: existingShipment, error: existingShipmentError } = await supabaseAdmin
+      .from("shipments")
+      .select("*")
+      .eq("order_id", input.orderId)
+      .eq("provider", "shiprocket")
+      .maybeSingle();
+    if (existingShipmentError) throw existingShipmentError;
+    if (existingShipment) {
+      res.status(409).json({ error: "Shiprocket shipment already exists for this order", shipment: existingShipment });
+      return;
+    }
+
+    const payload = toShiprocketOrderPayload({
+      order,
+      items: items.map((item) => ({
+        ...item,
+        sku: Array.isArray(item.products) ? item.products[0]?.sku : item.products?.sku,
+      })),
+      package: input.package,
+      pickupLocation: input.pickupLocation,
+    });
+
+    const response = await createShiprocketOrder(payload);
+    const shiprocketOrderId = Number(response.order_id ?? response.orderId);
+    const shiprocketShipmentId = Number(response.shipment_id ?? response.shipmentId);
+
+    const { data: shipment, error: shipmentError } = await supabaseAdmin
+      .from("shipments")
+      .insert({
+        order_id: input.orderId,
+        provider: "shiprocket",
+        shipping_service_type: order.shipping_service_type ?? "standard",
+        status: shiprocketShipmentId ? "created" : "pending",
+        shiprocket_order_id: Number.isFinite(shiprocketOrderId) ? shiprocketOrderId : null,
+        shiprocket_shipment_id: Number.isFinite(shiprocketShipmentId) ? shiprocketShipmentId : null,
+        shiprocket_channel_order_id: String(order.id),
+        request_payload: payload,
+        raw_create_response: response,
+        raw_payload: response,
+      })
+      .select("*")
+      .single();
+    if (shipmentError) throw shipmentError;
+
+    await supabaseAdmin.from("shipment_packages").insert({
+      shipment_id: shipment.id,
+      package_number: 1,
+      weight_kg: payload.weight,
+      length_cm: payload.length,
+      breadth_cm: payload.breadth,
+      height_cm: payload.height,
+      declared_value: payload.sub_total,
+      item_count: payload.order_items.reduce((sum, item) => sum + item.units, 0),
+      sku_summary: payload.order_items.map((item) => item.sku).join(", ").slice(0, 500),
+      order_item_ids: items.map((item) => item.id),
+      raw_payload: payload,
+    });
+
+    res.json({ shipment, shiprocket: response });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/shipments/shiprocket/assign-awb", requireAdmin, async (req, res, next) => {
+  try {
+    if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    const input = assignAwbSchema.parse(req.body);
+
+    const { data: shipment, error: shipmentError } = await supabaseAdmin
+      .from("shipments")
+      .select("*")
+      .eq("id", input.shipmentId)
+      .maybeSingle();
+    if (shipmentError) throw shipmentError;
+    if (!shipment?.shiprocket_shipment_id) {
+      res.status(400).json({ error: "Shipment does not have a Shiprocket shipment id" });
+      return;
+    }
+
+    const response = await assignShiprocketAwb({
+      shipment_id: shipment.shiprocket_shipment_id,
+      courier_id: input.courierId,
+    });
+
+    await supabaseAdmin
+      .from("shipments")
+      .update({
+        status: "awb_assigned",
+        awb_code: response.awb_code ? String(response.awb_code) : shipment.awb_code,
+        courier_company_id: input.courierId ?? shipment.courier_company_id,
+        raw_awb_response: response,
+        raw_payload: response,
+        last_status_at: new Date().toISOString(),
+      })
+      .eq("id", input.shipmentId);
+
+    res.json({ shiprocket: response });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/shipments/shiprocket/labels", requireAdmin, async (req, res, next) => {
+  try {
+    if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    const input = labelsSchema.parse(req.body);
+    const { data: shipments, error } = await supabaseAdmin
+      .from("shipments")
+      .select("id,shiprocket_shipment_id")
+      .in("id", input.shipmentIds);
+    if (error) throw error;
+
+    const shiprocketShipmentIds = (shipments ?? [])
+      .map((shipment) => shipment.shiprocket_shipment_id)
+      .filter((id): id is number => typeof id === "number");
+
+    if (!shiprocketShipmentIds.length) {
+      res.status(400).json({ error: "No Shiprocket shipment ids found" });
+      return;
+    }
+
+    const response = await generateShiprocketLabels(shiprocketShipmentIds);
+    const labelUrl = typeof response.label_url === "string" ? response.label_url : undefined;
+
+    if (labelUrl) {
+      await supabaseAdmin
+        .from("shipments")
+        .update({
+          status: "label_generated",
+          label_url: labelUrl,
+          raw_payload: response,
+          last_status_at: new Date().toISOString(),
+        })
+        .in("id", input.shipmentIds);
+    }
+
+    res.json({ shiprocket: response });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/logistics/events", async (req, res, next) => {
+  try {
+    if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    if (config.shiprocketWebhookToken) {
+      const token = req.header("x-lapkart-logistics-token") ?? req.query.token;
+      if (token !== config.shiprocketWebhookToken) {
+        res.status(401).json({ error: "Invalid webhook token" });
+        return;
+      }
+    }
+
+    const body = req.body as Record<string, unknown>;
+    const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? "").trim() || null;
+    const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
+
+    let shipmentId: string | null = null;
+    if (awb || Number.isFinite(shiprocketShipmentId)) {
+      let query = supabaseAdmin.from("shipments").select("id").limit(1);
+      if (awb) query = query.eq("awb_code", awb);
+      else query = query.eq("shiprocket_shipment_id", shiprocketShipmentId);
+      const { data } = await query.maybeSingle();
+      shipmentId = data?.id ?? null;
+    }
+
+    const status = String(body.current_status ?? body.status ?? body.shipment_status ?? "updated");
+    const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? "");
+
+    await supabaseAdmin.from("shipment_events").insert({
+      shipment_id: shipmentId,
+      provider: "shiprocket",
+      awb_code: awb,
+      status,
+      status_code: Number.isFinite(Number(body.current_status_id ?? body.status_code))
+        ? Number(body.current_status_id ?? body.status_code)
+        : null,
+      status_time: statusTime ? new Date(statusTime).toISOString() : null,
+      location: body.location ? String(body.location) : null,
+      message: body.message ? String(body.message) : null,
+      raw_payload: body,
+    });
+
+    if (shipmentId) {
+      await supabaseAdmin
+        .from("shipments")
+        .update({
+          status: normalizeShipmentStatus(status),
+          last_status_at: new Date().toISOString(),
+          raw_payload: body,
+        })
+        .eq("id", shipmentId);
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/storage/upload/:bucket", upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "file is required" });
     if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-    const bucket = z.enum(["products", "users", "vendors", "invoices", "reviews", "repair_requests"]).parse(req.params.bucket);
+    const bucket = z.enum(["products", "users"]).parse(req.params.bucket);
     const path = `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const { error } = await supabaseAdmin.storage.from(bucket).upload(path, req.file.buffer, {
       contentType: req.file.mimetype,
@@ -371,16 +600,16 @@ app.post("/storage/upload/:bucket", upload.single("file"), async (req, res, next
 app.get("/admin/analytics", async (_req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
-    const [orders, products, vendors] = await Promise.all([
-      supabaseAdmin.from("orders").select("id,total_amount,status", { count: "exact", head: false }).limit(100),
+    const [orders, products, users] = await Promise.all([
+      supabaseAdmin.from("orders").select("id,total,status", { count: "exact", head: false }).limit(100),
       supabaseAdmin.from("products").select("id,stock", { count: "exact", head: false }).limit(100),
-      supabaseAdmin.from("vendors").select("id,status", { count: "exact", head: false }).limit(100),
+      supabaseAdmin.from("profiles").select("id", { count: "exact", head: false }).limit(100),
     ]);
     res.json({
       orders: orders.count ?? 0,
       products: products.count ?? 0,
-      vendors: vendors.count ?? 0,
-      revenue: orders.data?.reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0) ?? 0,
+      users: users.count ?? 0,
+      revenue: orders.data?.reduce((sum, order) => sum + Number(order.total ?? 0), 0) ?? 0,
     });
   } catch (error) {
     next(error);
@@ -388,10 +617,14 @@ app.get("/admin/analytics", async (_req, res, next) => {
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (error instanceof z.ZodError) {
+    res.status(400).json({ error: "Invalid request", issues: error.issues });
+    return;
+  }
   const message = error instanceof Error ? error.message : "Unknown server error";
   res.status(500).json({ error: message });
 });
 
 app.listen(config.port, () => {
-  console.log(`LAPKART AI API listening on ${config.port}`);
+  console.log(`LapKart API listening on ${config.port}`);
 });

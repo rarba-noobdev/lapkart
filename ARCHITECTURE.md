@@ -1,32 +1,41 @@
-# LAPKART AI Architecture
+# LapKart Architecture
 
-LAPKART AI is structured as a Vite React marketplace frontend plus a Node/Express API and Supabase backend.
+LapKart is a Vite React e-commerce frontend with a Node/Express API and Supabase backend.
 
 ## Frontend
 
-- React, TypeScript, TailwindCSS, Framer Motion, ShadCN UI primitives.
-- Public catalog, product pages, cart, checkout, customer dashboard, vendor dashboard, delivery partner panel, repair service, and admin command center.
-- Supabase Auth supports Google, GitHub, email OTP, and phone OTP when enabled in the Supabase project.
+- React, TypeScript, TailwindCSS, Framer Motion, and ShadCN UI primitives.
+- Public catalog, product pages, cart, checkout, customer dashboard, order views, and admin command center.
+- Supabase Auth supports normal customer accounts. New accounts receive the `user` role automatically.
 
 ## Backend
 
-- `api/src/server.ts` exposes production API contracts for AI product detection, product copy generation, fraud scoring, Razorpay orders, Razorpay signature verification, Supabase Storage uploads, and admin analytics.
-- `api/src/ai.ts` centralizes OpenAI, Gemini, and HuggingFace integration points.
+- `api/src/server.ts` exposes commerce API contracts for Razorpay orders, Razorpay signature verification, Ola Maps address lookup and routes, Shiprocket standard and Quick quotes, Shiprocket shipment administration, storage uploads, fraud-risk scoring, and admin analytics.
 - `api/src/payments.ts` centralizes Razorpay order creation and verification.
+- `api/src/ola-maps.ts` centralizes Ola Maps OAuth, autocomplete, reverse geocoding, and route estimates.
+- `api/src/shiprocket.ts` centralizes Shiprocket authentication, standard courier quotes, Quick hyperlocal quotes, and shipment payloads.
+- `api/src/risk.ts` contains deterministic payment risk scoring.
 
 ## Supabase
 
-- Migrations create users, products, categories, orders, payments, vendors, delivery partners, reviews, repair requests, wishlists, carts, notifications, AI predictions, invoices, and storage buckets.
-- `component_detections` stores AI Vision/OCR outputs, editable marketplace metadata, compatibility hints, similar product matches, and product creation status.
-- Storage buckets: `products`, `users`, `vendors`, `invoices`, `reviews`, `repair_requests`.
-- Component images use `product-images/uploads/products`, `product-images/uploads/components`, and `product-images/uploads/vendors`.
-- RLS policies restrict customer data to owners, allow public active product/category reads, and allow admin/super admin operational access.
+- Core tables include profiles, user roles, products, addresses, orders, order items, payments, shipments, shipment packages, shipment events, pickup locations, shipping batches, and shipping batch items.
+- Roles are limited to `admin` and `user` through `public.app_role`.
+- New auth users are inserted into `public.user_roles` as `user`.
+- Client-side role writes are blocked by RLS. Admin promotion is a manual database update.
+- Active storage buckets: `products` and `users`. Historical empty buckets should be removed through the Storage UI or Storage API.
+
+## Delivery
+
+- Ola Maps resolves the checkout address and estimates driving distance and time.
+- Shiprocket standard courier estimates and Shiprocket Quick hyperlocal estimates are requested before payment.
+- Quick estimates use Shiprocket's documented hyperlocal serviceability parameters, including pickup and drop coordinates.
+- The selected delivery type is persisted as `standard` or `quick` on the order and shipment.
 
 ## Deployment
 
 - Frontend: Vercel using `vercel.json`.
 - API: Render using `render.yaml`.
-- Container: `Dockerfile` builds the API runtime and can be extended for a reverse proxy if both services need one image.
+- Container: `Dockerfile` builds the API runtime.
 
 ## Required Secrets
 
@@ -35,6 +44,8 @@ Frontend:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_API_BASE_URL`
+- `VITE_RAZORPAY_KEY_ID`
+- `VITE_OLA_MAPS_API_KEY`
 
 API:
 
@@ -42,6 +53,11 @@ API:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
-- `OPENAI_API_KEY`
-- `GEMINI_API_KEY`
-- `HUGGINGFACE_API_KEY`
+- `SHIPROCKET_EMAIL`
+- `SHIPROCKET_PASSWORD`
+- `SHIPROCKET_PICKUP_LOCATION`
+- `LAPKART_DISPATCH_PINCODE`
+- `LAPKART_DISPATCH_LATITUDE`
+- `LAPKART_DISPATCH_LONGITUDE`
+- `OLA_MAPS_CLIENT_ID`
+- `OLA_MAPS_CLIENT_SECRET`

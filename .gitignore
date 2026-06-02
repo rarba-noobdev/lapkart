@@ -33,6 +33,8 @@ dist-ssr
 
 # MCP (contains API keys)
 .mcp.json
+.codex/
+supabase/.temp/
 
 # Local secrets and generated runtime artifacts
 .env

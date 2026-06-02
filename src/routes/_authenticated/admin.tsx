@@ -1,35 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
-import { detectionApiBase, type ComponentDetection } from "@/lib/component-detection";
 import { analyticsSeries, commerceModules, rolePanels } from "@/lib/marketplace";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
-      { title: "Admin dashboard - LAPKART AI" },
-      { name: "description", content: "Manage users, vendors, products, orders, delivery, refunds, analytics, and AI insights." },
+      { title: "Admin dashboard - LapKart" },
+      { name: "description", content: "Manage users, products, orders, payments, refunds, analytics, and reports." },
     ],
   }),
   component: AdminPage,
 });
 
 function AdminPage() {
-  const [detections, setDetections] = useState<ComponentDetection[]>([]);
-
-  useEffect(() => {
-    fetch(`${detectionApiBase}/components/detections`)
-      .then((response) => response.ok ? response.json() : Promise.reject(response))
-      .then((payload: { detections: ComponentDetection[] }) => setDetections(payload.detections ?? []))
-      .catch(() => setDetections([]));
-  }, []);
-
   return (
     <DashboardShell
       eyebrow="admin command center"
-      title="LAPKART AI operations cockpit"
-      description="Marketplace controls for revenue, orders, users, vendors, delivery partners, refunds, fraud alerts, and AI automation."
+      title="LapKart operations cockpit"
+      description="Marketplace controls for revenue, orders, users, products, payments, refunds, stock, and reports."
     >
       <KpiGrid />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
@@ -54,7 +43,7 @@ function AdminPage() {
         </Panel>
         <Panel title="Admin queues">
           <div className="space-y-3">
-            {["Approve 18 vendors", "Assign 42 deliveries", "Review 7 refunds", "Resolve 4 fraud alerts"].map((item) => (
+            {["Review 18 product updates", "Check 42 open orders", "Review 7 refunds", "Resolve 4 payment alerts"].map((item) => (
               <div key={item} className="flex items-center justify-between rounded-md border border-[var(--border-faint)] p-3">
                 <span className="text-label-small">{item}</span>
                 <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">live</span>
@@ -76,7 +65,7 @@ function AdminPage() {
             ))}
           </div>
         </Panel>
-        <Panel title="AI automation map">
+        <Panel title="Operations map">
           <div className="space-y-3">
             {commerceModules.map(({ title, body, icon: Icon }) => (
               <div key={title} className="flex gap-3 rounded-md border border-[var(--border-faint)] p-3">
@@ -91,35 +80,23 @@ function AdminPage() {
         </Panel>
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <Panel title="Component detection approvals">
+        <Panel title="Catalog controls">
           <div className="space-y-3">
-            {detections.length === 0 ? (
-              <p className="rounded-md border border-dashed border-[var(--border-muted)] p-6 text-center text-body-small text-[var(--black-alpha-56)]">
-                No component detections loaded yet. Run AI Detect after applying the Supabase migration and API service role key.
-              </p>
-            ) : (
-              detections.slice(0, 6).map((item) => (
-                <div key={item.id} className="flex gap-3 rounded-md border border-[var(--border-faint)] p-3">
-                  <img src={item.image_url} alt={item.component_name} className="size-16 rounded-md border border-[var(--border-faint)] object-contain" />
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-1 text-label-small">{item.component_name}</p>
-                    <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
-                      {item.brand} / {item.category} / {item.confidence_score}% confidence
-                    </p>
-                    <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">{item.status}</p>
-                  </div>
-                </div>
-              ))
-            )}
+            {["Publish approved SKUs", "Update stock counts", "Review price changes", "Audit low-stock categories"].map((item) => (
+              <div key={item} className="flex items-center justify-between rounded-md border border-[var(--border-faint)] p-3">
+                <span className="text-label-small">{item}</span>
+                <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">admin</span>
+              </div>
+            ))}
           </div>
         </Panel>
-        <Panel title="Detection accuracy report">
+        <Panel title="Role controls">
           <div className="grid gap-3 sm:grid-cols-2">
             {[
-              ["Avg confidence", detections.length ? `${Math.round(detections.reduce((sum, item) => sum + Number(item.confidence_score ?? 0), 0) / detections.length)}%` : "0%"],
-              ["Pending approvals", String(detections.filter((item) => item.status !== "product_created").length)],
-              ["Products created", String(detections.filter((item) => item.status === "product_created").length)],
-              ["OCR coverage", detections.some((item) => item.ocr_text) ? "Active" : "Waiting"],
+              ["Allowed roles", "admin / user"],
+              ["Signup default", "user"],
+              ["Client role edits", "blocked"],
+              ["Admin promotion", "database only"],
             ].map(([label, value]) => (
               <div key={label} className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
                 <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">{label}</p>

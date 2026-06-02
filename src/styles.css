@@ -1,5 +1,5 @@
 /* ===== LapKart × Firecrawl Design System ===== */
-/* Heat-orange brand, SuisseIntl typography, P3 colors, refined utilities. */
+/* Heat-orange brand, Geist typography, P3 colors, refined utilities. */
 
 @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;450;500;600;700&display=swap");
 @import "tailwindcss" source(none);
@@ -7,29 +7,6 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
-
-/* ----- Font faces (SuisseIntl optional — drop .woff2 in /public/fonts/SuisseIntl/). ----- */
-@font-face {
-  font-family: "SuisseIntl";
-  src: url("/fonts/SuisseIntl/400.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SuisseIntl";
-  src: url("/fonts/SuisseIntl/450.woff2") format("woff2");
-  font-weight: 450;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SuisseIntl";
-  src: url("/fonts/SuisseIntl/500.woff2") format("woff2");
-  font-weight: 500 700;
-  font-style: normal;
-  font-display: swap;
-}
 
 /* ----- Design tokens (sRGB base) ----- */
 :root {
@@ -177,8 +154,8 @@
 
 /* ----- Tailwind v4 theme inline ----- */
 @theme inline {
-  --font-display: "SuisseIntl", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-sans: "SuisseIntl", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", "Roboto Mono", ui-monospace, monospace;
 
   --radius-sm: 4px;

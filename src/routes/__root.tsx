@@ -10,7 +10,6 @@ import {
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
-import { AiChat } from "@/components/AiChat";
 import { Toaster } from "sonner";
 
 function NotFoundComponent() {
@@ -123,7 +122,6 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
-        <AiChat />
         <Toaster richColors position="top-center" />
       </AuthProvider>
     </QueryClientProvider>

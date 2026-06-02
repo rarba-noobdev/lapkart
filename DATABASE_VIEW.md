@@ -1,66 +1,59 @@
 # Database Setup and Viewing
 
-Apply these Supabase SQL migrations in order from `supabase/migrations`:
+Apply the Supabase SQL migrations in `supabase/migrations` in order. The latest cleanup migration removes legacy service tables and locks the role model to two roles.
 
-1. Existing project migrations.
-2. `202605300001_lapkart_ai_schema.sql`
-3. `202605300002_storage_buckets.sql`
-4. `202605310001_component_detections.sql`
+## Roles
 
-## Main Table
+Open Supabase Dashboard -> Table Editor -> `user_roles`.
 
-Open Supabase Dashboard -> Table Editor -> `component_detections`.
+Role rules:
 
-Important fields:
+- Allowed values are `admin` and `user`.
+- New signups are inserted as `user` by `public.handle_new_user()`.
+- The app can read roles but cannot update them through client-side RLS policies.
+- To make someone an admin, update their row manually in the database:
 
-- `image_url`
-- `component_name`
-- `category`
-- `brand`
-- `model_number`
-- `specifications`
-- `condition`
-- `confidence_score`
-- `ocr_text`
-- `tags`
-- `keywords`
-- `compatible_models`
-- `similar_products`
-- `product_title`
-- `product_description`
-- `status`
-- `product_id`
+```sql
+update public.user_roles
+set role = 'admin'
+where user_id = '<auth-user-id>';
+```
+
+## Main Tables
+
+- `profiles`
+- `user_roles`
+- `products`
+- `addresses`
+- `orders`
+- `order_items`
+- `payments`
+- `shipments`
+- `shipment_packages`
+- `shipment_events`
+- `shipping_pickup_locations`
+- `shipping_batches`
+- `shipping_batch_items`
 
 ## Storage
 
-Open Supabase Dashboard -> Storage -> `product-images`.
+Main buckets:
 
-The module stores files in:
+- `products`
+- `users`
 
-- `uploads/products/`
-- `uploads/components/`
-- `uploads/vendors/`
+Supabase blocks direct bucket deletion from SQL, so the unused historical buckets `invoices`, `product-images`, `repair_requests`, `reviews`, and `vendors` should be removed from the Storage UI or Storage API.
 
-## Quick SQL View
+## Quick SQL Checks
 
 ```sql
-select
-  id,
-  component_name,
-  category,
-  brand,
-  model_number,
-  confidence_score,
-  status,
-  image_url,
-  created_at
-from public.component_detections
+select user_id, role, created_at
+from public.user_roles
 order by created_at desc;
 ```
 
-## API Endpoints
-
-- `POST /components/detect`
-- `PATCH /components/detections/:id`
-- `POST /components/detections/:id/create-product`
-- `GET /components/detections`
+```sql
+select id, title, brand, category, price, stock
+from public.products
+order by created_at desc;
+```

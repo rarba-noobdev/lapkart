@@ -21,6 +21,9 @@ type OrderRow = {
   payment_status: string;
   shipping_name: string;
   shipping_address: string;
+  shipping_courier_name: string | null;
+  shipping_expected_delivery_date: string | null;
+  shipping_route_distance_meters: number | null;
   created_at: string;
 };
 type Item = { id: string; title: string; image: string; brand: string; price: number; qty: number };
@@ -98,7 +101,15 @@ function OrderPage() {
           {[
             { icon: CheckCircle2, label: "Confirmed", note: "Just now", active: true, current: true },
             { icon: Package, label: "Packed", note: "Within 24h", active: false, current: false },
-            { icon: Truck, label: "On the way", note: "48h est.", active: false, current: false },
+            {
+              icon: Truck,
+              label: "On the way",
+              note: order.shipping_expected_delivery_date
+                ? `ETD ${order.shipping_expected_delivery_date}`
+                : "Courier ETD pending",
+              active: false,
+              current: false,
+            },
           ].map((step, i) => (
             <motion.div
               key={step.label}
@@ -132,11 +143,25 @@ function OrderPage() {
           ))}
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
           <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
             <h2 className="mb-3 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">Shipping to</h2>
             <p className="text-label-medium text-foreground">{order.shipping_name}</p>
             <p className="mt-1 text-body-small text-[var(--black-alpha-72)] leading-relaxed">{order.shipping_address}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
+            <h2 className="mb-3 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">Delivery estimate</h2>
+            <p className="text-label-medium text-foreground">{order.shipping_courier_name || "Courier assignment pending"}</p>
+            <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+              {order.shipping_expected_delivery_date
+                ? `Expected ${order.shipping_expected_delivery_date}`
+                : "Expected date pending"}
+            </p>
+            {order.shipping_route_distance_meters !== null && (
+              <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                {(order.shipping_route_distance_meters / 1000).toFixed(1)} km road route
+              </p>
+            )}
           </div>
           <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
             <h2 className="mb-3 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">Payment</h2>

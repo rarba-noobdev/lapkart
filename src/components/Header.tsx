@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 export function Header() {
   const items = useCart();
   const count = items.reduce((s, i) => s + i.qty, 0);
-  const { user, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
@@ -88,25 +88,6 @@ export function Header() {
           >
             Shop
           </Link>
-          <Link
-            to="/repair"
-            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
-          >
-            Repair
-          </Link>
-          <Link
-            to="/delivery"
-            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
-          >
-            Delivery
-          </Link>
-          <Link
-            to="/ai-detection"
-            className="hidden lg:inline-flex items-center text-label-medium text-foreground/80 hover:text-[var(--heat-100)] transition-colors px-2 py-2"
-          >
-            AI Detect
-          </Link>
-
           {user ? (
             <div ref={ref} className="relative">
               <button
@@ -136,8 +117,9 @@ export function Header() {
                     </div>
                     <MenuItem to="/orders" icon={Package} label="My orders" onClick={() => setOpen(false)} />
                     <MenuItem to="/dashboard" icon={Package} label="Customer dashboard" onClick={() => setOpen(false)} />
-                    <MenuItem to="/vendor" icon={Package} label="Vendor dashboard" onClick={() => setOpen(false)} />
-                    <MenuItem to="/admin" icon={Package} label="Admin dashboard" onClick={() => setOpen(false)} />
+                    {role === "admin" && (
+                      <MenuItem to="/admin" icon={Package} label="Admin dashboard" onClick={() => setOpen(false)} />
+                    )}
                     <button
                       onClick={async () => { setOpen(false); await signOut(); navigate({ to: "/" }); }}
                       className="flex w-full items-center gap-3 border-t border-[var(--border-faint)] px-4 py-2.5 text-label-small text-[var(--accent-crimson)] hover:bg-[var(--heat-4)] transition-colors"

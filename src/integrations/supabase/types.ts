@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -18,11 +18,16 @@ export type Database = {
         Row: {
           city: string
           created_at: string
+          formatted_address: string | null
           full_name: string
           id: string
           is_default: boolean
+          latitude: number | null
           line1: string
           line2: string | null
+          location_source: string | null
+          longitude: number | null
+          ola_place_id: string | null
           phone: string
           pincode: string
           state: string
@@ -31,11 +36,16 @@ export type Database = {
         Insert: {
           city: string
           created_at?: string
+          formatted_address?: string | null
           full_name: string
           id?: string
           is_default?: boolean
+          latitude?: number | null
           line1: string
           line2?: string | null
+          location_source?: string | null
+          longitude?: number | null
+          ola_place_id?: string | null
           phone: string
           pincode: string
           state: string
@@ -44,93 +54,20 @@ export type Database = {
         Update: {
           city?: string
           created_at?: string
+          formatted_address?: string | null
           full_name?: string
           id?: string
           is_default?: boolean
+          latitude?: number | null
           line1?: string
           line2?: string | null
+          location_source?: string | null
+          longitude?: number | null
+          ola_place_id?: string | null
           phone?: string
           pincode?: string
           state?: string
           user_id?: string
-        }
-        Relationships: []
-      }
-      component_detections: {
-        Row: {
-          approved_at: string | null
-          brand: string | null
-          category: string
-          component_name: string
-          confidence_score: number | null
-          compatible_models: string[]
-          created_at: string
-          condition: string | null
-          id: string
-          image_url: string
-          keywords: string[]
-          model_number: string | null
-          ocr_text: string | null
-          product_description: string | null
-          product_id: string | null
-          product_title: string | null
-          seo_tags: string[]
-          similar_products: string[]
-          specifications: Json
-          status: string
-          tags: string[]
-          updated_at: string
-          user_id: string | null
-        }
-        Insert: {
-          approved_at?: string | null
-          brand?: string | null
-          category: string
-          component_name: string
-          confidence_score?: number | null
-          compatible_models?: string[]
-          created_at?: string
-          condition?: string | null
-          id?: string
-          image_url: string
-          keywords?: string[]
-          model_number?: string | null
-          ocr_text?: string | null
-          product_description?: string | null
-          product_id?: string | null
-          product_title?: string | null
-          seo_tags?: string[]
-          similar_products?: string[]
-          specifications?: Json
-          status?: string
-          tags?: string[]
-          updated_at?: string
-          user_id?: string | null
-        }
-        Update: {
-          approved_at?: string | null
-          brand?: string | null
-          category?: string
-          component_name?: string
-          confidence_score?: number | null
-          compatible_models?: string[]
-          created_at?: string
-          condition?: string | null
-          id?: string
-          image_url?: string
-          keywords?: string[]
-          model_number?: string | null
-          ocr_text?: string | null
-          product_description?: string | null
-          product_id?: string | null
-          product_title?: string | null
-          seo_tags?: string[]
-          similar_products?: string[]
-          specifications?: Json
-          status?: string
-          tags?: string[]
-          updated_at?: string
-          user_id?: string | null
         }
         Relationships: []
       }
@@ -144,6 +81,7 @@ export type Database = {
           product_id: string | null
           qty: number
           title: string
+          unit_price: number | null
         }
         Insert: {
           brand: string
@@ -154,6 +92,7 @@ export type Database = {
           product_id?: string | null
           qty: number
           title: string
+          unit_price?: number | null
         }
         Update: {
           brand?: string
@@ -164,6 +103,7 @@ export type Database = {
           product_id?: string | null
           qty?: number
           title?: string
+          unit_price?: number | null
         }
         Relationships: [
           {
@@ -181,13 +121,36 @@ export type Database = {
           id: string
           payment_method: string
           payment_status: string
+          risk_score: number
           shipping: number
           shipping_address: string
+          shipping_charge_estimate: number | null
+          shipping_city: string | null
+          shipping_country: string
+          shipping_courier_company_id: number | null
+          shipping_courier_name: string | null
+          shipping_email: string | null
+          shipping_estimate: Json
+          shipping_expected_delivery_date: string | null
+          shipping_formatted_address: string | null
+          shipping_latitude: number | null
+          shipping_line1: string | null
+          shipping_line2: string | null
+          shipping_location_source: string | null
+          shipping_longitude: number | null
           shipping_name: string
           shipping_phone: string
+          shipping_pincode: string | null
+          shipping_place_id: string | null
+          shipping_route_distance_meters: number | null
+          shipping_route_duration_seconds: number | null
+          shipping_service_type: string
+          shipping_state: string | null
           status: string
           subtotal: number
           total: number
+          tracking: Json
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -195,13 +158,36 @@ export type Database = {
           id?: string
           payment_method?: string
           payment_status?: string
+          risk_score?: number
           shipping?: number
           shipping_address: string
+          shipping_charge_estimate?: number | null
+          shipping_city?: string | null
+          shipping_country?: string
+          shipping_courier_company_id?: number | null
+          shipping_courier_name?: string | null
+          shipping_email?: string | null
+          shipping_estimate?: Json
+          shipping_expected_delivery_date?: string | null
+          shipping_formatted_address?: string | null
+          shipping_latitude?: number | null
+          shipping_line1?: string | null
+          shipping_line2?: string | null
+          shipping_location_source?: string | null
+          shipping_longitude?: number | null
           shipping_name: string
           shipping_phone: string
+          shipping_pincode?: string | null
+          shipping_place_id?: string | null
+          shipping_route_distance_meters?: number | null
+          shipping_route_duration_seconds?: number | null
+          shipping_service_type?: string
+          shipping_state?: string | null
           status?: string
           subtotal: number
           total: number
+          tracking?: Json
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -209,71 +195,171 @@ export type Database = {
           id?: string
           payment_method?: string
           payment_status?: string
+          risk_score?: number
           shipping?: number
           shipping_address?: string
+          shipping_charge_estimate?: number | null
+          shipping_city?: string | null
+          shipping_country?: string
+          shipping_courier_company_id?: number | null
+          shipping_courier_name?: string | null
+          shipping_email?: string | null
+          shipping_estimate?: Json
+          shipping_expected_delivery_date?: string | null
+          shipping_formatted_address?: string | null
+          shipping_latitude?: number | null
+          shipping_line1?: string | null
+          shipping_line2?: string | null
+          shipping_location_source?: string | null
+          shipping_longitude?: number | null
           shipping_name?: string
           shipping_phone?: string
+          shipping_pincode?: string | null
+          shipping_place_id?: string | null
+          shipping_route_distance_meters?: number | null
+          shipping_route_duration_seconds?: number | null
+          shipping_service_type?: string
+          shipping_state?: string | null
           status?: string
           subtotal?: number
           total?: number
+          tracking?: Json
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
+      payments: {
+        Row: {
+          amount: number | null
+          created_at: string
+          id: string
+          method: string | null
+          order_id: string
+          provider: string
+          provider_order_id: string | null
+          provider_payment_id: string | null
+          provider_signature: string | null
+          raw_payload: Json
+          status: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          method?: string | null
+          order_id: string
+          provider?: string
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          provider_signature?: string | null
+          raw_payload?: Json
+          status?: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          method?: string | null
+          order_id?: string
+          provider?: string
+          provider_order_id?: string | null
+          provider_payment_id?: string | null
+          provider_signature?: string | null
+          raw_payload?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           brand: string
+          breadth_cm: number | null
           category: string
           compatibility: string | null
           created_at: string
+          description: string | null
+          height_cm: number | null
           highlights: string[] | null
           id: string
           image: string
           images: string[] | null
+          length_cm: number | null
           mrp: number
           price: number
           rating: number
           reviews: number
+          search_keywords: string[] | null
+          sku: string | null
           source_url: string | null
+          status: string
           stock: number
           title: string
+          updated_at: string
           warranty: string | null
+          weight_kg: number | null
         }
         Insert: {
           brand: string
+          breadth_cm?: number | null
           category: string
           compatibility?: string | null
           created_at?: string
+          description?: string | null
+          height_cm?: number | null
           highlights?: string[] | null
           id?: string
           image: string
           images?: string[] | null
+          length_cm?: number | null
           mrp: number
           price: number
           rating?: number
           reviews?: number
+          search_keywords?: string[] | null
+          sku?: string | null
           source_url?: string | null
+          status?: string
           stock?: number
           title: string
+          updated_at?: string
           warranty?: string | null
+          weight_kg?: number | null
         }
         Update: {
           brand?: string
+          breadth_cm?: number | null
           category?: string
           compatibility?: string | null
           created_at?: string
+          description?: string | null
+          height_cm?: number | null
           highlights?: string[] | null
           id?: string
           image?: string
           images?: string[] | null
+          length_cm?: number | null
           mrp?: number
           price?: number
           rating?: number
           reviews?: number
+          search_keywords?: string[] | null
+          sku?: string | null
           source_url?: string | null
+          status?: string
           stock?: number
           title?: string
+          updated_at?: string
           warranty?: string | null
+          weight_kg?: number | null
         }
         Relationships: []
       }
@@ -304,6 +390,434 @@ export type Database = {
         }
         Relationships: []
       }
+      shipment_events: {
+        Row: {
+          awb_code: string | null
+          id: string
+          location: string | null
+          message: string | null
+          provider: string
+          raw_payload: Json
+          received_at: string
+          shipment_id: string | null
+          status: string
+          status_code: number | null
+          status_time: string | null
+        }
+        Insert: {
+          awb_code?: string | null
+          id?: string
+          location?: string | null
+          message?: string | null
+          provider?: string
+          raw_payload?: Json
+          received_at?: string
+          shipment_id?: string | null
+          status: string
+          status_code?: number | null
+          status_time?: string | null
+        }
+        Update: {
+          awb_code?: string | null
+          id?: string
+          location?: string | null
+          message?: string | null
+          provider?: string
+          raw_payload?: Json
+          received_at?: string
+          shipment_id?: string | null
+          status?: string
+          status_code?: number | null
+          status_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_events_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipment_packages: {
+        Row: {
+          breadth_cm: number
+          created_at: string
+          declared_value: number
+          height_cm: number
+          id: string
+          item_count: number
+          length_cm: number
+          order_item_ids: string[]
+          package_number: number
+          raw_payload: Json
+          shipment_id: string
+          sku_summary: string | null
+          updated_at: string
+          weight_kg: number
+        }
+        Insert: {
+          breadth_cm: number
+          created_at?: string
+          declared_value?: number
+          height_cm: number
+          id?: string
+          item_count?: number
+          length_cm: number
+          order_item_ids?: string[]
+          package_number?: number
+          raw_payload?: Json
+          shipment_id: string
+          sku_summary?: string | null
+          updated_at?: string
+          weight_kg: number
+        }
+        Update: {
+          breadth_cm?: number
+          created_at?: string
+          declared_value?: number
+          height_cm?: number
+          id?: string
+          item_count?: number
+          length_cm?: number
+          order_item_ids?: string[]
+          package_number?: number
+          raw_payload?: Json
+          shipment_id?: string
+          sku_summary?: string | null
+          updated_at?: string
+          weight_kg?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_packages_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipments: {
+        Row: {
+          actual_delivery_at: string | null
+          applied_weight_kg: number | null
+          awb_code: string | null
+          billed_weight_kg: number | null
+          cod_amount: number
+          courier_company_id: number | null
+          courier_name: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          expected_delivery_date: string | null
+          id: string
+          invoice_url: string | null
+          label_url: string | null
+          last_status_at: string | null
+          last_status_code: number | null
+          manifest_url: string | null
+          order_id: string
+          pickup_location_id: string | null
+          pickup_scheduled_date: string | null
+          provider: string
+          raw_awb_response: Json
+          raw_create_response: Json
+          raw_payload: Json
+          request_payload: Json
+          shipment_number: number
+          shipping_charge: number | null
+          shipping_service_type: string
+          shiprocket_channel_order_id: string | null
+          shiprocket_order_id: number | null
+          shiprocket_shipment_id: number | null
+          status: string
+          tracking_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          actual_delivery_at?: string | null
+          applied_weight_kg?: number | null
+          awb_code?: string | null
+          billed_weight_kg?: number | null
+          cod_amount?: number
+          courier_company_id?: number | null
+          courier_name?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          invoice_url?: string | null
+          label_url?: string | null
+          last_status_at?: string | null
+          last_status_code?: number | null
+          manifest_url?: string | null
+          order_id: string
+          pickup_location_id?: string | null
+          pickup_scheduled_date?: string | null
+          provider?: string
+          raw_awb_response?: Json
+          raw_create_response?: Json
+          raw_payload?: Json
+          request_payload?: Json
+          shipment_number?: number
+          shipping_charge?: number | null
+          shipping_service_type?: string
+          shiprocket_channel_order_id?: string | null
+          shiprocket_order_id?: number | null
+          shiprocket_shipment_id?: number | null
+          status?: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actual_delivery_at?: string | null
+          applied_weight_kg?: number | null
+          awb_code?: string | null
+          billed_weight_kg?: number | null
+          cod_amount?: number
+          courier_company_id?: number | null
+          courier_name?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          invoice_url?: string | null
+          label_url?: string | null
+          last_status_at?: string | null
+          last_status_code?: number | null
+          manifest_url?: string | null
+          order_id?: string
+          pickup_location_id?: string | null
+          pickup_scheduled_date?: string | null
+          provider?: string
+          raw_awb_response?: Json
+          raw_create_response?: Json
+          raw_payload?: Json
+          request_payload?: Json
+          shipment_number?: number
+          shipping_charge?: number | null
+          shipping_service_type?: string
+          shiprocket_channel_order_id?: string | null
+          shiprocket_order_id?: number | null
+          shiprocket_shipment_id?: number | null
+          status?: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_pickup_location_id_fkey"
+            columns: ["pickup_location_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_pickup_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_batch_items: {
+        Row: {
+          batch_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          order_id: string | null
+          provider_reference: string | null
+          response_payload: Json
+          shipment_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          provider_reference?: string | null
+          response_payload?: Json
+          shipment_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          provider_reference?: string | null
+          response_payload?: Json
+          shipment_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_batch_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipping_batch_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipping_batch_items_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_batches: {
+        Row: {
+          batch_type: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          failure_count: number
+          id: string
+          invoice_url: string | null
+          label_url: string | null
+          manifest_url: string | null
+          provider: string
+          request_payload: Json
+          requested_by: string | null
+          response_payload: Json
+          started_at: string | null
+          status: string
+          success_count: number
+          total_count: number
+          updated_at: string
+        }
+        Insert: {
+          batch_type: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failure_count?: number
+          id?: string
+          invoice_url?: string | null
+          label_url?: string | null
+          manifest_url?: string | null
+          provider?: string
+          request_payload?: Json
+          requested_by?: string | null
+          response_payload?: Json
+          started_at?: string | null
+          status?: string
+          success_count?: number
+          total_count?: number
+          updated_at?: string
+        }
+        Update: {
+          batch_type?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failure_count?: number
+          id?: string
+          invoice_url?: string | null
+          label_url?: string | null
+          manifest_url?: string | null
+          provider?: string
+          request_payload?: Json
+          requested_by?: string | null
+          response_payload?: Json
+          started_at?: string | null
+          status?: string
+          success_count?: number
+          total_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shipping_pickup_locations: {
+        Row: {
+          address_line1: string
+          address_line2: string | null
+          city: string
+          contact_name: string | null
+          country: string
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          latitude: number | null
+          longitude: number | null
+          phone: string
+          pickup_location: string
+          pincode: string
+          provider: string
+          provider_location_id: string | null
+          raw_payload: Json
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          address_line1: string
+          address_line2?: string | null
+          city: string
+          contact_name?: string | null
+          country?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          phone: string
+          pickup_location: string
+          pincode: string
+          provider?: string
+          provider_location_id?: string | null
+          raw_payload?: Json
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string | null
+          city?: string
+          contact_name?: string | null
+          country?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          latitude?: number | null
+          longitude?: number | null
+          phone?: string
+          pickup_location?: string
+          pincode?: string
+          provider?: string
+          provider_location_id?: string | null
+          raw_payload?: Json
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -330,13 +844,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: {
       app_role: "admin" | "user"
