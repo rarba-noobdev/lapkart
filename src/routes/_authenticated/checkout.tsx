@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DashboardShell, Panel } from "@/components/DashboardShell";
+import { DashboardShell } from "@/components/DashboardShell";
 import {
   DeliveryMapPicker,
   type DeliveryPin,
@@ -13,17 +13,21 @@ import { cart, useCart } from "@/lib/cart-store";
 import { useAuth } from "@/lib/auth";
 import { useProductsByIds } from "@/lib/products-db";
 import {
+  Check,
   CheckCircle2,
+  ChevronRight,
   CreditCard,
   Loader2,
   LocateFixed,
   MapPin,
-  PackageCheck,
+  Package,
   Route as RouteIcon,
   ShieldCheck,
   Timer,
   Truck,
+  Wallet,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 declare global {
   interface Window {
@@ -96,6 +100,26 @@ const indianStates = [
   "West Bengal",
 ];
 
+const stepConfig = [
+  { label: "Cart", icon: Package },
+  { label: "Address", icon: MapPin },
+  { label: "Shipping", icon: Truck },
+  { label: "Payment", icon: Wallet },
+];
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06, delayChildren: 0.1 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] } },
+};
+
 export const Route = createFileRoute("/_authenticated/checkout")({
   head: () => ({ meta: [{ title: "Checkout - LapKart" }] }),
   component: CheckoutPage,
@@ -155,6 +179,13 @@ function CheckoutPage() {
       : null;
   const selectedCourier =
     deliveryEstimate?.couriers.find((courier) => courier.quoteId === selectedQuoteId) ?? null;
+
+  const activeStep = useMemo(() => {
+    if (orderId) return 3;
+    if (selectedCourier && !estimateLoading) return 2;
+    if (hasValidAddress) return 1;
+    return 0;
+  }, [orderId, selectedCourier, estimateLoading, hasValidAddress]);
 
   useEffect(() => {
     if (!user) return;
@@ -299,7 +330,7 @@ function CheckoutPage() {
           email: address.email.trim() || user.email || "",
           contact: address.phone.replace(/\D/g, "").slice(-10),
         },
-        theme: { color: "#f97316" },
+        theme: { color: "#fa5d19" },
         modal: {
           ondismiss: () => {
             setBusy(false);
@@ -456,213 +487,419 @@ function CheckoutPage() {
     return createdOrderId;
   };
 
-  const steps = [
-    ["Cart total", PackageCheck],
-    ["Razorpay checkout", CreditCard],
-    ["Signature verified", ShieldCheck],
-    ["Delivery quote", RouteIcon],
-    ["Order placed", Truck],
-  ] as const;
-
   return (
     <DashboardShell
       eyebrow="secure checkout"
-      title="Delivery and Razorpay"
-      description="Select delivery location, pay with the configured Razorpay test key, then create a real LapKart order after signature verification."
+      title="Checkout"
+      description="Complete your order with secure Razorpay payment and real-time delivery estimates."
     >
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <Panel title="Delivery location">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Full name">
-              <input
-                value={address.fullName}
-                onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="Phone">
-              <input
-                value={address.phone}
-                onChange={(e) => setAddress({ ...address, phone: e.target.value })}
-                inputMode="tel"
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                value={address.email}
-                onChange={(e) => setAddress({ ...address, email: e.target.value })}
-                type="email"
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="Pincode">
-              <input
-                value={address.pincode}
-                onChange={(e) => setAddress({ ...address, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
-                inputMode="numeric"
-                maxLength={6}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="Address line 1" wide>
-              <input
-                value={address.line1}
-                onChange={(e) => setAddress({ ...address, line1: e.target.value })}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="Address line 2" wide>
-              <input
-                value={address.line2}
-                onChange={(e) => setAddress({ ...address, line2: e.target.value })}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="City">
-              <input
-                value={address.city}
-                onChange={(e) => setAddress({ ...address, city: e.target.value })}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              />
-            </Field>
-            <Field label="State">
-              <select
-                value={address.state}
-                onChange={(e) => setAddress({ ...address, state: e.target.value })}
-                className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium outline-none focus:border-[var(--heat-100)]"
-              >
-                {indianStates.map((state) => <option key={state}>{state}</option>)}
-              </select>
-            </Field>
-          </div>
-          <label className="mt-5 flex items-center gap-2 text-body-small text-[var(--black-alpha-72)]">
-            <input
-              type="checkbox"
-              checked={saveAddress}
-              onChange={(e) => setSaveAddress(e.target.checked)}
-              className="size-4 accent-[var(--heat-100)]"
-            />
-            Save this location for future orders
-          </label>
-        </Panel>
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="mx-auto max-w-7xl"
+      >
+        <motion.div variants={itemVariants} className="mb-10">
+          <StepIndicator steps={stepConfig} activeIndex={activeStep} />
+        </motion.div>
 
-        <Panel title="Delivery pin">
-          <DeliveryMapPicker
-            value={deliveryPin}
-            addressLabel={hasValidAddress ? `${address.city}, ${address.state} ${address.pincode}` : "delivery pin"}
-            onChange={(pin) =>
-              setAddress((current) => ({
-                ...current,
-                latitude: pin.latitude,
-                longitude: pin.longitude,
-                locationSource: pin.source,
-              }))
-            }
-            onAddressResolved={(resolved: ResolvedDeliveryAddress) =>
-              setAddress((current) => ({
-                ...current,
-                line1: resolved.line1 || current.line1,
-                line2: resolved.line2 || current.line2,
-                city: resolved.city || current.city,
-                state: resolved.state || current.state,
-                pincode: resolved.pincode || current.pincode,
-                latitude: resolved.latitude ?? current.latitude,
-                longitude: resolved.longitude ?? current.longitude,
-                olaPlaceId: resolved.placeId,
-                formattedAddress: resolved.formattedAddress,
-              }))
-            }
-          />
-          <DeliveryQuotePicker
-            estimate={deliveryEstimate}
-            error={estimateError}
-            loading={estimateLoading}
-            selectedQuoteId={selectedQuoteId}
-            onSelect={setSelectedQuoteId}
-          />
-        </Panel>
-
-        <Panel title="Payment flow">
-          <div className="grid gap-4 md:grid-cols-5">
-            {steps.map(([label, Icon], index) => (
-              <div key={label} className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
-                <Icon className="size-5 text-[var(--heat-100)]" />
-                <p className="mt-4 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">step {index + 1}</p>
-                <p className="mt-1 text-label-medium">{label}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-lg border border-[var(--border-faint)] bg-white p-5">
-            <p className="text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">
-              Razorpay supports
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {["UPI", "GPay", "PhonePe", "Paytm", "Cards", "EMI", "Net Banking"].map((method) => (
-                <div key={method} className="rounded-md border border-[var(--border-faint)] p-3 text-label-small">
-                  {method}
+        <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
+          <motion.div variants={containerVariants} className="space-y-8">
+            {/* Delivery Address */}
+            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
+                  <MapPin className="size-4" />
                 </div>
-              ))}
-            </div>
-          </div>
-        </Panel>
+                <div>
+                  <h2 className="text-label-large text-foreground">Delivery Address</h2>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">Where should we ship your order?</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <InputField label="Full name" icon={null}>
+                    <input
+                      value={address.fullName}
+                      onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
+                      className="input-field"
+                      placeholder="John Doe"
+                    />
+                  </InputField>
+                  <InputField label="Phone" icon={null}>
+                    <input
+                      value={address.phone}
+                      onChange={(e) => setAddress({ ...address, phone: e.target.value })}
+                      inputMode="tel"
+                      className="input-field"
+                      placeholder="+91 98765 43210"
+                    />
+                  </InputField>
+                  <InputField label="Email" icon={null}>
+                    <input
+                      value={address.email}
+                      onChange={(e) => setAddress({ ...address, email: e.target.value })}
+                      type="email"
+                      className="input-field"
+                      placeholder="john@example.com"
+                    />
+                  </InputField>
+                  <InputField label="Pincode" icon={null}>
+                    <input
+                      value={address.pincode}
+                      onChange={(e) => setAddress({ ...address, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                      inputMode="numeric"
+                      maxLength={6}
+                      className="input-field"
+                      placeholder="560001"
+                    />
+                  </InputField>
+                  <InputField label="Address line 1" wide icon={null}>
+                    <input
+                      value={address.line1}
+                      onChange={(e) => setAddress({ ...address, line1: e.target.value })}
+                      className="input-field"
+                      placeholder="Street address, apartment, building"
+                    />
+                  </InputField>
+                  <InputField label="Address line 2" wide icon={null}>
+                    <input
+                      value={address.line2}
+                      onChange={(e) => setAddress({ ...address, line2: e.target.value })}
+                      className="input-field"
+                      placeholder="Landmark, floor, suite (optional)"
+                    />
+                  </InputField>
+                  <InputField label="City" icon={null}>
+                    <input
+                      value={address.city}
+                      onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                      className="input-field"
+                      placeholder="Bangalore"
+                    />
+                  </InputField>
+                  <InputField label="State" icon={null}>
+                    <select
+                      value={address.state}
+                      onChange={(e) => setAddress({ ...address, state: e.target.value })}
+                      className="input-field appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23999%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10"
+                    >
+                      {indianStates.map((state) => <option key={state}>{state}</option>)}
+                    </select>
+                  </InputField>
+                </div>
+                <label className="mt-6 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-3 transition-colors hover:border-[var(--heat-40)]">
+                  <input
+                    type="checkbox"
+                    checked={saveAddress}
+                    onChange={(e) => setSaveAddress(e.target.checked)}
+                    className="size-5 accent-[var(--heat-100)]"
+                  />
+                  <span className="text-body-small text-[var(--black-alpha-72)]">Save this address for future orders</span>
+                </label>
+              </div>
+            </motion.section>
 
-        <aside className="h-fit rounded-lg border border-[var(--border-faint)] bg-white p-6">
-          <p className="text-mono-x-small uppercase tracking-[0.2em] text-[var(--heat-100)]">test mode</p>
-          <h2 className="mt-2 font-display text-title-h4 text-foreground">{formatINR(total)}</h2>
-          <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
-            {rows.length > 0 ? `${rows.length} cart item(s), including delivery.` : "Your cart is empty."}
-          </p>
-          <div className="mt-5 space-y-3 border-t border-[var(--border-faint)] pt-5 text-body-small">
-            <SummaryRow label="Subtotal" value={formatINR(subtotal)} />
-            <SummaryRow label="Delivery" value={shipping === 0 ? "FREE" : formatINR(shipping)} />
-            <SummaryRow label="Total" value={formatINR(total)} strong />
-          </div>
-          {selectedCourier && (
-            <div className="mt-5 rounded-md border border-[var(--heat-20)] bg-[var(--heat-4)] p-3">
-              <p className="text-mono-x-small uppercase tracking-[0.16em] text-[var(--heat-100)]">delivery estimate</p>
-              <p className="mt-1 text-label-small text-foreground">{selectedCourier.courierName}</p>
-              <p className="mt-1 text-body-small text-[var(--black-alpha-64)]">
-                Expected {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}
-              </p>
+            {/* Delivery Pin & Courier */}
+            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
+                  <LocateFixed className="size-4" />
+                </div>
+                <div>
+                  <h2 className="text-label-large text-foreground">Delivery Pin</h2>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">Pin your location for accurate courier quotes</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <DeliveryMapPicker
+                  value={deliveryPin}
+                  addressLabel={hasValidAddress ? `${address.city}, ${address.state} ${address.pincode}` : "delivery pin"}
+                  onChange={(pin) =>
+                    setAddress((current) => ({
+                      ...current,
+                      latitude: pin.latitude,
+                      longitude: pin.longitude,
+                      locationSource: pin.source,
+                    }))
+                  }
+                  onAddressResolved={(resolved: ResolvedDeliveryAddress) =>
+                    setAddress((current) => ({
+                      ...current,
+                      line1: resolved.line1 || current.line1,
+                      line2: resolved.line2 || current.line2,
+                      city: resolved.city || current.city,
+                      state: resolved.state || current.state,
+                      pincode: resolved.pincode || current.pincode,
+                      latitude: resolved.latitude ?? current.latitude,
+                      longitude: resolved.longitude ?? current.longitude,
+                      olaPlaceId: resolved.placeId,
+                      formattedAddress: resolved.formattedAddress,
+                    }))
+                  }
+                />
+                <DeliveryQuotePicker
+                  estimate={deliveryEstimate}
+                  error={estimateError}
+                  loading={estimateLoading}
+                  selectedQuoteId={selectedQuoteId}
+                  onSelect={setSelectedQuoteId}
+                />
+              </div>
+            </motion.section>
+
+            {/* Payment Methods */}
+            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
+                  <CreditCard className="size-4" />
+                </div>
+                <div>
+                  <h2 className="text-label-large text-foreground">Payment</h2>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">Secure checkout powered by Razorpay</p>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {["UPI", "Cards", "Net Banking", "EMI", "GPay", "PhonePe", "Paytm", "Wallets"].map((method, i) => (
+                    <motion.div
+                      key={method}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.35 }}
+                      className="group flex items-center gap-3 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-3 transition-all hover:border-[var(--heat-40)] hover:bg-[var(--heat-4)] hover:shadow-[var(--shadow-card)]"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--heat-100)] shadow-sm transition-colors group-hover:bg-[var(--heat-100)] group-hover:text-white">
+                        <Wallet className="size-4" />
+                      </div>
+                      <span className="text-label-small text-foreground">{method}</span>
+                    </motion.div>
+                  ))}
+                </div>
+                <div className="mt-5 flex items-center gap-2 rounded-xl border border-[var(--heat-20)] bg-[var(--heat-4)] px-4 py-3">
+                  <ShieldCheck className="size-4 text-[var(--heat-100)]" />
+                  <span className="text-body-small text-[var(--black-alpha-72)]">
+                    All transactions are encrypted and verified by Razorpay.
+                  </span>
+                </div>
+              </div>
+            </motion.section>
+          </motion.div>
+
+          {/* Order Summary Sidebar */}
+          <motion.aside variants={itemVariants} className="h-fit space-y-6">
+            <div className="sticky top-6 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+              <div className="border-b border-[var(--border-faint)] bg-gradient-to-r from-[var(--heat-100)] to-[var(--heat-200)] px-6 py-4">
+                <p className="text-mono-x-small uppercase tracking-[0.2em] text-white/80">Order Summary</p>
+                <h2 className="mt-1 font-display text-title-h5 text-white">{formatINR(total)}</h2>
+              </div>
+
+              <div className="p-6">
+                {/* Cart items */}
+                <div className="space-y-4">
+                  <AnimatePresence mode="popLayout">
+                    {rows.map(({ product, qty }) => (
+                      <motion.div
+                        key={product.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="flex items-start gap-3"
+                      >
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)]">
+                          {product.images?.[0] || product.image ? (
+                            <img
+                              src={product.images?.[0] ?? product.image}
+                              alt={product.title}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <Package className="size-5 text-[var(--black-alpha-24)]" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-label-small text-foreground">{product.title}</p>
+                          <p className="mt-0.5 text-body-small text-[var(--black-alpha-48)]">{product.brand}</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-label-small text-foreground">{formatINR(product.price)}</span>
+                            <span className="rounded-sm bg-[var(--background-lighter)] px-1.5 py-0.5 text-mono-x-small text-[var(--black-alpha-48)]">x{qty}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {rows.length === 0 && (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-muted)] py-8 text-center">
+                      <Package className="size-8 text-[var(--black-alpha-16)]" />
+                      <p className="mt-2 text-body-small text-[var(--black-alpha-48)]">Your cart is empty</p>
+                      <Link
+                        to="/products"
+                        className="mt-3 inline-flex items-center gap-1 text-label-small text-[var(--heat-100)] hover:underline"
+                      >
+                        Browse products <ChevronRight className="size-3" />
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 space-y-2 border-t border-[var(--border-faint)] pt-5">
+                  <SummaryRow label="Subtotal" value={formatINR(subtotal)} />
+                  <SummaryRow label="Shipping" value={shipping === 0 ? "FREE" : formatINR(shipping)} highlight={shipping === 0} />
+                  <SummaryRow label="Taxes" value="Included" />
+                </div>
+
+                <div className="mt-4 flex items-center justify-between border-t border-[var(--border-faint)] pt-4">
+                  <span className="text-label-medium text-foreground">Total</span>
+                  <motion.span
+                    key={total}
+                    initial={{ scale: 1.1, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="font-display text-title-h5 text-foreground"
+                  >
+                    {formatINR(total)}
+                  </motion.span>
+                </div>
+
+                {selectedCourier && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="mt-4 overflow-hidden rounded-xl border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Truck className="size-4 text-[var(--heat-100)]" />
+                      <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--heat-100)]">Delivery Estimate</p>
+                    </div>
+                    <p className="mt-2 text-label-small text-foreground">{selectedCourier.courierName}</p>
+                    <p className="mt-1 text-body-small text-[var(--black-alpha-64)]">
+                      Expected {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <RouteIcon className="size-3.5 text-[var(--black-alpha-48)]" />
+                      <span className="text-mono-x-small text-[var(--black-alpha-48)]">
+                        {deliveryEstimate?.route.readableDistance || "—"} · {deliveryEstimate?.route.readableDuration || "—"}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+
+                <div className="mt-4 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-[var(--heat-100)]" />
+                    <p className="text-body-small text-[var(--black-alpha-72)]">
+                      {hasValidAddress
+                        ? `${address.line1}${address.line2 ? `, ${address.line2}` : ""}, ${address.city}, ${address.state} ${address.pincode}`
+                        : "Complete delivery address to proceed."}
+                    </p>
+                  </div>
+                </div>
+
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-body-small text-destructive"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={pay}
+                  disabled={busy || Boolean(orderId) || rows.length === 0 || estimateLoading || !selectedCourier}
+                  className="button button-primary mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-label-medium disabled:opacity-60"
+                >
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                  {orderId ? "Order placed" : `Pay ${formatINR(total)}`}
+                </motion.button>
+
+                {orderId && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/10 p-3 text-body-small text-[var(--accent-forest)]"
+                  >
+                    <CheckCircle2 className="size-4 shrink-0" />
+                    Payment successful. Redirecting to order details…
+                  </motion.div>
+                )}
+              </div>
             </div>
-          )}
-          <div className="mt-5 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
-            <div className="flex items-start gap-2">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-[var(--heat-100)]" />
-              <p className="text-body-small text-[var(--black-alpha-72)]">
-                {hasValidAddress
-                  ? `${address.city}, ${address.state} ${address.pincode}${hasDeliveryPin ? ` · ${address.latitude}, ${address.longitude}` : ""}`
-                  : "Complete delivery location before payment."}
-              </p>
-            </div>
-          </div>
-          {error && (
-            <p className="mt-4 rounded-md border border-red-500/20 bg-red-50 p-3 text-body-small text-red-700">
-              {error}
-            </p>
-          )}
-          <button
-            onClick={pay}
-            disabled={busy || Boolean(orderId) || rows.length === 0 || estimateLoading || !selectedCourier}
-            className="button button-primary mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-md text-label-medium disabled:opacity-60"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-            {orderId ? "Order placed" : "Pay and place order"}
-          </button>
-          {rows.length === 0 && (
-            <Link to="/products" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--border-muted)] h-11 text-label-medium">
-              <LocateFixed className="size-4" /> Select products
-            </Link>
-          )}
-          {orderId && (
-            <p className="mt-4 rounded-md border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/10 p-3 text-body-small text-[var(--accent-forest)]">
-              Payment success. Order created in Supabase.
-            </p>
-          )}
-        </aside>
-      </div>
+          </motion.aside>
+        </div>
+      </motion.div>
     </DashboardShell>
+  );
+}
+
+function StepIndicator({ steps, activeIndex }: { steps: { label: string; icon: React.ElementType }[]; activeIndex: number }) {
+  return (
+    <div className="relative">
+      <div className="absolute left-0 right-0 top-1/2 hidden h-px -translate-y-1/2 bg-[var(--border-faint)] md:block" />
+      <div className="relative grid grid-cols-4 gap-2">
+        {steps.map((step, i) => {
+          const Icon = step.icon;
+          const isActive = i <= activeIndex;
+          const isCurrent = i === activeIndex;
+          return (
+            <motion.div
+              key={step.label}
+              className="relative flex flex-col items-center"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <motion.div
+                animate={{
+                  backgroundColor: isActive ? "var(--heat-100)" : "var(--background-lighter)",
+                  color: isActive ? "#ffffff" : "var(--black-alpha-48)",
+                  borderColor: isActive ? "var(--heat-100)" : "var(--border-faint)",
+                  scale: isCurrent ? 1.1 : 1,
+                }}
+                className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 shadow-sm transition-colors"
+              >
+                {isActive && i < activeIndex ? (
+                  <Check className="size-5" />
+                ) : (
+                  <Icon className="size-5" />
+                )}
+              </motion.div>
+              <span
+                className={`mt-2 text-mono-x-small uppercase tracking-[0.14em] ${
+                  isActive ? "text-[var(--heat-100)]" : "text-[var(--black-alpha-48)]"
+                }`}
+              >
+                {step.label}
+              </span>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InputField({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean; icon?: React.ReactNode }) {
+  return (
+    <label className={`group ${wide ? "md:col-span-2" : ""}`}>
+      <span className="mb-1.5 block text-label-x-small text-[var(--black-alpha-56)]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SummaryRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-body-small text-[var(--black-alpha-64)]">{label}</span>
+      <span className={`text-label-small ${highlight ? "text-[var(--accent-forest)]" : "text-foreground"}`}>{value}</span>
+    </div>
   );
 }
 
@@ -692,7 +929,7 @@ function DeliveryQuotePicker({
 }) {
   if (loading) {
     return (
-      <div className="mt-4 flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-body-small text-[var(--black-alpha-64)]">
+      <div className="mt-5 flex items-center gap-3 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-body-small text-[var(--black-alpha-64)]">
         <Loader2 className="size-4 animate-spin text-[var(--heat-100)]" />
         Checking route and courier ETDs
       </div>
@@ -701,99 +938,94 @@ function DeliveryQuotePicker({
 
   if (error) {
     return (
-      <p className="mt-4 rounded-md border border-red-500/20 bg-red-50 p-4 text-body-small text-red-700">
+      <motion.p
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mt-5 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-body-small text-destructive"
+      >
         {error}
-      </p>
+      </motion.p>
     );
   }
 
   if (!estimate) {
     return (
-      <p className="mt-4 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-body-small text-[var(--black-alpha-64)]">
+      <p className="mt-5 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-body-small text-[var(--black-alpha-64)]">
         Confirm a delivery pin and pincode to check courier availability.
       </p>
     );
   }
 
   return (
-    <div className="mt-4 space-y-3">
+    <motion.div initial="hidden" animate="visible" variants={containerVariants} className="mt-5 space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
-          <RouteIcon className="size-4 text-[var(--heat-100)]" />
-          <p className="mt-2 text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">road distance</p>
-          <p className="mt-1 text-label-medium text-foreground">
+        <motion.div variants={itemVariants} className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+          <div className="flex items-center gap-2">
+            <RouteIcon className="size-4 text-[var(--heat-100)]" />
+            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">Road Distance</p>
+          </div>
+          <p className="mt-2 font-display text-title-h5 text-foreground">
             {estimate.route.readableDistance || `${(estimate.route.distanceMeters / 1000).toFixed(1)} km`}
           </p>
-        </div>
-        <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
-          <Timer className="size-4 text-[var(--heat-100)]" />
-          <p className="mt-2 text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">route time</p>
-          <p className="mt-1 text-label-medium text-foreground">
+        </motion.div>
+        <motion.div variants={itemVariants} className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+          <div className="flex items-center gap-2">
+            <Timer className="size-4 text-[var(--heat-100)]" />
+            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">Route Time</p>
+          </div>
+          <p className="mt-2 font-display text-title-h5 text-foreground">
             {estimate.route.readableDuration || `${Math.ceil(estimate.route.durationSeconds / 60)} min`}
           </p>
-        </div>
+        </motion.div>
       </div>
       <div className="space-y-2">
-        {estimate.couriers.map((courier) => {
+        {estimate.couriers.map((courier, i) => {
           const selected = courier.quoteId === selectedQuoteId;
           return (
-            <button
+            <motion.button
               key={courier.quoteId}
               type="button"
               onClick={() => onSelect(courier.quoteId)}
-              className={`flex w-full items-start justify-between gap-4 rounded-md border p-3 text-left transition-colors ${
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.06 }}
+              className={`group flex w-full items-start justify-between gap-4 rounded-xl border p-4 text-left transition-all ${
                 selected
-                  ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
-                  : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]"
+                  ? "border-[var(--heat-100)] bg-gradient-to-r from-[var(--heat-4)] to-white shadow-[var(--shadow-card)]"
+                  : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)] hover:shadow-[var(--shadow-card)]"
               }`}
             >
               <span className="flex min-w-0 gap-3">
-                <CheckCircle2 className={`mt-0.5 size-4 shrink-0 ${selected ? "text-[var(--heat-100)]" : "text-[var(--black-alpha-24)]"}`} />
+                <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                  selected ? "border-[var(--heat-100)] bg-[var(--heat-100)] text-white" : "border-[var(--black-alpha-24)]"
+                }`}>
+                  {selected && <Check className="size-3" />}
+                </div>
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-label-small text-foreground">{courier.courierName}</span>
                     {courier.recommended && (
-                      <span className="rounded-sm bg-[var(--heat-12)] px-1.5 py-0.5 text-mono-x-small uppercase text-[var(--heat-100)]">
-                        recommended
+                      <span className="rounded-sm bg-[var(--heat-12)] px-2 py-0.5 text-mono-x-small uppercase text-[var(--heat-100)]">
+                        Recommended
                       </span>
                     )}
                     {courier.serviceType === "quick" && (
-                      <span className="rounded-sm bg-[var(--accent-forest)]/10 px-1.5 py-0.5 text-mono-x-small uppercase text-[var(--accent-forest)]">
-                        quick
+                      <span className="rounded-sm bg-[var(--accent-forest)]/10 px-2 py-0.5 text-mono-x-small uppercase text-[var(--accent-forest)]">
+                        Quick
                       </span>
                     )}
                   </span>
                   <span className="mt-1 block text-body-small text-[var(--black-alpha-56)]">
-                    {courier.mode} / expected {courier.etd || `${courier.estimatedDeliveryDays} day(s)`}
-                    {courier.rating ? ` / rating ${courier.rating}` : ""}
+                    {courier.mode} · Expected {courier.etd || `${courier.estimatedDeliveryDays} day(s)`}
+                    {courier.rating ? ` · ${courier.rating} rating` : ""}
                   </span>
                 </span>
               </span>
               <span className="shrink-0 text-label-small text-foreground">{formatINR(courier.rate)}</span>
-            </button>
+            </motion.button>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <label className={wide ? "md:col-span-2" : undefined}>
-      <span className="mb-1.5 block text-mono-x-small uppercase tracking-[0.16em] text-[var(--black-alpha-48)]">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function SummaryRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className={strong ? "text-label-medium text-foreground" : "text-[var(--black-alpha-64)]"}>{label}</span>
-      <span className={strong ? "font-display text-title-h5 text-foreground" : "text-foreground"}>{value}</span>
-    </div>
+    </motion.div>
   );
 }

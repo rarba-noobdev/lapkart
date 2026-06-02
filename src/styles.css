@@ -470,4 +470,33 @@
   .delay-300 { animation-delay: 300ms; }
   .delay-400 { animation-delay: 400ms; }
   .delay-500 { animation-delay: 500ms; }
+
+  .input-field {
+    height: 48px;
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border-muted);
+    background-color: #ffffff;
+    padding-left: 12px;
+    padding-right: 12px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--foreground);
+    transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+    outline: none;
+  }
+  .input-field::placeholder {
+    color: var(--black-alpha-24);
+  }
+  .input-field:hover {
+    border-color: var(--border-loud);
+  }
+  .input-field:focus {
+    border-color: var(--heat-100);
+    box-shadow: 0 0 0 3px var(--heat-8), 0 1px 2px 0 rgba(0,0,0,0.04);
+  }
+  .input-field:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 }
