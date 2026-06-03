@@ -3,8 +3,19 @@ import { Flame, ArrowUpRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 export function Footer() {
-  const { role } = useAuth();
-  const isAdmin = role === "admin";
+  const { role, loading } = useAuth();
+  const isAdmin = !loading && role === "admin";
+  const headline = loading
+    ? "India's marketplace for genuine laptop components, with secure checkout and tracked delivery."
+    : isAdmin
+      ? "Operations workspace for catalog control, user management, order edits, and fulfillment."
+      : "India's marketplace for genuine laptop components, from RAM and SSDs to batteries, displays, and replacement hardware.";
+  const statusLine = loading
+    ? "Secure checkout, tracked delivery, verified sourcing"
+    : isAdmin
+      ? "Admin-only session"
+      : "Fast dispatch, secure checkout, verified sourcing";
+  const footerLine = `${new Date().getFullYear()} LapKart. ${isAdmin ? "Operations console." : "Genuine parts marketplace."}`;
 
   return (
     <footer className="relative mt-24 overflow-hidden bg-[var(--accent-black)] text-white/70">
@@ -18,12 +29,10 @@ export function Footer() {
               </span>
             </div>
             <p className="mt-5 max-w-sm text-body-medium leading-relaxed text-white/60">
-              {isAdmin
-                ? "Operations workspace for catalog control, user management, order edits, and fulfillment."
-                : "India's marketplace for genuine laptop components, from RAM and SSDs to batteries, displays, and replacement hardware."}
+              {headline}
             </p>
             <p className="mt-6 text-mono-x-small uppercase tracking-[0.16em] text-white/40">
-              {isAdmin ? "Admin-only session" : "Fast dispatch, secure checkout, verified sourcing"}
+              {statusLine}
             </p>
           </div>
 
@@ -103,11 +112,10 @@ export function Footer() {
 
         <div className="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
           <p className="text-mono-x-small uppercase tracking-[0.16em] text-white/40">
-            {new Date().getFullYear()} LapKart.{" "}
-            {isAdmin ? "Operations console." : "Genuine parts marketplace."}
+            {footerLine}
           </p>
           <div className="text-mono-x-small uppercase tracking-wider text-white/40">
-            Bengaluru service desk · Monday to Saturday
+            Bengaluru service desk | Monday to Saturday
           </div>
         </div>
       </div>
