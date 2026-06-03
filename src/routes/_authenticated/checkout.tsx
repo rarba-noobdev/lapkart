@@ -10,6 +10,7 @@ import {
   type ResolvedDeliveryAddress,
 } from "@/components/DeliveryMapPicker";
 import { supabase } from "@/integrations/supabase/client";
+import { apiBase } from "@/lib/api-base";
 import { formatINR } from "@/lib/catalog";
 import { cart, useCartState } from "@/lib/cart-store";
 import { useAuth } from "@/lib/auth";
@@ -117,7 +118,6 @@ type BackendCheckoutCompleteResponse = {
   error?: string;
 };
 
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID ?? "";
 
 const indianStates = [
@@ -245,16 +245,6 @@ function CheckoutPage() {
       void navigate({ to: "/admin", replace: true });
     }
   }, [navigate, role]);
-
-  if (role === "admin") {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[var(--background-base)]">
-        <p className="text-body-medium text-[var(--black-alpha-56)]">
-          Redirecting to the admin console.
-        </p>
-      </div>
-    );
-  }
 
   useEffect(() => {
     if (!user) return;
@@ -485,6 +475,16 @@ function CheckoutPage() {
       toast.error(message);
     }
   };
+
+  if (role === "admin") {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[var(--background-base)]">
+        <p className="text-body-medium text-[var(--black-alpha-56)]">
+          Redirecting to the admin console.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <DashboardShell

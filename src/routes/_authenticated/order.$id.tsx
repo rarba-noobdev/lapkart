@@ -4,11 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ExternalLink, Loader2, Package, Truck } from "lucide-react";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { apiBase } from "@/lib/api-base";
 import { useAuth } from "@/lib/auth";
 import { formatINR } from "@/lib/catalog";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
-
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 
 export const Route = createFileRoute("/_authenticated/order/$id")({
   head: () => ({ meta: [{ title: "Order confirmed - lapkart" }] }),

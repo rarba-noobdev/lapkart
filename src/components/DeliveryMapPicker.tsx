@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Crosshair, Loader2, LocateFixed, MapPin, Search } from "lucide-react";
+import { apiBase } from "@/lib/api-base";
 
 export type DeliveryPin = {
   latitude: number;
@@ -48,7 +49,6 @@ type OlaMap = {
   on?: <T>(event: string, handler: (event: T) => void) => void;
 };
 
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? "";
 const olaMapsStyleUrl = import.meta.env.VITE_OLA_MAPS_STYLE_URL ?? "";
 const defaultOlaMapsStyleUrl =
@@ -87,6 +87,8 @@ export function DeliveryMapPicker({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<OlaMap | null>(null);
+  const onChangeRef = useRef(onChange);
+  const valueRef = useRef(value);
   const suppressNextSearchRef = useRef(false);
   const [loading, setLoading] = useState(Boolean(olaMapsKey));
   const [mapError, setMapError] = useState<string | null>(null);
@@ -99,6 +101,46 @@ export function DeliveryMapPicker({
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const resolvePin = useCallback(
+    async (pin: DeliveryPin, selectedPlaceId?: string) => {
+      try {
+        setResolving(true);
+        const url = new URL(`${apiBase}/maps/reverse-geocode`);
+        url.searchParams.set("latitude", String(pin.latitude));
+        url.searchParams.set("longitude", String(pin.longitude));
+        const response = await fetch(url, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+        });
+        const data = (await response.json()) as ResolvedDeliveryAddress & { error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Could not resolve this address");
+        const resolved = { ...data, placeId: selectedPlaceId || data.placeId };
+        suppressNextSearchRef.current = true;
+        setQuery(resolved.formattedAddress);
+        onAddressResolved?.(resolved);
+        setLocationError(null);
+      } catch (error) {
+        setLocationError(error instanceof Error ? error.message : "Could not resolve this address");
+      } finally {
+        setResolving(false);
+      }
+    },
+    [authToken, onAddressResolved],
+  );
+
+  const resolvePinRef = useRef(resolvePin);
+
+  useEffect(() => {
+    resolvePinRef.current = resolvePin;
+  }, [resolvePin]);
+
+  useEffect(() => {
     if (!olaMapsKey || !containerRef.current) return;
     let active = true;
     let loadTimer: number | undefined;
@@ -108,11 +150,11 @@ export function DeliveryMapPicker({
         setLoading(true);
         const { OlaMaps } = await import("olamaps-web-sdk");
         const olaMaps = new OlaMaps({ apiKey: olaMapsKey });
-        const initial = value ?? defaultCenter;
+        const initial = valueRef.current ?? defaultCenter;
         const options = {
           container: containerRef.current,
           center: [initial.longitude, initial.latitude],
-          zoom: value ? 16 : 12,
+          zoom: valueRef.current ? 16 : 12,
         };
         let fallbackActive = false;
         let map;
@@ -177,8 +219,8 @@ export function DeliveryMapPicker({
           };
           map.easeTo?.({ center: [pin.longitude, pin.latitude], zoom: 16 });
           setCenter(pin);
-          onChange(pin);
-          void resolvePin(pin);
+          onChangeRef.current(pin);
+          void resolvePinRef.current(pin);
         });
         setMapError(null);
       } catch (error) {
@@ -202,7 +244,7 @@ export function DeliveryMapPicker({
     if (!value || !mapRef.current) return;
     mapRef.current.easeTo?.({ center: [value.longitude, value.latitude], zoom: 16 });
     setCenter(value);
-  }, [value?.latitude, value?.longitude]);
+  }, [value]);
 
   useEffect(() => {
     const input = query.trim();
@@ -247,29 +289,6 @@ export function DeliveryMapPicker({
     };
   }, [authToken, center.latitude, center.longitude, query]);
 
-  const resolvePin = async (pin: DeliveryPin, selectedPlaceId?: string) => {
-    try {
-      setResolving(true);
-      const url = new URL(`${apiBase}/maps/reverse-geocode`);
-      url.searchParams.set("latitude", String(pin.latitude));
-      url.searchParams.set("longitude", String(pin.longitude));
-      const response = await fetch(url, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
-      });
-      const data = (await response.json()) as ResolvedDeliveryAddress & { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Could not resolve this address");
-      const resolved = { ...data, placeId: selectedPlaceId || data.placeId };
-      suppressNextSearchRef.current = true;
-      setQuery(resolved.formattedAddress);
-      onAddressResolved?.(resolved);
-      setLocationError(null);
-    } catch (error) {
-      setLocationError(error instanceof Error ? error.message : "Could not resolve this address");
-    } finally {
-      setResolving(false);
-    }
-  };
-
   const selectSuggestion = (suggestion: Suggestion) => {
     if (suggestion.latitude === null || suggestion.longitude === null) {
       setLocationError("This Ola Maps result does not include a selectable pin");
@@ -284,7 +303,7 @@ export function DeliveryMapPicker({
     setQuery(suggestion.description);
     setSuggestions([]);
     setCenter(pin);
-    onChange(pin);
+    onChangeRef.current(pin);
     mapRef.current?.easeTo?.({ center: [pin.longitude, pin.latitude], zoom: 16 });
     void resolvePin(pin, suggestion.placeId);
   };
@@ -299,7 +318,7 @@ export function DeliveryMapPicker({
         }
       : center;
     setCenter(pin);
-    onChange(pin);
+    onChangeRef.current(pin);
     void resolvePin(pin);
   };
 
@@ -318,7 +337,7 @@ export function DeliveryMapPicker({
           source: "browser_geolocation" as const,
         };
         setCenter(pin);
-        onChange(pin);
+        onChangeRef.current(pin);
         mapRef.current?.easeTo?.({ center: [pin.longitude, pin.latitude], zoom: 16 });
         void resolvePin(pin);
         setLocating(false);

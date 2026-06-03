@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
 import { useAuth } from "@/lib/auth";
+import { apiBase } from "@/lib/api-base";
 import { categories, formatINR } from "@/lib/catalog";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
 import {
@@ -38,7 +39,6 @@ import {
   X,
 } from "lucide-react";
 
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const categoryOptions = categories.map((category) => ({
   value: category.slug,
   label: category.name,
