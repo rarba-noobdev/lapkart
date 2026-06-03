@@ -216,7 +216,9 @@ export async function getShiprocketServiceability(input: {
     };
   }>(`/courier/serviceability/?${params.toString()}`);
   const recommendedId =
-    data.data?.recommended_courier_company_id ?? data.data?.shiprocket_recommended_courier_id ?? null;
+    data.data?.recommended_courier_company_id ??
+    data.data?.shiprocket_recommended_courier_id ??
+    null;
 
   const toDateOnly = (value: unknown) => {
     const date = new Date(String(value ?? ""));
@@ -240,7 +242,10 @@ export async function getShiprocketServiceability(input: {
       serviceType: "standard" as const,
     }))
     .filter((courier) => Number.isFinite(courier.courierCompanyId))
-    .sort((a, b) => Number(b.recommended) - Number(a.recommended) || a.etdHours - b.etdHours || a.rate - b.rate)
+    .sort(
+      (a, b) =>
+        Number(b.recommended) - Number(a.recommended) || a.etdHours - b.etdHours || a.rate - b.rate,
+    )
     .slice(0, 5);
 }
 
@@ -255,7 +260,10 @@ export async function getShiprocketQuickServiceability(input: {
   if (!/^[0-9]{6}$/.test(pickupPincode)) {
     throw new Error("LapKart dispatch pincode is not configured");
   }
-  if (!Number.isFinite(config.lapkartDispatchLatitude) || !Number.isFinite(config.lapkartDispatchLongitude)) {
+  if (
+    !Number.isFinite(config.lapkartDispatchLatitude) ||
+    !Number.isFinite(config.lapkartDispatchLongitude)
+  ) {
     throw new Error("LapKart dispatch coordinates are not configured");
   }
 
@@ -307,7 +315,12 @@ export async function getShiprocketDeliveryQuotes(input: {
   const standard = standardResult.status === "fulfilled" ? standardResult.value : [];
   const quick = quickResult.status === "fulfilled" ? quickResult.value : [];
 
-  if (!standard.length && !quick.length && standardResult.status === "rejected" && quickResult.status === "rejected") {
+  if (
+    !standard.length &&
+    !quick.length &&
+    standardResult.status === "rejected" &&
+    quickResult.status === "rejected"
+  ) {
     throw standardResult.reason;
   }
 
@@ -332,7 +345,9 @@ export function toShiprocketOrderPayload(input: {
 
   const pincode = String(order.shipping_pincode ?? "").trim();
   if (!/^[0-9]{6}$/.test(pincode)) {
-    throw new Error("Order needs a valid 6-digit shipping pincode before Shiprocket shipment creation");
+    throw new Error(
+      "Order needs a valid 6-digit shipping pincode before Shiprocket shipment creation",
+    );
   }
 
   const phone = String(order.shipping_phone ?? "").replace(/\D/g, "");
@@ -381,7 +396,11 @@ export function toShiprocketOrderPayload(input: {
       tax: 0,
       hsn: "",
     })),
-    payment_method: String(order.payment_method ?? "").toLowerCase().includes("cod") ? "COD" : "Prepaid",
+    payment_method: String(order.payment_method ?? "")
+      .toLowerCase()
+      .includes("cod")
+      ? "COD"
+      : "Prepaid",
     shipping_charges: Number(order.shipping_charge_estimate ?? 0),
     giftwrap_charges: 0,
     transaction_charges: 0,

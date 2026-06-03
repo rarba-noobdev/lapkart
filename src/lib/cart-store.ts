@@ -1,53 +1,112 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type CartItem = { id: string; qty: number };
-const KEY = "lapkart_cart_v1";
-const EMPTY_CART: CartItem[] = [];
+type CartSnapshot = { items: CartItem[]; hydrated: boolean };
 
-let items: CartItem[] = [];
+const KEY = "lapkart_cart_v1";
+const EMPTY_ITEMS: CartItem[] = [];
+const EMPTY_SNAPSHOT: CartSnapshot = { items: EMPTY_ITEMS, hydrated: false };
+
+let snapshot: CartSnapshot = EMPTY_SNAPSHOT;
 const listeners = new Set<() => void>();
 
-function load() {
-  if (typeof window === "undefined") return;
+function emitChange() {
+  listeners.forEach((listener) => listener());
+}
+
+function normalizeCartItems(value: unknown): CartItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const qty = Number(item.qty);
+    if (!id || !Number.isFinite(qty) || qty <= 0) return [];
+    return [{ id, qty: Math.max(1, Math.floor(qty)) }];
+  });
+}
+
+function readStoredItems(): CartItem[] {
+  if (typeof window === "undefined") return EMPTY_ITEMS;
   try {
-    const raw = localStorage.getItem(KEY);
-    items = raw ? JSON.parse(raw) : [];
+    const raw = window.localStorage.getItem(KEY);
+    return normalizeCartItems(raw ? JSON.parse(raw) : []);
   } catch {
-    items = [];
+    return [];
   }
 }
-load();
 
-function save() {
+function persist(nextItems: CartItem[]) {
+  snapshot = { items: nextItems, hydrated: true };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(KEY, JSON.stringify(nextItems));
+  }
+  emitChange();
+}
+
+function hydrateCart() {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(items));
-  listeners.forEach((l) => l());
+  const nextItems = readStoredItems();
+  const nextSnapshot = { items: nextItems, hydrated: true };
+  if (
+    snapshot.hydrated &&
+    snapshot.items.length === nextItems.length &&
+    snapshot.items.every(
+      (item, index) => item.id === nextItems[index]?.id && item.qty === nextItems[index]?.qty,
+    )
+  ) {
+    return;
+  }
+  snapshot = nextSnapshot;
+  emitChange();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+  return snapshot;
+}
+
+function getServerSnapshot() {
+  return EMPTY_SNAPSHOT;
 }
 
 export const cart = {
-  subscribe(l: () => void) {
-    listeners.add(l);
-    return () => listeners.delete(l);
-  },
-  snapshot: () => items,
+  subscribe,
+  snapshot: () => snapshot.items,
   add(id: string, qty = 1) {
-    const ex = items.find((i) => i.id === id);
-    if (ex) ex.qty += qty;
-    else items = [...items, { id, qty }];
-    save();
+    hydrateCart();
+    const normalizedId = id.trim();
+    const normalizedQty = Math.max(1, Math.floor(qty));
+    if (!normalizedId) return;
+    const existing = snapshot.items.find((item) => item.id === normalizedId);
+    const nextItems = existing
+      ? snapshot.items.map((item) =>
+          item.id === normalizedId ? { ...item, qty: item.qty + normalizedQty } : item,
+        )
+      : [...snapshot.items, { id: normalizedId, qty: normalizedQty }];
+    persist(nextItems);
   },
   remove(id: string) {
-    items = items.filter((i) => i.id !== id);
-    save();
+    hydrateCart();
+    persist(snapshot.items.filter((item) => item.id !== id));
   },
   setQty(id: string, qty: number) {
-    if (qty <= 0) return cart.remove(id);
-    items = items.map((i) => (i.id === id ? { ...i, qty } : i));
-    save();
+    hydrateCart();
+    const normalizedQty = Math.floor(qty);
+    if (normalizedQty <= 0) {
+      cart.remove(id);
+      return;
+    }
+    persist(
+      snapshot.items.map((item) => (item.id === id ? { ...item, qty: normalizedQty } : item)),
+    );
   },
   clear() {
-    items = [];
-    save();
+    hydrateCart();
+    persist([]);
   },
 };
 
@@ -56,12 +115,17 @@ export function useCart() {
 }
 
 export function useCartState() {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-  const snap = useSyncExternalStore(
-    cart.subscribe,
-    () => items,
-    () => EMPTY_CART,
-  );
-  return { items: hydrated ? snap : EMPTY_CART, isHydrated: hydrated };
+  const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
+  useEffect(() => {
+    hydrateCart();
+    if (typeof window === "undefined") return undefined;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === KEY || event.key === null) hydrateCart();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  return { items: state.items, isHydrated: state.hydrated };
 }

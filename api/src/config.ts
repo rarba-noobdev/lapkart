@@ -26,6 +26,7 @@ export const config = {
   shiprocketDefaultLengthCm: Number(process.env.SHIPROCKET_DEFAULT_LENGTH_CM ?? 20),
   shiprocketDefaultBreadthCm: Number(process.env.SHIPROCKET_DEFAULT_BREADTH_CM ?? 15),
   shiprocketDefaultHeightCm: Number(process.env.SHIPROCKET_DEFAULT_HEIGHT_CM ?? 5),
+  allowShiprocketWithTestPayments: process.env.ALLOW_SHIPROCKET_WITH_TEST_PAYMENTS === "true",
   lapkartDispatchPincode: process.env.LAPKART_DISPATCH_PINCODE ?? "",
   lapkartDispatchLatitude: Number(process.env.LAPKART_DISPATCH_LATITUDE ?? NaN),
   lapkartDispatchLongitude: Number(process.env.LAPKART_DISPATCH_LONGITUDE ?? NaN),

@@ -55,7 +55,7 @@ async function getOlaMapsAccessToken() {
     }),
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) as { access_token?: string; expires_in?: number } : {};
+  const data = text ? (JSON.parse(text) as { access_token?: string; expires_in?: number }) : {};
   if (!response.ok || !data.access_token) {
     throw new Error(`Ola Maps OAuth failed with HTTP ${response.status}`);
   }
@@ -105,9 +105,13 @@ function normalizePlace(place: OlaPlace) {
   const neighborhood = componentValue(components, "neighborhood");
   const sublocality = componentValue(components, "sublocality");
   const name = place.name ?? place.structured_formatting?.main_text ?? "";
-  const line1 = [name, street].filter((part, index, values) => part && values.indexOf(part) === index).join(", ");
+  const line1 = [name, street]
+    .filter((part, index, values) => part && values.indexOf(part) === index)
+    .join(", ");
   const line2 = [neighborhood, sublocality]
-    .filter((part, index, values) => part && !line1.includes(part) && values.indexOf(part) === index)
+    .filter(
+      (part, index, values) => part && !line1.includes(part) && values.indexOf(part) === index,
+    )
     .join(", ");
 
   return {
@@ -115,7 +119,9 @@ function normalizePlace(place: OlaPlace) {
     formattedAddress: place.formatted_address ?? place.description ?? "",
     line1,
     line2,
-    city: componentValue(components, "locality") || componentValue(components, "administrative_area_level_3"),
+    city:
+      componentValue(components, "locality") ||
+      componentValue(components, "administrative_area_level_3"),
     state: componentValue(components, "administrative_area_level_1"),
     pincode: componentValue(components, "postal_code"),
     latitude: typeof location?.lat === "number" ? location.lat : null,
@@ -123,7 +129,10 @@ function normalizePlace(place: OlaPlace) {
   };
 }
 
-export async function autocompleteOlaPlaces(input: string, location?: { latitude: number; longitude: number }) {
+export async function autocompleteOlaPlaces(
+  input: string,
+  location?: { latitude: number; longitude: number },
+) {
   const data = await olaMapsRequest<{ predictions?: OlaPlace[] }>("/places/v1/autocomplete", {
     input,
     ...(location ? { location: `${location.latitude},${location.longitude}` } : {}),
@@ -153,7 +162,10 @@ export async function reverseGeocodeOlaPlace(latitude: number, longitude: number
 }
 
 export async function getOlaDeliveryRoute(destination: { latitude: number; longitude: number }) {
-  if (!Number.isFinite(config.lapkartDispatchLatitude) || !Number.isFinite(config.lapkartDispatchLongitude)) {
+  if (
+    !Number.isFinite(config.lapkartDispatchLatitude) ||
+    !Number.isFinite(config.lapkartDispatchLongitude)
+  ) {
     throw new Error("LapKart dispatch coordinates are not configured");
   }
 
@@ -166,12 +178,16 @@ export async function getOlaDeliveryRoute(destination: { latitude: number; longi
         readable_duration?: string;
       }>;
     }>;
-  }>("/routing/v1/directions/basic", {
-    origin: `${config.lapkartDispatchLatitude},${config.lapkartDispatchLongitude}`,
-    destination: `${destination.latitude},${destination.longitude}`,
-    steps: "false",
-    overview: "false",
-  }, "POST");
+  }>(
+    "/routing/v1/directions/basic",
+    {
+      origin: `${config.lapkartDispatchLatitude},${config.lapkartDispatchLongitude}`,
+      destination: `${destination.latitude},${destination.longitude}`,
+      steps: "false",
+      overview: "false",
+    },
+    "POST",
+  );
   const leg = data.routes?.[0]?.legs?.[0];
   if (!leg || typeof leg.distance !== "number" || typeof leg.duration !== "number") {
     throw new Error("Ola Maps did not return a delivery route");

@@ -1,4 +1,5 @@
 import cors from "cors";
+import crypto from "node:crypto";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -26,41 +27,30 @@ import { supabaseAdmin } from "./supabase.js";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 180 });
+const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 24 });
+const mapLimiter = rateLimit({ windowMs: 60_000, limit: 48 });
+const uploadLimiter = rateLimit({ windowMs: 60_000, limit: 12 });
+const webhookLimiter = rateLimit({ windowMs: 60_000, limit: 120 });
 
 app.use(helmet());
 app.use(cors({ origin: config.webOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
-app.use(rateLimit({ windowMs: 60_000, limit: 180 }));
+app.use(apiLimiter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "lapkart-api" });
 });
 
 app.post("/fraud/score", async (req, res) => {
-  const input = z.object({
-    failedPayments: z.number().optional(),
-    orderValue: z.number().optional(),
-    accountAgeDays: z.number().optional(),
-  }).parse(req.body);
+  const input = z
+    .object({
+      failedPayments: z.number().optional(),
+      orderValue: z.number().optional(),
+      accountAgeDays: z.number().optional(),
+    })
+    .parse(req.body);
   res.json(scoreFraud(input));
-});
-
-const createOrderBodySchema = z.object({
-  amount: z.number().int().min(100),
-  currency: z.string().trim().min(3).max(3).default("INR"),
-  receipt: z.string().trim().min(3),
-});
-
-const verifyPaymentBodySchema = z.object({
-  order_id: z.string().trim().min(1).optional(),
-  payment_id: z.string().trim().min(1).optional(),
-  razorpay_signature: z.string().trim().min(1).optional(),
-  razorpay_order_id: z.string().trim().min(1).optional(),
-  razorpay_payment_id: z.string().trim().min(1).optional(),
-  orderId: z.string().trim().min(1).optional(),
-  paymentId: z.string().trim().min(1).optional(),
-  signature: z.string().trim().min(1).optional(),
-  orderRecordId: z.string().uuid().optional(),
 });
 
 const createShiprocketShipmentSchema = z.object({
@@ -89,10 +79,113 @@ const labelsSchema = z.object({
   shipmentIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
+const productIdParamSchema = z.object({
+  productId: z.string().uuid(),
+});
+
+const userIdParamSchema = z.object({
+  userId: z.string().uuid(),
+});
+
+const orderIdParamSchema = z.object({
+  orderId: z.string().uuid(),
+});
+
+const nullableTrimmedString = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      return value.length > 0 ? value : null;
+    });
+
+const productCategorySlugs = [
+  "ram",
+  "ssd",
+  "motherboards",
+  "batteries",
+  "displays",
+  "keyboards",
+  "processors",
+  "cooling",
+  "chargers",
+  "wifi_cards",
+  "dc_jacks",
+  "bottom_cases",
+  "palmrests",
+  "hinges",
+  "speakers",
+  "hdd_boards",
+] as const;
+
+const productUpsertSchema = z.object({
+  title: z.string().trim().min(4).max(200),
+  brand: z.string().trim().min(2).max(80),
+  category: z.enum(productCategorySlugs),
+  description: nullableTrimmedString(2000),
+  image: z.string().trim().min(1).max(1200),
+  images: z.array(z.string().trim().min(1).max(1200)).max(12).optional().default([]),
+  price: z.coerce.number().nonnegative().max(10_000_000),
+  mrp: z.coerce.number().nonnegative().max(10_000_000),
+  stock: z.coerce.number().int().min(0).max(1_000_000),
+  status: z.enum(["active", "draft", "archived"]).optional().default("active"),
+  sku: nullableTrimmedString(120),
+  sourceUrl: nullableTrimmedString(1200),
+  compatibility: nullableTrimmedString(500),
+  warranty: nullableTrimmedString(120),
+  highlights: z.array(z.string().trim().min(1).max(160)).max(12).optional().default([]),
+  searchKeywords: z.array(z.string().trim().min(1).max(80)).max(24).optional().default([]),
+  weightKg: z.coerce.number().positive().max(500).nullable().optional(),
+  lengthCm: z.coerce.number().positive().max(500).nullable().optional(),
+  breadthCm: z.coerce.number().positive().max(500).nullable().optional(),
+  heightCm: z.coerce.number().positive().max(500).nullable().optional(),
+});
+
+const productUpdateSchema = productUpsertSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "At least one product field must be provided");
+
+const adminUserUpdateSchema = z
+  .object({
+    role: z.enum(["admin", "user"]).optional(),
+    fullName: nullableTrimmedString(160),
+    phone: nullableTrimmedString(30),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one user field must be provided");
+
+const adminOrderUpdateSchema = z
+  .object({
+    status: z.string().trim().min(2).max(60).optional(),
+    paymentStatus: z.string().trim().min(2).max(60).optional(),
+    shippingServiceType: z.enum(["standard", "quick"]).optional(),
+    shippingName: nullableTrimmedString(120),
+    shippingPhone: nullableTrimmedString(30),
+    shippingEmail: nullableTrimmedString(160),
+    shippingLine1: nullableTrimmedString(200),
+    shippingLine2: nullableTrimmedString(200),
+    shippingCity: nullableTrimmedString(80),
+    shippingState: nullableTrimmedString(80),
+    shippingPincode: z
+      .string()
+      .trim()
+      .regex(/^[0-9]{6}$/)
+      .optional()
+      .transform((value) => value ?? undefined),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one order field must be provided");
+
 const latitudeSchema = z.coerce.number().min(-90).max(90);
 const longitudeSchema = z.coerce.number().min(-180).max(180);
 const autocompleteQuerySchema = z.object({
-  input: z.string().trim().min(3).max(500).transform((value) => value.slice(0, 160)),
+  input: z
+    .string()
+    .trim()
+    .min(3)
+    .max(500)
+    .transform((value) => value.slice(0, 160)),
   latitude: latitudeSchema.optional(),
   longitude: longitudeSchema.optional(),
 });
@@ -101,15 +194,149 @@ const reverseGeocodeQuerySchema = z.object({
   longitude: longitudeSchema,
 });
 const deliveryEstimateQuerySchema = reverseGeocodeQuerySchema.extend({
-  pincode: z.string().trim().regex(/^[0-9]{6}$/),
+  pincode: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{6}$/),
   weightKg: z.coerce.number().positive().max(100).optional(),
   declaredValue: z.coerce.number().nonnegative().max(10_000_000).optional(),
 });
 
+const checkoutItemSchema = z.object({
+  id: z.string().uuid(),
+  qty: z.number().int().min(1).max(20),
+});
+
+const checkoutAddressSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  phone: z
+    .string()
+    .trim()
+    .min(10)
+    .max(30)
+    .refine(
+      (value) => value.replace(/\D/g, "").length >= 10,
+      "A 10 digit phone number is required",
+    ),
+  email: z.string().trim().max(160).optional().default(""),
+  line1: z.string().trim().min(6).max(200),
+  line2: z.string().trim().max(200).optional().default(""),
+  city: z.string().trim().min(2).max(80),
+  state: z.string().trim().min(2).max(80),
+  pincode: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{6}$/),
+  latitude: latitudeSchema,
+  longitude: longitudeSchema,
+  locationSource: z.string().trim().max(60).nullable().optional(),
+  olaPlaceId: z.string().trim().max(200).nullable().optional(),
+  formattedAddress: z.string().trim().max(500).optional().default(""),
+});
+
+const checkoutCreatePaymentOrderSchema = z.object({
+  items: z.array(checkoutItemSchema).min(1).max(50),
+  address: checkoutAddressSchema,
+  selectedQuoteId: z.string().trim().min(1).max(120).nullable().optional(),
+  saveAddress: z.boolean().optional().default(true),
+});
+
+const checkoutCompletePaymentSchema = z.object({
+  razorpay_order_id: z.string().trim().min(1),
+  razorpay_payment_id: z.string().trim().min(1),
+  razorpay_signature: z.string().trim().min(1),
+});
+
+type AuthenticatedUser = {
+  id: string;
+  email: string | null;
+};
+
+type AuthenticatedRequest = express.Request & {
+  authUser?: AuthenticatedUser;
+};
+
+type CheckoutItem = z.infer<typeof checkoutItemSchema>;
+type CheckoutAddress = z.infer<typeof checkoutAddressSchema>;
+type CourierQuote = Awaited<ReturnType<typeof getShiprocketDeliveryQuotes>>[number];
+
+type CheckoutProductRow = {
+  id: string;
+  title: string;
+  brand: string;
+  image: string;
+  images: string[] | null;
+  price: number | string;
+  stock: number | null;
+  status: string | null;
+  weight_kg: number | string | null;
+};
+
+type CheckoutOrderItem = {
+  productId: string;
+  title: string;
+  image: string;
+  brand: string;
+  price: number;
+  qty: number;
+};
+
+type CheckoutSummary = {
+  items: CheckoutOrderItem[];
+  subtotal: number;
+  shipping: number;
+  total: number;
+  amountPaise: number;
+  deliveryEstimate: {
+    dispatch: {
+      pickupLocation: string;
+      pincode: string;
+    };
+    route: Awaited<ReturnType<typeof getOlaDeliveryRoute>>;
+    couriers: CourierQuote[];
+    generatedAt: string;
+  };
+  selectedCourier: CourierQuote;
+};
+
+type PendingCheckout = CheckoutSummary & {
+  userId: string;
+  userEmail: string | null;
+  address: CheckoutAddress;
+  saveAddress: boolean;
+  createdAt: number;
+};
+
+type OrderItemWithSku = {
+  id: string;
+  order_id: string;
+  title: string;
+  image: string;
+  brand: string;
+  qty: number;
+  price?: number | null;
+  product_id?: string | null;
+  sku: string | null;
+};
+
+type LoadedCheckoutSession = {
+  checkout: PendingCheckout;
+  orderId: string | null;
+  status: string;
+};
+
+const checkoutSessions = new Map<string, PendingCheckout>();
+const checkoutSessionTtlMs = 20 * 60_000;
+const allowedImageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
 function isRazorpayAuthError(error: unknown) {
   if (!error || typeof error !== "object") return false;
-  const statusCode = "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : undefined;
-  const httpStatusCode = "httpStatusCode" in error ? Number((error as { httpStatusCode?: unknown }).httpStatusCode) : undefined;
+  const statusCode =
+    "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : undefined;
+  const httpStatusCode =
+    "httpStatusCode" in error
+      ? Number((error as { httpStatusCode?: unknown }).httpStatusCode)
+      : undefined;
   return statusCode === 401 || httpStatusCode === 401;
 }
 
@@ -125,13 +352,14 @@ function normalizeShipmentStatus(status: string) {
   if (value.includes("damage")) return "damaged";
   if (value.includes("pickup")) return "pickup_scheduled";
   if (value.includes("shipped")) return "shipped";
-  if (value.includes("transit") || value.includes("manifest") || value.includes("assigned")) return "in_transit";
+  if (value.includes("transit") || value.includes("manifest") || value.includes("assigned"))
+    return "in_transit";
   return "in_transit";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -148,7 +376,9 @@ function firstString(...values: unknown[]) {
 
 function getAwbData(response: Record<string, unknown>) {
   const nestedResponse = asRecord(response.response);
-  return Object.keys(asRecord(nestedResponse.data)).length ? asRecord(nestedResponse.data) : nestedResponse;
+  return Object.keys(asRecord(nestedResponse.data)).length
+    ? asRecord(nestedResponse.data)
+    : nestedResponse;
 }
 
 function getPickupData(response: Record<string, unknown>) {
@@ -172,6 +402,43 @@ function trackingActivities(payload: unknown) {
   });
 }
 
+function normalizeTrackingActivity(activity: Record<string, unknown>) {
+  return {
+    date: firstString(activity.date, activity.status_time, activity.received_at),
+    status: firstString(activity.status),
+    activity: firstString(activity.activity, activity.message, activity.status),
+    location: firstString(activity.location),
+  };
+}
+
+function groupShipmentEvents(
+  events: Array<{
+    shipment_id: string | null;
+    status: string | null;
+    status_time: string | null;
+    location: string | null;
+    message: string | null;
+    received_at: string | null;
+  }>,
+) {
+  const grouped = new Map<string, ReturnType<typeof normalizeTrackingActivity>[]>();
+  for (const event of events) {
+    if (!event.shipment_id) continue;
+    const items = grouped.get(event.shipment_id) ?? [];
+    items.push(
+      normalizeTrackingActivity({
+        date: event.status_time,
+        status: event.status,
+        activity: event.message,
+        location: event.location,
+        received_at: event.received_at,
+      }),
+    );
+    grouped.set(event.shipment_id, items);
+  }
+  return grouped;
+}
+
 async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
   if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
   const shiprocketShipmentId = Number(shipment.shiprocket_shipment_id);
@@ -181,7 +448,9 @@ async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
 
   const response = await getShiprocketTracking(shiprocketShipmentId);
   const trackingData = asRecord(response.tracking_data);
-  const shipmentTrack = Array.isArray(trackingData.shipment_track) ? asRecord(trackingData.shipment_track[0]) : {};
+  const shipmentTrack = Array.isArray(trackingData.shipment_track)
+    ? asRecord(trackingData.shipment_track[0])
+    : {};
   const currentStatus = firstString(shipmentTrack.current_status, trackingData.current_status);
   const awbCode = firstString(shipmentTrack.awb_code, shipment.awb_code);
   const trackingUrl = firstString(trackingData.track_url, shipment.tracking_url);
@@ -209,7 +478,10 @@ async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
 async function syncShiprocketPickupLocations(addresses: ShiprocketPickupAddress[]) {
   if (!supabaseAdmin || !addresses.length) return;
 
-  const primaryIndex = Math.max(0, addresses.findIndex((address) => Number(address.is_primary_location) === 1));
+  const primaryIndex = Math.max(
+    0,
+    addresses.findIndex((address) => Number(address.is_primary_location) === 1),
+  );
   const rows = addresses
     .filter((address) => String(address.pickup_location ?? "").trim())
     .map((address, index) => ({
@@ -245,7 +517,48 @@ async function syncShiprocketPickupLocations(addresses: ShiprocketPickupAddress[
   if (error) throw error;
 }
 
-function toFulfillmentShipment(shipment: Record<string, unknown> | undefined) {
+async function getOrderItemsWithSku(orderIds: string[]) {
+  const adminDb = getSupabaseAdmin();
+  if (orderIds.length === 0) return [] as OrderItemWithSku[];
+
+  const { data: items, error: itemsError } = await adminDb
+    .from("order_items")
+    .select("id,order_id,title,image,brand,qty,price,product_id")
+    .in("order_id", orderIds);
+  if (itemsError) throw itemsError;
+
+  const productIds = [
+    ...new Set(
+      (items ?? [])
+        .map((item) => item.product_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const { data: products, error: productsError } = productIds.length
+    ? await adminDb.from("products").select("id,sku").in("id", productIds)
+    : { data: [], error: null };
+  if (productsError) throw productsError;
+
+  const skuByProductId = new Map(
+    (products ?? []).map((product) => [product.id, product.sku ?? null]),
+  );
+  return ((items ?? []) as Array<Record<string, unknown>>).map((item) => ({
+    id: String(item.id ?? crypto.randomUUID()),
+    order_id: String(item.order_id ?? ""),
+    title: String(item.title ?? "Item"),
+    image: String(item.image ?? ""),
+    brand: String(item.brand ?? ""),
+    qty: Number(item.qty ?? 0),
+    price: item.price === undefined || item.price === null ? null : Number(item.price),
+    product_id: firstString(item.product_id),
+    sku: firstString(skuByProductId.get(String(item.product_id ?? ""))),
+  }));
+}
+
+function toFulfillmentShipment(
+  shipment: Record<string, unknown> | undefined,
+  shipmentEvents?: ReturnType<typeof normalizeTrackingActivity>[],
+) {
   if (!shipment) return null;
   return {
     id: shipment.id,
@@ -259,11 +572,81 @@ function toFulfillmentShipment(shipment: Record<string, unknown> | undefined) {
     trackingUrl: shipment.tracking_url,
     manifestUrl: shipment.manifest_url,
     labelUrl: shipment.label_url,
-    trackingActivities: trackingActivities(shipment.raw_payload),
+    trackingActivities:
+      shipmentEvents && shipmentEvents.length > 0
+        ? shipmentEvents.slice(0, 8)
+        : trackingActivities(shipment.raw_payload),
   };
 }
 
-async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+class HttpError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function getAuthenticatedUser(req: express.Request) {
+  const user = (req as AuthenticatedRequest).authUser;
+  if (!user) throw new HttpError(401, "Authorization bearer token is required");
+  return user;
+}
+
+function getSupabaseAdmin() {
+  if (!supabaseAdmin) throw new HttpError(503, "Supabase service credentials are not configured");
+  return supabaseAdmin;
+}
+
+function requireLivePaymentEnvironment() {
+  if (config.razorpayKeyId.startsWith("rzp_test_") && !config.allowShiprocketWithTestPayments) {
+    throw new HttpError(
+      409,
+      "Shiprocket fulfillment is blocked while Razorpay is configured in test mode. Switch to live keys or explicitly allow test fulfillment in backend env.",
+    );
+  }
+}
+
+async function requireUser(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  try {
+    if (!supabaseAdmin) {
+      res.status(503).json({ error: "Supabase service credentials are not configured" });
+      return;
+    }
+
+    const authHeader = req.header("authorization") ?? "";
+    const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1];
+    if (!token) {
+      res.status(401).json({ error: "Authorization bearer token is required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data.user) {
+      res.status(401).json({ error: "Invalid authorization token" });
+      return;
+    }
+
+    (req as AuthenticatedRequest).authUser = {
+      id: data.user.id,
+      email: data.user.email ?? null,
+    };
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function requireAdmin(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
   try {
     if (!supabaseAdmin) {
       res.status(503).json({ error: "Supabase service credentials are not configured" });
@@ -295,17 +678,321 @@ async function requireAdmin(req: express.Request, res: express.Response, next: e
       return;
     }
 
+    (req as AuthenticatedRequest).authUser = {
+      id: data.user.id,
+      email: data.user.email ?? null,
+    };
     next();
   } catch (error) {
     next(error);
   }
 }
 
-app.post("/api/create-order", async (req, res) => {
+function pruneCheckoutSessions() {
+  const now = Date.now();
+  for (const [orderId, checkout] of checkoutSessions.entries()) {
+    if (now - checkout.createdAt > checkoutSessionTtlMs) checkoutSessions.delete(orderId);
+  }
+}
+
+async function storeCheckoutSession(razorpayOrderId: string, checkout: PendingCheckout) {
+  checkoutSessions.set(razorpayOrderId, checkout);
+  if (!supabaseAdmin) return;
+
+  const { error } = await supabaseAdmin.from("checkout_sessions").insert({
+    user_id: checkout.userId,
+    razorpay_order_id: razorpayOrderId,
+    amount_paise: checkout.amountPaise,
+    currency: "INR",
+    subtotal: checkout.subtotal,
+    shipping: checkout.shipping,
+    total: checkout.total,
+    items: checkout.items,
+    address: checkout.address,
+    delivery_estimate: checkout.deliveryEstimate,
+    selected_courier: checkout.selectedCourier,
+    save_address: checkout.saveAddress,
+    status: "pending",
+    expires_at: new Date(checkout.createdAt + checkoutSessionTtlMs).toISOString(),
+  });
+  if (error) {
+    console.warn("Could not persist checkout session; using memory fallback", error.message);
+  }
+}
+
+async function loadCheckoutSession(razorpayOrderId: string): Promise<LoadedCheckoutSession | null> {
+  pruneCheckoutSessions();
+  const memorySession = checkoutSessions.get(razorpayOrderId);
+  if (memorySession) {
+    return { checkout: memorySession, orderId: null, status: "pending" };
+  }
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("checkout_sessions")
+    .select("*")
+    .eq("razorpay_order_id", razorpayOrderId)
+    .maybeSingle();
+  if (error) {
+    console.warn("Could not load checkout session", error.message);
+    return null;
+  }
+  if (!data) return null;
+
+  const status = String(data.status ?? "pending");
+  const orderId = typeof data.order_id === "string" ? data.order_id : null;
+  const expiresAt = new Date(String(data.expires_at ?? "")).getTime();
+  if (status !== "paid" && Number.isFinite(expiresAt) && expiresAt < Date.now()) {
+    await supabaseAdmin
+      .from("checkout_sessions")
+      .update({ status: "expired", updated_at: new Date().toISOString() })
+      .eq("razorpay_order_id", razorpayOrderId);
+    return null;
+  }
+
+  return {
+    checkout: {
+      userId: String(data.user_id),
+      userEmail: null,
+      items: data.items as CheckoutOrderItem[],
+      subtotal: Number(data.subtotal),
+      shipping: Number(data.shipping),
+      total: Number(data.total),
+      amountPaise: Number(data.amount_paise),
+      deliveryEstimate: data.delivery_estimate as PendingCheckout["deliveryEstimate"],
+      selectedCourier: data.selected_courier as CourierQuote,
+      address: data.address as CheckoutAddress,
+      saveAddress: Boolean(data.save_address),
+      createdAt: new Date(String(data.created_at)).getTime(),
+    },
+    orderId,
+    status,
+  };
+}
+
+async function markCheckoutSessionProcessing(razorpayOrderId: string) {
+  if (!supabaseAdmin) return true;
+  const { data, error } = await supabaseAdmin
+    .from("checkout_sessions")
+    .update({ status: "processing", updated_at: new Date().toISOString() })
+    .eq("razorpay_order_id", razorpayOrderId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.warn("Could not mark checkout session processing", error.message);
+    return true;
+  }
+  return Boolean(data);
+}
+
+async function markCheckoutSessionPaid(razorpayOrderId: string, orderId: string) {
+  checkoutSessions.delete(razorpayOrderId);
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin
+    .from("checkout_sessions")
+    .update({ status: "paid", order_id: orderId, updated_at: new Date().toISOString() })
+    .eq("razorpay_order_id", razorpayOrderId);
+  if (error) console.warn("Could not mark checkout session paid", error.message);
+}
+
+function assertUploadIsSafeImage(file: Express.Multer.File) {
+  if (!allowedImageMimeTypes.has(file.mimetype)) {
+    throw new HttpError(400, "Only JPEG, PNG, WebP, or AVIF images are allowed");
+  }
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function normalizeCheckoutItems(items: CheckoutItem[]) {
+  const quantities = new Map<string, number>();
+  for (const item of items) {
+    const qty = (quantities.get(item.id) ?? 0) + item.qty;
+    if (qty > 20) throw new HttpError(400, "A single product cannot exceed 20 units per checkout");
+    quantities.set(item.id, qty);
+  }
+  return [...quantities.entries()].map(([id, qty]) => ({ id, qty }));
+}
+
+function phoneDigits(phone: string) {
+  const value = phone.replace(/\D/g, "").slice(-10);
+  if (value.length !== 10) throw new HttpError(400, "A valid 10 digit phone number is required");
+  return value;
+}
+
+function getProductImage(product: CheckoutProductRow) {
+  return product.images?.[0] ?? product.image;
+}
+
+function buildShippingAddress(address: CheckoutAddress) {
+  return [
+    address.line1,
+    address.line2,
+    `${address.city}, ${address.state} ${address.pincode}`,
+    "India",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function buildCheckoutSummary(input: z.infer<typeof checkoutCreatePaymentOrderSchema>) {
+  if (!supabaseAdmin) throw new HttpError(503, "Supabase service credentials are not configured");
+
+  const items = normalizeCheckoutItems(input.items);
+  const productIds = items.map((item) => item.id);
+  const { data: products, error } = await supabaseAdmin
+    .from("products")
+    .select("id,title,brand,image,images,price,stock,status,weight_kg")
+    .in("id", productIds);
+  if (error) throw error;
+
+  const productRows = (products as CheckoutProductRow[] | null) ?? [];
+  const productsById = new Map(productRows.map((product) => [product.id, product]));
+  if (productsById.size !== productIds.length) {
+    throw new HttpError(400, "One or more cart items are no longer available");
+  }
+
+  const orderItems: CheckoutOrderItem[] = items.map((item) => {
+    const product = productsById.get(item.id);
+    if (!product) throw new HttpError(400, "One or more cart items are no longer available");
+    if (product.status && product.status !== "active") {
+      throw new HttpError(400, `${product.title} is not available for checkout`);
+    }
+    if (typeof product.stock === "number" && product.stock < item.qty) {
+      throw new HttpError(400, `${product.title} only has ${product.stock} unit(s) in stock`);
+    }
+    const price = roundMoney(Number(product.price));
+    if (!Number.isFinite(price) || price < 0) {
+      throw new HttpError(400, `${product.title} has an invalid price`);
+    }
+    return {
+      productId: product.id,
+      title: product.title,
+      image: getProductImage(product),
+      brand: product.brand,
+      price,
+      qty: item.qty,
+    };
+  });
+
+  const subtotal = roundMoney(orderItems.reduce((sum, item) => sum + item.price * item.qty, 0));
+  const weightKg = Math.max(
+    config.shiprocketDefaultWeightKg,
+    roundMoney(
+      items.reduce((sum, item) => {
+        const product = productsById.get(item.id);
+        const weight = Number(product?.weight_kg ?? config.shiprocketDefaultWeightKg);
+        return (
+          sum +
+          (Number.isFinite(weight) && weight > 0 ? weight : config.shiprocketDefaultWeightKg) *
+            item.qty
+        );
+      }, 0),
+    ),
+  );
+
+  const [route, couriers] = await Promise.all([
+    getOlaDeliveryRoute({
+      latitude: input.address.latitude,
+      longitude: input.address.longitude,
+    }),
+    getShiprocketDeliveryQuotes({
+      deliveryPincode: input.address.pincode,
+      deliveryLatitude: input.address.latitude,
+      deliveryLongitude: input.address.longitude,
+      weightKg,
+      declaredValue: subtotal,
+    }),
+  ]);
+
+  if (!couriers.length) {
+    throw new HttpError(400, "No courier currently services this delivery location");
+  }
+  const fallbackCourier = couriers[0];
+  if (!fallbackCourier) {
+    throw new HttpError(400, "No courier currently services this delivery location");
+  }
+  const selectedCourier =
+    couriers.find((courier) => courier.quoteId === input.selectedQuoteId) ??
+    couriers.find((courier) => courier.recommended) ??
+    fallbackCourier;
+  const selectedRate = Number(selectedCourier.rate);
+  if (!Number.isFinite(selectedRate) || selectedRate < 0) {
+    throw new HttpError(400, "Selected courier returned an invalid shipping rate");
+  }
+
+  const shipping = subtotal > 999 ? 0 : roundMoney(selectedRate);
+  const total = roundMoney(subtotal + shipping);
+  const amountPaise = Math.round(total * 100);
+
+  return {
+    items: orderItems,
+    subtotal,
+    shipping,
+    total,
+    amountPaise,
+    deliveryEstimate: {
+      dispatch: {
+        pickupLocation: config.shiprocketPickupLocation,
+        pincode: config.lapkartDispatchPincode,
+      },
+      route,
+      couriers,
+      generatedAt: new Date().toISOString(),
+    },
+    selectedCourier,
+  } satisfies CheckoutSummary;
+}
+
+app.post("/api/create-order", paymentLimiter, (_req, res) => {
+  res
+    .status(410)
+    .json({ error: "Use /checkout/create-payment-order so the server can verify cart pricing" });
+});
+
+app.post("/payments/razorpay/order", paymentLimiter, (_req, res) => {
+  res
+    .status(410)
+    .json({ error: "Use /checkout/create-payment-order so the server can verify cart pricing" });
+});
+
+app.post("/api/verify-payment", paymentLimiter, (_req, res) => {
+  res
+    .status(410)
+    .json({ error: "Use /checkout/complete-payment so the server can create the paid order" });
+});
+
+app.post("/payments/razorpay/verify", paymentLimiter, (_req, res) => {
+  res
+    .status(410)
+    .json({ error: "Use /checkout/complete-payment so the server can create the paid order" });
+});
+
+app.post("/checkout/create-payment-order", paymentLimiter, requireUser, async (req, res, next) => {
   try {
-    const input = createOrderBodySchema.parse(req.body);
-    const order = await createRazorpayOrder(input.amount, input.receipt, input.currency);
-    res.json(order);
+    const user = getAuthenticatedUser(req);
+    const input = checkoutCreatePaymentOrderSchema.parse(req.body);
+    pruneCheckoutSessions();
+
+    const summary = await buildCheckoutSummary(input);
+    const razorpayOrder = await createRazorpayOrder(
+      summary.amountPaise,
+      `lk_${Date.now()}_${user.id.slice(0, 8)}`,
+      "INR",
+    );
+
+    await storeCheckoutSession(razorpayOrder.order_id, {
+      ...summary,
+      userId: user.id,
+      userEmail: user.email,
+      address: input.address,
+      saveAddress: input.saveAddress,
+      createdAt: Date.now(),
+    });
+
+    res.json({ razorpayOrder, summary });
   } catch (error) {
     if (isRazorpayAuthError(error)) {
       res.status(401).json({ error: "Razorpay authentication failed" });
@@ -315,119 +1002,159 @@ app.post("/api/create-order", async (req, res) => {
       res.status(503).json({ error: error.message });
       return;
     }
-    res.status(500).json({ error: error instanceof Error ? error.message : "Could not create Razorpay order" });
+    next(error);
   }
 });
 
-app.post("/payments/razorpay/order", async (req, res) => {
+app.post("/checkout/complete-payment", paymentLimiter, requireUser, async (req, res, next) => {
   try {
-    const input = createOrderBodySchema.parse({
-      amount: req.body.amount ?? req.body.amountPaise,
-      currency: req.body.currency,
-      receipt: req.body.receipt,
-    });
-    const order = await createRazorpayOrder(input.amount, input.receipt, input.currency);
-    res.json(order);
-  } catch (error) {
-    if (isRazorpayAuthError(error)) {
-      res.status(401).json({ error: "Razorpay authentication failed" });
+    if (!supabaseAdmin) throw new HttpError(503, "Supabase service credentials are not configured");
+    const user = getAuthenticatedUser(req);
+    const input = checkoutCompletePaymentSchema.parse(req.body);
+    const loadedSession = await loadCheckoutSession(input.razorpay_order_id);
+    if (!loadedSession) {
+      throw new HttpError(409, "Checkout session expired. Please create a new payment order.");
+    }
+    if (loadedSession.orderId && loadedSession.status === "paid") {
+      res.json({ verified: true, orderId: loadedSession.orderId });
       return;
     }
-    if (error instanceof Error && error.message === "Razorpay credentials are not configured") {
-      res.status(503).json({ error: error.message });
-      return;
+    if (loadedSession.status !== "pending") {
+      throw new HttpError(409, "Checkout session is already being processed");
     }
-    res.status(500).json({ error: error instanceof Error ? error.message : "Could not create Razorpay order" });
-  }
-});
-
-app.post("/api/verify-payment", async (req, res) => {
-  try {
-    const input = verifyPaymentBodySchema.parse(req.body);
-    const orderId = input.order_id ?? input.razorpay_order_id ?? input.orderId;
-    const paymentId = input.payment_id ?? input.razorpay_payment_id ?? input.paymentId;
-    const signature = input.razorpay_signature ?? input.signature;
-
-    if (!orderId || !paymentId || !signature) {
-      res.status(400).json({ error: "order_id, payment_id, and razorpay_signature are required" });
-      return;
+    const checkout = loadedSession.checkout;
+    if (checkout.userId !== user.id) {
+      throw new HttpError(403, "Checkout session belongs to another user");
     }
 
     const verified = verifyRazorpaySignature({
-      orderId,
-      paymentId,
-      signature,
+      orderId: input.razorpay_order_id,
+      paymentId: input.razorpay_payment_id,
+      signature: input.razorpay_signature,
     });
-
-    if (!verified) {
-      res.status(400).json({ error: "Signature verification failed", verified: false });
+    if (!verified) throw new HttpError(400, "Razorpay signature verification failed");
+    const { data: existingPayment, error: existingPaymentError } = await supabaseAdmin
+      .from("payments")
+      .select("order_id")
+      .eq("provider_order_id", input.razorpay_order_id)
+      .maybeSingle();
+    if (existingPaymentError) throw existingPaymentError;
+    if (existingPayment?.order_id) {
+      await markCheckoutSessionPaid(input.razorpay_order_id, existingPayment.order_id);
+      res.json({ verified: true, orderId: existingPayment.order_id });
       return;
     }
-
-    if (input.orderRecordId && supabaseAdmin) {
-      await supabaseAdmin.from("payments").insert({
-        order_id: input.orderRecordId,
-        provider: "razorpay",
-        provider_payment_id: paymentId,
-        provider_order_id: orderId,
-        status: "paid",
-      });
+    const locked = await markCheckoutSessionProcessing(input.razorpay_order_id);
+    if (!locked) {
+      throw new HttpError(409, "Checkout session is already being processed");
     }
 
-    res.json({ verified: true });
+    const orderId = crypto.randomUUID();
+    const address = checkout.address;
+    const phone = phoneDigits(address.phone);
+    const shippingAddress = buildShippingAddress(address);
+    const tracking = [
+      {
+        label: "Order placed",
+        at: new Date().toISOString(),
+        razorpay_order_id: input.razorpay_order_id,
+        razorpay_payment_id: input.razorpay_payment_id,
+        verified_by: "server",
+      },
+    ];
+
+    const { data: completedOrderId, error: completeError } = await supabaseAdmin.rpc(
+      "complete_checkout_payment",
+      {
+        p_order_id: orderId,
+        p_user_id: user.id,
+        p_order_payload: {
+          status: "confirmed",
+          payment_status: "paid",
+          payment_method: "razorpay",
+          subtotal: checkout.subtotal,
+          shipping: checkout.shipping,
+          total: checkout.total,
+          shipping_name: address.fullName,
+          shipping_phone: phone,
+          shipping_email: address.email || checkout.userEmail,
+          shipping_address: shippingAddress,
+          shipping_line1: address.line1,
+          shipping_line2: address.line2 || null,
+          shipping_city: address.city,
+          shipping_state: address.state,
+          shipping_pincode: address.pincode,
+          shipping_country: "India",
+          shipping_latitude: address.latitude,
+          shipping_longitude: address.longitude,
+          shipping_location_source: address.locationSource ?? null,
+          shipping_place_id: address.olaPlaceId ?? null,
+          shipping_formatted_address: address.formattedAddress || null,
+          shipping_route_distance_meters: checkout.deliveryEstimate.route.distanceMeters,
+          shipping_route_duration_seconds: checkout.deliveryEstimate.route.durationSeconds,
+          shipping_estimate: checkout.deliveryEstimate,
+          shipping_courier_company_id: checkout.selectedCourier.courierCompanyId,
+          shipping_courier_name: checkout.selectedCourier.courierName,
+          shipping_service_type: checkout.selectedCourier.serviceType,
+          shipping_expected_delivery_date: checkout.selectedCourier.expectedDeliveryDate,
+          shipping_charge_estimate: checkout.selectedCourier.rate,
+          tracking,
+        },
+        p_items: checkout.items.map((item) => ({
+          product_id: item.productId,
+          title: item.title,
+          image: item.image,
+          brand: item.brand,
+          price: item.price,
+          unit_price: item.price,
+          qty: item.qty,
+        })),
+        p_payment_payload: {
+          provider: "razorpay",
+          method: "razorpay",
+          amount: checkout.total,
+          status: "paid",
+          provider_order_id: input.razorpay_order_id,
+          provider_payment_id: input.razorpay_payment_id,
+          provider_signature: input.razorpay_signature,
+          raw_payload: {
+            razorpay_order_id: input.razorpay_order_id,
+            razorpay_payment_id: input.razorpay_payment_id,
+            amount: checkout.amountPaise,
+          },
+        },
+        p_address_payload: {
+          full_name: address.fullName,
+          phone,
+          line1: address.line1,
+          line2: address.line2 || null,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode,
+          latitude: address.latitude,
+          longitude: address.longitude,
+          location_source: address.locationSource ?? null,
+          ola_place_id: address.olaPlaceId ?? null,
+          formatted_address: address.formattedAddress || null,
+        },
+        p_save_address: checkout.saveAddress,
+        p_checkout_session_razorpay_order_id: input.razorpay_order_id,
+      },
+    );
+    if (completeError) throw completeError;
+
+    await markCheckoutSessionPaid(input.razorpay_order_id, String(completedOrderId ?? orderId));
+    res.json({ verified: true, orderId: String(completedOrderId ?? orderId) });
   } catch (error) {
     if (error instanceof Error && error.message === "Razorpay credentials are not configured") {
       res.status(503).json({ error: error.message });
       return;
     }
-    res.status(500).json({ error: error instanceof Error ? error.message : "Could not verify payment" });
+    next(error);
   }
 });
 
-app.post("/payments/razorpay/verify", async (req, res) => {
-  try {
-    const input = verifyPaymentBodySchema.parse(req.body);
-    const orderId = input.order_id ?? input.razorpay_order_id ?? input.orderId;
-    const paymentId = input.payment_id ?? input.razorpay_payment_id ?? input.paymentId;
-    const signature = input.razorpay_signature ?? input.signature;
-
-    if (!orderId || !paymentId || !signature) {
-      res.status(400).json({ error: "order_id, payment_id, and razorpay_signature are required" });
-      return;
-    }
-
-    const verified = verifyRazorpaySignature({
-      orderId,
-      paymentId,
-      signature,
-    });
-
-    if (!verified) {
-      res.status(400).json({ error: "Signature verification failed", verified: false });
-      return;
-    }
-
-    if (input.orderRecordId && supabaseAdmin) {
-      await supabaseAdmin.from("payments").insert({
-        order_id: input.orderRecordId,
-        provider: "razorpay",
-        provider_payment_id: paymentId,
-        provider_order_id: orderId,
-        status: "paid",
-      });
-    }
-
-    res.json({ verified: true });
-  } catch (error) {
-    if (error instanceof Error && error.message === "Razorpay credentials are not configured") {
-      res.status(503).json({ error: error.message });
-      return;
-    }
-    res.status(500).json({ error: error instanceof Error ? error.message : "Could not verify payment" });
-  }
-});
-
-app.get("/maps/autocomplete", async (req, res, next) => {
+app.get("/maps/autocomplete", mapLimiter, requireUser, async (req, res, next) => {
   try {
     const input = autocompleteQuerySchema.parse(req.query);
     const suggestions = await autocompleteOlaPlaces(
@@ -442,7 +1169,7 @@ app.get("/maps/autocomplete", async (req, res, next) => {
   }
 });
 
-app.get("/maps/reverse-geocode", async (req, res, next) => {
+app.get("/maps/reverse-geocode", mapLimiter, requireUser, async (req, res, next) => {
   try {
     const input = reverseGeocodeQuerySchema.parse(req.query);
     res.json(await reverseGeocodeOlaPlace(input.latitude, input.longitude));
@@ -451,7 +1178,7 @@ app.get("/maps/reverse-geocode", async (req, res, next) => {
   }
 });
 
-app.get("/maps/delivery-estimate", async (req, res, next) => {
+app.get("/maps/delivery-estimate", mapLimiter, requireUser, async (req, res, next) => {
   try {
     const input = deliveryEstimateQuerySchema.parse(req.query);
     const [route, couriers] = await Promise.all([
@@ -483,7 +1210,9 @@ app.get("/shiprocket/status", requireAdmin, async (req, res, next) => {
     const verify = req.query.verify === "1" || req.query.verify === "true";
     if (!verify) {
       res.json({
-        configured: Boolean(config.shiprocketEmail && config.shiprocketPassword && config.shiprocketPickupLocation),
+        configured: Boolean(
+          config.shiprocketEmail && config.shiprocketPassword && config.shiprocketPickupLocation,
+        ),
         pickupLocationConfigured: Boolean(config.shiprocketPickupLocation),
       });
       return;
@@ -534,7 +1263,9 @@ app.get("/admin/fulfillment/orders", requireAdmin, async (_req, res, next) => {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
     const { data: orders, error: ordersError } = await supabaseAdmin
       .from("orders")
-      .select("id,created_at,status,total,shipping_name,shipping_city,shipping_state,shipping_pincode,shipping_service_type")
+      .select(
+        "id,created_at,status,total,shipping_name,shipping_city,shipping_state,shipping_pincode,shipping_service_type",
+      )
       .order("created_at", { ascending: false })
       .limit(100);
     if (ordersError) throw ordersError;
@@ -549,7 +1280,49 @@ app.get("/admin/fulfillment/orders", requireAdmin, async (_req, res, next) => {
       : { data: [], error: null };
     if (shipmentsError) throw shipmentsError;
 
-    const shipmentsByOrder = new Map((shipments ?? []).map((shipment) => [shipment.order_id, shipment]));
+    const shipmentIds = (shipments ?? []).map((shipment) => String(shipment.id));
+    const { data: events, error: eventsError } = shipmentIds.length
+      ? await supabaseAdmin
+          .from("shipment_events")
+          .select("shipment_id,status,status_time,location,message,received_at")
+          .in("shipment_id", shipmentIds)
+          .order("status_time", { ascending: false })
+      : { data: [], error: null };
+    if (eventsError) throw eventsError;
+
+    const items = await getOrderItemsWithSku(orderIds);
+
+    const shipmentsByOrder = new Map(
+      (shipments ?? []).map((shipment) => [shipment.order_id, shipment]),
+    );
+    const shipmentEventsByShipment = groupShipmentEvents(events ?? []);
+    const itemsByOrder = new Map<
+      string,
+      Array<{
+        id: string;
+        title: string;
+        image: string;
+        brand: string;
+        qty: number;
+        sku: string | null;
+      }>
+    >();
+
+    for (const item of items) {
+      const orderId = item.order_id;
+      if (!orderId) continue;
+      const rows = itemsByOrder.get(orderId) ?? [];
+      rows.push({
+        id: item.id,
+        title: item.title,
+        image: item.image,
+        brand: item.brand,
+        qty: item.qty,
+        sku: item.sku,
+      });
+      itemsByOrder.set(orderId, rows);
+    }
+
     res.json({
       orders: (orders ?? []).map((order) => ({
         id: order.id,
@@ -561,8 +1334,115 @@ app.get("/admin/fulfillment/orders", requireAdmin, async (_req, res, next) => {
         shippingState: order.shipping_state,
         shippingPincode: order.shipping_pincode,
         shippingServiceType: order.shipping_service_type,
-        shipment: toFulfillmentShipment(shipmentsByOrder.get(order.id)),
+        items: itemsByOrder.get(order.id) ?? [],
+        shipment: toFulfillmentShipment(
+          shipmentsByOrder.get(order.id),
+          shipmentEventsByShipment.get(String(shipmentsByOrder.get(order.id)?.id ?? "")),
+        ),
       })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/orders/:orderId/tracking", requireUser, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const user = getAuthenticatedUser(req);
+    const { orderId } = orderIdParamSchema.parse(req.params);
+
+    const { data: order, error: orderError } = await adminDb
+      .from("orders")
+      .select(
+        `
+        id,
+        user_id,
+        total,
+        subtotal,
+        shipping,
+        status,
+        payment_status,
+        shipping_name,
+        shipping_address,
+        shipping_courier_name,
+        shipping_expected_delivery_date,
+        shipping_route_distance_meters,
+        shipping_route_duration_seconds,
+        shipping_service_type,
+        created_at
+      `,
+      )
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order || String(order.user_id) !== user.id) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    const [{ data: items, error: itemsError }, { data: shipment, error: shipmentError }] =
+      await Promise.all([
+        adminDb
+          .from("order_items")
+          .select("id,title,image,brand,price,qty")
+          .eq("order_id", orderId),
+        adminDb
+          .from("shipments")
+          .select("*")
+          .eq("order_id", orderId)
+          .eq("provider", "shiprocket")
+          .maybeSingle(),
+      ]);
+    if (itemsError) throw itemsError;
+    if (shipmentError) throw shipmentError;
+
+    const { data: events, error: eventsError } = shipment?.id
+      ? await adminDb
+          .from("shipment_events")
+          .select("shipment_id,status,status_time,location,message,received_at")
+          .eq("shipment_id", String(shipment.id))
+          .order("status_time", { ascending: false })
+      : { data: [], error: null };
+    if (eventsError) throw eventsError;
+
+    const groupedEvents = groupShipmentEvents(events ?? []);
+
+    res.json({
+      order: {
+        id: order.id,
+        total: Number(order.total ?? 0),
+        subtotal: Number(order.subtotal ?? 0),
+        shipping: Number(order.shipping ?? 0),
+        status: String(order.status ?? ""),
+        payment_status: String(order.payment_status ?? ""),
+        shipping_name: String(order.shipping_name ?? ""),
+        shipping_address: String(order.shipping_address ?? ""),
+        shipping_courier_name: firstString(order.shipping_courier_name),
+        shipping_expected_delivery_date: firstString(order.shipping_expected_delivery_date),
+        shipping_route_distance_meters:
+          order.shipping_route_distance_meters === null
+            ? null
+            : Number(order.shipping_route_distance_meters),
+        shipping_route_duration_seconds:
+          order.shipping_route_duration_seconds === null
+            ? null
+            : Number(order.shipping_route_duration_seconds),
+        shipping_service_type: String(order.shipping_service_type ?? "standard"),
+        created_at: String(order.created_at),
+      },
+      items: (items ?? []).map((item) => ({
+        id: item.id,
+        title: item.title,
+        image: item.image,
+        brand: item.brand,
+        price: Number(item.price ?? 0),
+        qty: Number(item.qty ?? 0),
+      })),
+      shipment: toFulfillmentShipment(
+        shipment as Record<string, unknown> | undefined,
+        groupedEvents.get(String(shipment?.id ?? "")),
+      ),
     });
   } catch (error) {
     next(error);
@@ -572,6 +1452,7 @@ app.get("/admin/fulfillment/orders", requireAdmin, async (_req, res, next) => {
 app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    requireLivePaymentEnvironment();
     const input = createShiprocketShipmentSchema.parse(req.body);
 
     const { data: order, error: orderError } = await supabaseAdmin
@@ -585,11 +1466,7 @@ app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) =>
       return;
     }
 
-    const { data: items, error: itemsError } = await supabaseAdmin
-      .from("order_items")
-      .select("*, products(sku)")
-      .eq("order_id", input.orderId);
-    if (itemsError) throw itemsError;
+    const items = await getOrderItemsWithSku([input.orderId]);
     if (!items?.length) {
       res.status(400).json({ error: "Order has no items" });
       return;
@@ -603,16 +1480,16 @@ app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) =>
       .maybeSingle();
     if (existingShipmentError) throw existingShipmentError;
     if (existingShipment) {
-      res.status(409).json({ error: "Shiprocket shipment already exists for this order", shipment: existingShipment });
+      res.status(409).json({
+        error: "Shiprocket shipment already exists for this order",
+        shipment: existingShipment,
+      });
       return;
     }
 
     const payload = toShiprocketOrderPayload({
       order,
-      items: items.map((item) => ({
-        ...item,
-        sku: Array.isArray(item.products) ? item.products[0]?.sku : item.products?.sku,
-      })),
+      items,
       package: input.package,
       pickupLocation: input.pickupLocation,
     });
@@ -665,7 +1542,10 @@ app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) =>
       height_cm: payload.height,
       declared_value: payload.sub_total,
       item_count: payload.order_items.reduce((sum, item) => sum + item.units, 0),
-      sku_summary: payload.order_items.map((item) => item.sku).join(", ").slice(0, 500),
+      sku_summary: payload.order_items
+        .map((item) => item.sku)
+        .join(", ")
+        .slice(0, 500),
       order_item_ids: items.map((item) => item.id),
       raw_payload: payload,
     });
@@ -679,6 +1559,7 @@ app.post("/shipments/shiprocket/create", requireAdmin, async (req, res, next) =>
 app.post("/shipments/shiprocket/assign-awb", requireAdmin, async (req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    requireLivePaymentEnvironment();
     const input = assignAwbSchema.parse(req.body);
 
     const { data: shipment, error: shipmentError } = await supabaseAdmin
@@ -698,11 +1579,16 @@ app.post("/shipments/shiprocket/assign-awb", requireAdmin, async (req, res, next
     });
     const awbData = getAwbData(response);
     if (Number(response.awb_assign_status ?? 1) !== 1) {
-      throw new Error(firstString(awbData.awb_assign_error, response.message) ?? "Shiprocket AWB assignment failed");
+      throw new Error(
+        firstString(awbData.awb_assign_error, response.message) ??
+          "Shiprocket AWB assignment failed",
+      );
     }
     const awbCode = firstString(awbData.awb_code, shipment.awb_code);
     const courierName = firstString(awbData.courier_name, shipment.courier_name);
-    const courierCompanyId = Number(awbData.courier_company_id ?? input.courierId ?? shipment.courier_company_id);
+    const courierCompanyId = Number(
+      awbData.courier_company_id ?? input.courierId ?? shipment.courier_company_id,
+    );
 
     const { data: updatedShipment, error: updateError } = await supabaseAdmin
       .from("shipments")
@@ -733,7 +1619,10 @@ app.post("/shipments/shiprocket/assign-awb", requireAdmin, async (req, res, next
       shipment: tracking?.shipment ?? updatedShipment,
       shiprocket: response,
       tracking: tracking?.tracking ?? null,
-      dispatchMode: shipment.shipping_service_type === "quick" ? "quick_rider_requested" : "standard_awb_assigned",
+      dispatchMode:
+        shipment.shipping_service_type === "quick"
+          ? "quick_rider_requested"
+          : "standard_awb_assigned",
     });
   } catch (error) {
     next(error);
@@ -743,6 +1632,7 @@ app.post("/shipments/shiprocket/assign-awb", requireAdmin, async (req, res, next
 app.post("/shipments/shiprocket/pickup", requireAdmin, async (req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
+    requireLivePaymentEnvironment();
     const input = shipmentIdSchema.parse(req.body);
     const { data: shipment, error: shipmentError } = await supabaseAdmin
       .from("shipments")
@@ -755,7 +1645,9 @@ app.post("/shipments/shiprocket/pickup", requireAdmin, async (req, res, next) =>
       return;
     }
     if (shipment.shipping_service_type === "quick") {
-      res.status(400).json({ error: "Shiprocket Quick rider assignment is triggered during AWB assignment" });
+      res
+        .status(400)
+        .json({ error: "Shiprocket Quick rider assignment is triggered during AWB assignment" });
       return;
     }
     if (!shipment.awb_code) {
@@ -773,7 +1665,8 @@ app.post("/shipments/shiprocket/pickup", requireAdmin, async (req, res, next) =>
     try {
       manifest = await generateShiprocketManifest([shipment.shiprocket_shipment_id]);
     } catch (error) {
-      manifestError = error instanceof Error ? error.message : "Could not generate Shiprocket manifest";
+      manifestError =
+        error instanceof Error ? error.message : "Could not generate Shiprocket manifest";
     }
     const manifestUrl = firstString(
       pickupData.manifest_url,
@@ -864,15 +1757,19 @@ app.post("/shipments/shiprocket/labels", requireAdmin, async (req, res, next) =>
   }
 });
 
-app.post("/logistics/events", async (req, res, next) => {
+app.post("/logistics/events", webhookLimiter, async (req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
-    if (config.shiprocketWebhookToken) {
-      const token = req.header("x-lapkart-logistics-token") ?? req.query.token;
-      if (token !== config.shiprocketWebhookToken) {
-        res.status(401).json({ error: "Invalid webhook token" });
-        return;
-      }
+    if (!config.shiprocketWebhookToken) {
+      res.status(503).json({
+        error: "SHIPROCKET_WEBHOOK_TOKEN is required before accepting logistics webhooks",
+      });
+      return;
+    }
+    const token = req.header("x-lapkart-logistics-token") ?? req.query.token;
+    if (token !== config.shiprocketWebhookToken) {
+      res.status(401).json({ error: "Invalid webhook token" });
+      return;
     }
 
     const body = req.body as Record<string, unknown>;
@@ -922,51 +1819,622 @@ app.post("/logistics/events", async (req, res, next) => {
   }
 });
 
-app.post("/storage/upload/:bucket", upload.single("file"), async (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "file is required" });
-    if (!supabaseAdmin) return res.status(503).json({ error: "Supabase service credentials are not configured" });
-    const bucket = z.enum(["products", "users"]).parse(req.params.bucket);
-    const path = `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const { error } = await supabaseAdmin.storage.from(bucket).upload(path, req.file.buffer, {
-      contentType: req.file.mimetype,
-      upsert: false,
-    });
-    if (error) throw error;
-    const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
-    res.json({ bucket, path, image_url: data.publicUrl, uploaded_at: new Date().toISOString() });
-  } catch (error) {
-    next(error);
-  }
-});
+app.post(
+  "/storage/upload/:bucket",
+  uploadLimiter,
+  requireAdmin,
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "file is required" });
+      if (!supabaseAdmin)
+        return res.status(503).json({ error: "Supabase service credentials are not configured" });
+      assertUploadIsSafeImage(req.file);
+      const bucket = z.enum(["products", "users"]).parse(req.params.bucket);
+      const path = `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const { error } = await supabaseAdmin.storage.from(bucket).upload(path, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
+      res.json({ bucket, path, image_url: data.publicUrl, uploaded_at: new Date().toISOString() });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.get("/admin/analytics", requireAdmin, async (_req, res, next) => {
   try {
     if (!supabaseAdmin) throw new Error("Supabase service credentials are not configured");
     const [orders, products, users] = await Promise.all([
-      supabaseAdmin.from("orders").select("id,total,status", { count: "exact", head: false }).limit(100),
+      supabaseAdmin.from("orders").select("id,total,status,created_at,shipping_name"),
       supabaseAdmin.from("products").select("id,stock", { count: "exact", head: false }).limit(100),
       supabaseAdmin.from("profiles").select("id", { count: "exact", head: false }).limit(100),
     ]);
+
+    if (orders.error) throw orders.error;
+    if (products.error) throw products.error;
+    if (users.error) throw users.error;
+
+    const orderRows = orders.data ?? [];
+    const revenue = orderRows.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+    const deliveredOrders = orderRows.filter(
+      (order) => String(order.status ?? "").toLowerCase() === "delivered",
+    ).length;
+    const pendingFulfillment = orderRows.filter((order) =>
+      ["confirmed", "packed", "pending", "processing"].includes(
+        String(order.status ?? "").toLowerCase(),
+      ),
+    ).length;
+    const monthFormatter = new Intl.DateTimeFormat("en-IN", { month: "short" });
+    const today = new Date();
+    const monthlySeries = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth() - (5 - index), 1);
+      const key = `${date.getFullYear()}-${date.getMonth()}`;
+      return {
+        key,
+        month: monthFormatter.format(date),
+        revenue: 0,
+        orders: 0,
+      };
+    });
+    const monthIndex = new Map(monthlySeries.map((row) => [row.key, row]));
+    for (const order of orderRows) {
+      const createdAt = new Date(String(order.created_at));
+      if (Number.isNaN(createdAt.getTime())) continue;
+      const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
+      const bucket = monthIndex.get(key);
+      if (!bucket) continue;
+      bucket.orders += 1;
+      bucket.revenue += Number(order.total ?? 0);
+    }
+
     res.json({
-      orders: orders.count ?? 0,
+      orders: orderRows.length,
       products: products.count ?? 0,
       users: users.count ?? 0,
-      revenue: orders.data?.reduce((sum, order) => sum + Number(order.total ?? 0), 0) ?? 0,
+      revenue,
+      deliveredOrders,
+      pendingFulfillment,
+      monthlySeries,
+      recentOrders: orderRows
+        .slice()
+        .sort(
+          (left, right) =>
+            new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+        )
+        .slice(0, 6)
+        .map((order) => ({
+          id: order.id,
+          createdAt: order.created_at,
+          total: Number(order.total ?? 0),
+          status: String(order.status ?? "pending"),
+          shippingName: order.shipping_name ? String(order.shipping_name) : null,
+        })),
     });
   } catch (error) {
     next(error);
   }
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (error instanceof z.ZodError) {
-    res.status(400).json({ error: "Invalid request", issues: error.issues });
-    return;
+app.get("/admin/products", requireAdmin, async (_req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const { data, error } = await adminDb
+      .from("products")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(250);
+    if (error) throw error;
+    res.json({ products: data ?? [] });
+  } catch (error) {
+    next(error);
   }
-  const message = error instanceof Error ? error.message : "Unknown server error";
-  res.status(500).json({ error: message });
 });
+
+app.post("/admin/products", requireAdmin, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const input = productUpsertSchema.parse(req.body);
+    const payload = {
+      title: input.title,
+      brand: input.brand,
+      category: input.category,
+      description: input.description ?? null,
+      image: input.image,
+      images: input.images.length > 0 ? input.images : null,
+      price: input.price,
+      mrp: input.mrp,
+      stock: input.stock,
+      status: input.status,
+      sku: input.sku ?? null,
+      source_url: input.sourceUrl ?? null,
+      compatibility: input.compatibility ?? null,
+      warranty: input.warranty ?? null,
+      highlights: input.highlights.length > 0 ? input.highlights : null,
+      search_keywords: input.searchKeywords.length > 0 ? input.searchKeywords : null,
+      weight_kg: input.weightKg ?? null,
+      length_cm: input.lengthCm ?? null,
+      breadth_cm: input.breadthCm ?? null,
+      height_cm: input.heightCm ?? null,
+    };
+
+    const { data, error } = await adminDb.from("products").insert(payload).select("*").single();
+    if (error) throw error;
+    res.status(201).json({ product: data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/admin/products/:productId", requireAdmin, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const { productId } = productIdParamSchema.parse(req.params);
+    const input = productUpdateSchema.parse(req.body);
+    const payload: Record<string, unknown> = {};
+
+    if ("title" in input) payload.title = input.title;
+    if ("brand" in input) payload.brand = input.brand;
+    if ("category" in input) payload.category = input.category;
+    if ("description" in input) payload.description = input.description ?? null;
+    if ("image" in input) payload.image = input.image;
+    if ("images" in input)
+      payload.images = input.images && input.images.length > 0 ? input.images : null;
+    if ("price" in input) payload.price = input.price;
+    if ("mrp" in input) payload.mrp = input.mrp;
+    if ("stock" in input) payload.stock = input.stock;
+    if ("status" in input) payload.status = input.status;
+    if ("sku" in input) payload.sku = input.sku ?? null;
+    if ("sourceUrl" in input) payload.source_url = input.sourceUrl ?? null;
+    if ("compatibility" in input) payload.compatibility = input.compatibility ?? null;
+    if ("warranty" in input) payload.warranty = input.warranty ?? null;
+    if ("highlights" in input)
+      payload.highlights =
+        input.highlights && input.highlights.length > 0 ? input.highlights : null;
+    if ("searchKeywords" in input)
+      payload.search_keywords =
+        input.searchKeywords && input.searchKeywords.length > 0 ? input.searchKeywords : null;
+    if ("weightKg" in input) payload.weight_kg = input.weightKg ?? null;
+    if ("lengthCm" in input) payload.length_cm = input.lengthCm ?? null;
+    if ("breadthCm" in input) payload.breadth_cm = input.breadthCm ?? null;
+    if ("heightCm" in input) payload.height_cm = input.heightCm ?? null;
+
+    const { data, error } = await adminDb
+      .from("products")
+      .update(payload)
+      .eq("id", productId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    res.json({ product: data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/admin/products/:productId", requireAdmin, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const { productId } = productIdParamSchema.parse(req.params);
+    const { count, error: usageError } = await adminDb
+      .from("order_items")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", productId);
+    if (usageError) throw usageError;
+
+    if ((count ?? 0) > 0) {
+      const { data, error } = await adminDb
+        .from("products")
+        .update({ status: "archived" })
+        .eq("id", productId)
+        .select("id,status")
+        .single();
+      if (error) throw error;
+      res.json({
+        archived: true,
+        product: data,
+        message: "Product has order history, so it was archived instead of deleted.",
+      });
+      return;
+    }
+
+    const { error } = await adminDb.from("products").delete().eq("id", productId);
+    if (error) throw error;
+    res.json({ deleted: true, productId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/admin/users", requireAdmin, async (_req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const [
+      { data: authUsersData, error: authUsersError },
+      profilesResult,
+      rolesResult,
+      ordersResult,
+    ] = await Promise.all([
+      adminDb.auth.admin.listUsers({ page: 1, perPage: 200 }),
+      adminDb.from("profiles").select("id,full_name,phone,created_at,updated_at"),
+      adminDb.from("user_roles").select("user_id,role"),
+      adminDb.from("orders").select("user_id,total,created_at"),
+    ]);
+    if (authUsersError) throw authUsersError;
+    if (profilesResult.error) throw profilesResult.error;
+    if (rolesResult.error) throw rolesResult.error;
+    if (ordersResult.error) throw ordersResult.error;
+
+    const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
+    const roles = new Map(
+      (rolesResult.data ?? []).map((roleRow) => [roleRow.user_id, roleRow.role]),
+    );
+    const orderStats = new Map<string, { orderCount: number; totalSpent: number }>();
+
+    for (const order of ordersResult.data ?? []) {
+      const stats = orderStats.get(order.user_id) ?? { orderCount: 0, totalSpent: 0 };
+      stats.orderCount += 1;
+      stats.totalSpent += Number(order.total ?? 0);
+      orderStats.set(order.user_id, stats);
+    }
+
+    const users = (authUsersData.users ?? [])
+      .map((authUser) => {
+        const profile = profiles.get(authUser.id);
+        const stats = orderStats.get(authUser.id) ?? { orderCount: 0, totalSpent: 0 };
+        return {
+          id: authUser.id,
+          email: authUser.email ?? null,
+          createdAt: authUser.created_at ?? profile?.created_at ?? null,
+          lastSignInAt: authUser.last_sign_in_at ?? null,
+          role: roles.get(authUser.id) ?? "user",
+          fullName: profile?.full_name ?? null,
+          phone: profile?.phone ?? null,
+          orderCount: stats.orderCount,
+          totalSpent: stats.totalSpent,
+        };
+      })
+      .sort((left, right) => {
+        const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+        const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+        return rightTime - leftTime;
+      });
+
+    res.json({ users });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/admin/users/:userId", requireAdmin, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const actor = getAuthenticatedUser(req);
+    const { userId } = userIdParamSchema.parse(req.params);
+    const input = adminUserUpdateSchema.parse(req.body);
+
+    if (input.role && actor.id === userId && input.role !== "admin") {
+      throw new HttpError(400, "Use another admin account before removing your own admin role.");
+    }
+
+    if (input.role) {
+      const { data: currentRoleRow, error: currentRoleError } = await adminDb
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (currentRoleError) throw currentRoleError;
+
+      if (currentRoleRow?.role === "admin" && input.role !== "admin") {
+        const { count, error: adminCountError } = await adminDb
+          .from("user_roles")
+          .select("user_id", { count: "exact", head: true })
+          .eq("role", "admin");
+        if (adminCountError) throw adminCountError;
+        if ((count ?? 0) <= 1) {
+          throw new HttpError(400, "At least one admin account must remain.");
+        }
+      }
+
+      const { error: roleUpdateError } = await adminDb
+        .from("user_roles")
+        .upsert({ user_id: userId, role: input.role }, { onConflict: "user_id" });
+      if (roleUpdateError) throw roleUpdateError;
+    }
+
+    if ("fullName" in input || "phone" in input) {
+      const profilePatch: Record<string, unknown> = { id: userId };
+      if ("fullName" in input) profilePatch.full_name = input.fullName ?? null;
+      if ("phone" in input) profilePatch.phone = input.phone ?? null;
+      const { error: profileError } = await adminDb
+        .from("profiles")
+        .upsert(profilePatch, { onConflict: "id" });
+      if (profileError) throw profileError;
+    }
+
+    const [{ data: profile }, { data: roleRow }] = await Promise.all([
+      adminDb.from("profiles").select("full_name,phone").eq("id", userId).maybeSingle(),
+      adminDb.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+    ]);
+
+    res.json({
+      user: {
+        id: userId,
+        role: roleRow?.role ?? "user",
+        fullName: profile?.full_name ?? null,
+        phone: profile?.phone ?? null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/admin/orders", requireAdmin, async (_req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const [{ data: orders, error: ordersError }, authUsersResult] = await Promise.all([
+      adminDb
+        .from("orders")
+        .select(
+          `
+          id,
+          user_id,
+          created_at,
+          updated_at,
+          status,
+          payment_status,
+          payment_method,
+          subtotal,
+          shipping,
+          total,
+          shipping_name,
+          shipping_phone,
+          shipping_email,
+          shipping_line1,
+          shipping_line2,
+          shipping_city,
+          shipping_state,
+          shipping_pincode,
+          shipping_service_type,
+          shipping_courier_name
+        `,
+        )
+        .order("created_at", { ascending: false })
+        .limit(200),
+      adminDb.auth.admin.listUsers({ page: 1, perPage: 200 }),
+    ]);
+    if (ordersError) throw ordersError;
+    if (authUsersResult.error) throw authUsersResult.error;
+
+    const orderIds = (orders ?? []).map((order) => order.id);
+    const userEmailById = new Map(
+      (authUsersResult.data.users ?? []).map((user) => [user.id, user.email ?? null]),
+    );
+    const [itemsResult, shipmentsResult, paymentsResult] = orderIds.length
+      ? await Promise.all([
+          adminDb.from("order_items").select("order_id,title,qty").in("order_id", orderIds),
+          adminDb
+            .from("shipments")
+            .select("order_id,status,awb_code,courier_name,tracking_url,expected_delivery_date")
+            .in("order_id", orderIds),
+          adminDb
+            .from("payments")
+            .select("order_id,status,provider_payment_id,provider_order_id,created_at")
+            .in("order_id", orderIds),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
+
+    if (itemsResult.error) throw itemsResult.error;
+    if (shipmentsResult.error) throw shipmentsResult.error;
+    if (paymentsResult.error) throw paymentsResult.error;
+
+    const itemSummaryByOrder = new Map<string, string>();
+    for (const item of itemsResult.data ?? []) {
+      const existing = itemSummaryByOrder.get(item.order_id) ?? "";
+      const nextItem = `${item.title} x${item.qty}`;
+      itemSummaryByOrder.set(item.order_id, existing ? `${existing}, ${nextItem}` : nextItem);
+    }
+
+    const shipmentByOrder = new Map(
+      (shipmentsResult.data ?? []).map((shipment) => [shipment.order_id, shipment]),
+    );
+    const paymentByOrder = new Map(
+      (paymentsResult.data ?? [])
+        .slice()
+        .sort(
+          (left, right) =>
+            new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+        )
+        .map((payment) => [payment.order_id, payment]),
+    );
+
+    res.json({
+      orders: (orders ?? []).map((order) => {
+        const shipment = shipmentByOrder.get(order.id);
+        const payment = paymentByOrder.get(order.id);
+        return {
+          id: order.id,
+          userId: order.user_id,
+          userEmail: userEmailById.get(order.user_id) ?? order.shipping_email ?? null,
+          createdAt: order.created_at,
+          updatedAt: order.updated_at,
+          status: order.status,
+          paymentStatus: order.payment_status,
+          paymentMethod: order.payment_method,
+          subtotal: Number(order.subtotal ?? 0),
+          shipping: Number(order.shipping ?? 0),
+          total: Number(order.total ?? 0),
+          shippingName: order.shipping_name,
+          shippingPhone: order.shipping_phone,
+          shippingEmail: order.shipping_email,
+          shippingLine1: order.shipping_line1,
+          shippingLine2: order.shipping_line2,
+          shippingCity: order.shipping_city,
+          shippingState: order.shipping_state,
+          shippingPincode: order.shipping_pincode,
+          shippingServiceType: order.shipping_service_type,
+          shippingCourierName: order.shipping_courier_name,
+          itemSummary: itemSummaryByOrder.get(order.id) ?? "",
+          shipment: shipment
+            ? {
+                status: shipment.status,
+                awbCode: shipment.awb_code,
+                courierName: shipment.courier_name,
+                trackingUrl: shipment.tracking_url,
+                expectedDeliveryDate: shipment.expected_delivery_date,
+              }
+            : null,
+          payment: payment
+            ? {
+                status: payment.status,
+                providerPaymentId: payment.provider_payment_id,
+                providerOrderId: payment.provider_order_id,
+              }
+            : null,
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/admin/orders/:orderId", requireAdmin, async (req, res, next) => {
+  try {
+    const adminDb = getSupabaseAdmin();
+    const { orderId } = orderIdParamSchema.parse(req.params);
+    const input = adminOrderUpdateSchema.parse(req.body);
+
+    const { data: existingOrder, error: existingOrderError } = await adminDb
+      .from("orders")
+      .select(
+        `
+        id,
+        status,
+        payment_status,
+        shipping_service_type,
+        shipping_name,
+        shipping_phone,
+        shipping_email,
+        shipping_line1,
+        shipping_line2,
+        shipping_city,
+        shipping_state,
+        shipping_pincode,
+        shipping_address
+      `,
+      )
+      .eq("id", orderId)
+      .single();
+    if (existingOrderError) throw existingOrderError;
+
+    const payload: Record<string, unknown> = {};
+    if ("status" in input) payload.status = input.status?.toLowerCase();
+    if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
+    if ("shippingServiceType" in input) payload.shipping_service_type = input.shippingServiceType;
+    if ("shippingName" in input) payload.shipping_name = input.shippingName ?? null;
+    if ("shippingPhone" in input) payload.shipping_phone = input.shippingPhone ?? null;
+    if ("shippingEmail" in input) payload.shipping_email = input.shippingEmail ?? null;
+    if ("shippingLine1" in input) payload.shipping_line1 = input.shippingLine1 ?? null;
+    if ("shippingLine2" in input) payload.shipping_line2 = input.shippingLine2 ?? null;
+    if ("shippingCity" in input) payload.shipping_city = input.shippingCity ?? null;
+    if ("shippingState" in input) payload.shipping_state = input.shippingState ?? null;
+    if ("shippingPincode" in input) payload.shipping_pincode = input.shippingPincode ?? null;
+
+    const addressFieldsTouched = [
+      "shippingLine1",
+      "shippingLine2",
+      "shippingCity",
+      "shippingState",
+      "shippingPincode",
+    ].some((field) => field in input);
+
+    if (addressFieldsTouched) {
+      const line1 =
+        ("shippingLine1" in input ? input.shippingLine1 : existingOrder.shipping_line1) ?? null;
+      const line2 =
+        ("shippingLine2" in input ? input.shippingLine2 : existingOrder.shipping_line2) ?? null;
+      const city =
+        ("shippingCity" in input ? input.shippingCity : existingOrder.shipping_city) ?? null;
+      const state =
+        ("shippingState" in input ? input.shippingState : existingOrder.shipping_state) ?? null;
+      const pincode =
+        ("shippingPincode" in input ? input.shippingPincode : existingOrder.shipping_pincode) ??
+        null;
+      payload.shipping_address = [line1, line2, city, state, pincode].filter(Boolean).join(", ");
+      payload.shipping_formatted_address = payload.shipping_address;
+    }
+
+    const { data, error } = await adminDb
+      .from("orders")
+      .update(payload)
+      .eq("id", orderId)
+      .select(
+        `
+        id,
+        status,
+        payment_status,
+        shipping_service_type,
+        shipping_name,
+        shipping_phone,
+        shipping_email,
+        shipping_line1,
+        shipping_line2,
+        shipping_city,
+        shipping_state,
+        shipping_pincode,
+        shipping_address,
+        updated_at
+      `,
+      )
+      .single();
+    if (error) throw error;
+
+    res.json({
+      order: {
+        id: data.id,
+        status: data.status,
+        paymentStatus: data.payment_status,
+        shippingServiceType: data.shipping_service_type,
+        shippingName: data.shipping_name,
+        shippingPhone: data.shipping_phone,
+        shippingEmail: data.shipping_email,
+        shippingLine1: data.shipping_line1,
+        shippingLine2: data.shipping_line2,
+        shippingCity: data.shipping_city,
+        shippingState: data.shipping_state,
+        shippingPincode: data.shipping_pincode,
+        shippingAddress: data.shipping_address,
+        updatedAt: data.updated_at,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use(
+  (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: "Invalid request", issues: error.issues });
+      return;
+    }
+    if (error instanceof HttpError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+    const message = error instanceof Error ? error.message : "Unknown server error";
+    res.status(500).json({ error: message });
+  },
+);
 
 app.listen(config.port, () => {
   console.log(`LapKart API listening on ${config.port}`);

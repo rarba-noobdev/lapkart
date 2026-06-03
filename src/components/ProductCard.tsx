@@ -7,7 +7,8 @@ export function ProductCard({ p }: { p: Product }) {
     <Link
       to="/product/$id"
       params={{ id: p.id }}
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:-translate-y-1 hover:shadow-[0_24px_56px_-24px_var(--heat-40),0_4px_12px_-4px_rgba(0,0,0,0.06)] hover:border-[var(--heat-20)]"
+      aria-label={`${p.title} by ${p.brand}`}
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:-translate-y-1 hover:border-[var(--heat-20)] hover:shadow-[0_24px_56px_-24px_var(--heat-40),0_4px_12px_-4px_rgba(0,0,0,0.06)]"
     >
       {/* Heat ribbon for sale */}
       {discountPct(p) >= 30 && (
@@ -18,7 +19,7 @@ export function ProductCard({ p }: { p: Product }) {
 
       <div className="relative aspect-square overflow-hidden bg-[var(--background-lighter)]">
         <img
-          src={(p.images?.[0]) ?? p.image}
+          src={p.images?.[0] ?? p.image}
           alt={p.title}
           loading="lazy"
           width={640}
@@ -27,7 +28,7 @@ export function ProductCard({ p }: { p: Product }) {
         />
         {/* Inside border overlay */}
         <span className="pointer-events-none absolute inset-0 border-b border-[var(--border-faint)]" />
-        <ArrowUpRight className="absolute top-3 right-3 size-4 text-[var(--black-alpha-32)] transition-all duration-300 group-hover:text-[var(--heat-100)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        <ArrowUpRight className="absolute top-3 right-3 size-4 text-[var(--black-alpha-32)] transition-[transform,color] duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[var(--heat-100)]" />
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 px-4 py-4">
@@ -50,7 +51,9 @@ export function ProductCard({ p }: { p: Product }) {
 
         <div className="mt-auto pt-3 flex items-baseline gap-2 border-t border-[var(--border-faint)]">
           <span className="text-label-large font-medium text-foreground">{formatINR(p.price)}</span>
-          <span className="text-body-small text-[var(--black-alpha-40)] line-through">{formatINR(p.mrp)}</span>
+          <span className="text-body-small text-[var(--black-alpha-40)] line-through">
+            {formatINR(p.mrp)}
+          </span>
         </div>
       </div>
     </Link>

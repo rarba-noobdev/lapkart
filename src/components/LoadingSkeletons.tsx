@@ -37,7 +37,12 @@ export function ProductGridSkeleton({ count = 8 }: { count?: number }) {
 export function HomeLoadingSkeleton() {
   return (
     <>
-      <section aria-label="Loading storefront" aria-busy="true" className="bg-[var(--accent-black)]" role="status">
+      <section
+        aria-label="Loading storefront"
+        aria-busy="true"
+        className="bg-[var(--accent-black)]"
+        role="status"
+      >
         <div className="container mx-auto grid gap-12 px-4 py-20 lg:grid-cols-[1.15fr_1fr] lg:items-center lg:py-28">
           <div className="space-y-6">
             <Skeleton className="h-3 w-56 bg-white/10" />
@@ -61,13 +66,21 @@ export function HomeLoadingSkeleton() {
 
 export function CartPageSkeleton() {
   return (
-    <div aria-label="Loading cart" aria-busy="true" className="container mx-auto px-4 py-10" role="status">
+    <div
+      aria-label="Loading cart"
+      aria-busy="true"
+      className="container mx-auto px-4 py-10"
+      role="status"
+    >
       <Skeleton className="h-3 w-16 bg-[var(--black-alpha-8)]" />
       <Skeleton className="mt-3 h-9 w-52 bg-[var(--black-alpha-8)]" />
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_400px]">
         <div className="rounded-lg border border-[var(--border-muted)] bg-white">
           {Array.from({ length: 2 }, (_, index) => (
-            <div key={index} className="flex gap-5 border-b border-[var(--border-faint)] p-5 last:border-0">
+            <div
+              key={index}
+              className="flex gap-5 border-b border-[var(--border-faint)] p-5 last:border-0"
+            >
               <Skeleton className="size-24 shrink-0 bg-[var(--black-alpha-8)]" />
               <div className="flex-1 space-y-3">
                 <Skeleton className="h-3 w-16 bg-[var(--black-alpha-8)]" />

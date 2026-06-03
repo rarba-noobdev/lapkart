@@ -1,13 +1,3 @@
-import ram from "@/assets/cat-ram.jpg";
-import ssd from "@/assets/cat-ssd.jpg";
-import mobo from "@/assets/cat-mobo.jpg";
-import battery from "@/assets/cat-battery.jpg";
-import display from "@/assets/cat-display.jpg";
-import keyboard from "@/assets/cat-keyboard.jpg";
-import cpu from "@/assets/cat-cpu.jpg";
-import fan from "@/assets/cat-fan.jpg";
-import charger from "@/assets/cat-charger.jpg";
-
 export type Category = {
   slug: string;
   name: string;
@@ -15,15 +5,15 @@ export type Category = {
 };
 
 export const categories: Category[] = [
-  { slug: "ram", name: "RAM", image: ram },
-  { slug: "ssd", name: "SSD", image: ssd },
-  { slug: "motherboards", name: "Motherboards", image: mobo },
-  { slug: "batteries", name: "Batteries", image: battery },
-  { slug: "displays", name: "Displays", image: display },
-  { slug: "keyboards", name: "Keyboards", image: keyboard },
-  { slug: "processors", name: "Processors", image: cpu },
-  { slug: "cooling", name: "Cooling Fans", image: fan },
-  { slug: "chargers", name: "Chargers", image: charger },
+  { slug: "ram", name: "RAM" },
+  { slug: "ssd", name: "SSD" },
+  { slug: "motherboards", name: "Motherboards" },
+  { slug: "batteries", name: "Batteries" },
+  { slug: "displays", name: "Displays" },
+  { slug: "keyboards", name: "Keyboards" },
+  { slug: "processors", name: "Processors" },
+  { slug: "cooling", name: "Cooling Fans" },
+  { slug: "chargers", name: "Chargers" },
   { slug: "wifi_cards", name: "WiFi Cards" },
   { slug: "dc_jacks", name: "DC Power Jacks" },
   { slug: "bottom_cases", name: "Bottom Cases" },
@@ -57,5 +47,5 @@ export function discountPct(p: Pick<Product, "price" | "mrp">) {
 }
 
 export function formatINR(n: number) {
-  return "₹" + Math.round(n).toLocaleString("en-IN");
+  return "\u20B9" + Math.round(n).toLocaleString("en-IN");
 }

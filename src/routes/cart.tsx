@@ -1,27 +1,52 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Header } from "@/components/Header";
+import { ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { useEffect } from "react";
 import { Footer } from "@/components/Footer";
+import { Header } from "@/components/Header";
 import { CartPageSkeleton } from "@/components/LoadingSkeletons";
-import { cart, useCartState } from "@/lib/cart-store";
 import { formatINR } from "@/lib/catalog";
+import { cart, useCartState } from "@/lib/cart-store";
+import { useAuth } from "@/lib/auth";
 import { useProductsByIds } from "@/lib/products-db";
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/cart")({
-  head: () => ({ meta: [{ title: "Your cart — lapkart" }] }),
+  head: () => ({ meta: [{ title: "Your cart - lapkart" }] }),
   component: CartPage,
 });
 
 function CartPage() {
+  const navigate = Route.useNavigate();
+  const { role } = useAuth();
   const { items, isHydrated } = useCartState();
-  const { data: prods = [], isLoading: productsLoading } = useProductsByIds(items.map((i) => i.id));
-  const byId = new Map(prods.map((p) => [p.id, p]));
-  const rows = items
-    .map((i) => ({ p: byId.get(i.id), qty: i.qty }))
-    .filter((r): r is { p: NonNullable<typeof r.p>; qty: number } => !!r.p);
+  const { data: products = [], isLoading: productsLoading } = useProductsByIds(
+    items.map((item) => item.id),
+  );
 
-  const subtotal = rows.reduce((s, r) => s + r.p.price * r.qty, 0);
-  const mrp = rows.reduce((s, r) => s + r.p.mrp * r.qty, 0);
+  useEffect(() => {
+    if (role === "admin") {
+      void navigate({ to: "/admin", replace: true });
+    }
+  }, [navigate, role]);
+
+  if (role === "admin") {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[var(--background-base)]">
+        <p className="text-body-medium text-[var(--black-alpha-56)]">
+          Redirecting to the admin console.
+        </p>
+      </div>
+    );
+  }
+
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const rows = items
+    .map((item) => ({ product: productsById.get(item.id), qty: item.qty }))
+    .filter(
+      (row): row is { product: NonNullable<typeof row.product>; qty: number } => !!row.product,
+    );
+
+  const subtotal = rows.reduce((sum, row) => sum + row.product.price * row.qty, 0);
+  const mrp = rows.reduce((sum, row) => sum + row.product.mrp * row.qty, 0);
   const savings = mrp - subtotal;
   const shipping = subtotal > 999 || subtotal === 0 ? 0 : 49;
   const total = subtotal + shipping;
@@ -44,10 +69,15 @@ function CartPage() {
           <div className="grid size-20 place-items-center rounded-full border border-[var(--border-muted)] bg-white text-[var(--heat-100)]">
             <ShoppingBag className="size-9" strokeWidth={1.8} />
           </div>
-          <p className="mt-6 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">empty_state</p>
+          <p className="mt-6 text-label-small text-[var(--heat-100)]">Cart is empty</p>
           <h1 className="mt-2 font-display text-title-h3 text-foreground">Your cart is empty</h1>
-          <p className="mt-2 text-body-medium text-[var(--black-alpha-56)]">Add laptop parts to get started.</p>
-          <Link to="/products" className="button button-primary mt-8 inline-flex items-center gap-2 rounded-md px-6 h-12 text-label-medium">
+          <p className="mt-2 text-body-medium text-[var(--black-alpha-56)]">
+            Add laptop parts to get started.
+          </p>
+          <Link
+            to="/products"
+            className="button button-primary mt-8 inline-flex h-12 items-center gap-2 rounded-md px-6 text-label-medium"
+          >
             Shop components <ArrowRight className="size-4" />
           </Link>
         </div>
@@ -61,7 +91,7 @@ function CartPage() {
       <Header />
       <div className="container mx-auto px-4 py-10">
         <div className="mb-8">
-          <span className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--heat-100)]">cart</span>
+          <span className="text-label-small text-[var(--heat-100)]">Cart</span>
           <h1 className="mt-2 font-display text-title-h3 text-foreground">
             Your selection <span className="text-[var(--black-alpha-40)]">({rows.length})</span>
           </h1>
@@ -70,49 +100,64 @@ function CartPage() {
         <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
           <div className="rounded-lg border border-[var(--border-muted)] bg-white">
             <ul>
-              {rows.map(({ p, qty }) => (
-                <li key={p.id} className="flex gap-5 border-b border-[var(--border-faint)] p-5 last:border-0">
+              {rows.map(({ product, qty }) => (
+                <li
+                  key={product.id}
+                  className="flex flex-col gap-5 border-b border-[var(--border-faint)] p-5 last:border-0 sm:flex-row"
+                >
                   <Link
                     to="/product/$id"
-                    params={{ id: p.id }}
+                    params={{ id: product.id }}
                     className="size-24 shrink-0 overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)]"
                   >
-                    <img src={(p.images?.[0]) ?? p.image} alt={p.title} className="size-full object-contain p-2" />
+                    <img
+                      src={product.images?.[0] ?? product.image}
+                      alt={product.title}
+                      className="size-full object-contain p-2"
+                    />
                   </Link>
                   <div className="min-w-0 flex-1">
-                    <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">{p.brand}</p>
+                    <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+                      {product.brand}
+                    </p>
                     <Link
                       to="/product/$id"
-                      params={{ id: p.id }}
-                      className="mt-0.5 block line-clamp-2 text-label-medium text-foreground hover:text-[var(--heat-100)] transition-colors"
+                      params={{ id: product.id }}
+                      className="mt-0.5 block line-clamp-2 text-label-medium text-foreground transition-colors hover:text-[var(--heat-100)]"
                     >
-                      {p.title}
+                      {product.title}
                     </Link>
                     <div className="mt-3 flex items-center justify-between gap-4">
                       <div className="flex items-center rounded-md border border-[var(--border-muted)] bg-white">
                         <button
-                          onClick={() => cart.setQty(p.id, qty - 1)}
-                          className="grid size-9 place-items-center text-[var(--black-alpha-48)] hover:text-[var(--heat-100)] transition-colors"
+                          onClick={() => cart.setQty(product.id, qty - 1)}
+                          className="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
                           aria-label="Decrease"
                         >
                           <Minus className="size-3.5" />
                         </button>
-                        <span className="w-8 text-center text-mono-small font-medium text-foreground">{qty}</span>
+                        <span className="w-8 text-center text-mono-small font-medium text-foreground">
+                          {qty}
+                        </span>
                         <button
-                          onClick={() => cart.setQty(p.id, qty + 1)}
-                          className="grid size-9 place-items-center text-[var(--black-alpha-48)] hover:text-[var(--heat-100)] transition-colors"
+                          onClick={() => cart.setQty(product.id, qty + 1)}
+                          className="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
                           aria-label="Increase"
                         >
                           <Plus className="size-3.5" />
                         </button>
                       </div>
                       <div className="text-right">
-                        <span className="text-label-large font-medium text-foreground">{formatINR(p.price * qty)}</span>
-                        <p className="text-mono-x-small text-[var(--black-alpha-40)] line-through">{formatINR(p.mrp * qty)}</p>
+                        <span className="text-label-large font-medium text-foreground">
+                          {formatINR(product.price * qty)}
+                        </span>
+                        <p className="text-mono-x-small text-[var(--black-alpha-40)] line-through">
+                          {formatINR(product.mrp * qty)}
+                        </p>
                       </div>
                     </div>
                     <button
-                      onClick={() => cart.remove(p.id)}
+                      onClick={() => cart.remove(product.id)}
                       className="mt-3 inline-flex items-center gap-1.5 text-mono-x-small uppercase tracking-wider text-[var(--accent-crimson)] hover:underline"
                     >
                       <Trash2 className="size-3" /> Remove
@@ -125,21 +170,21 @@ function CartPage() {
 
           <aside className="h-fit space-y-4 lg:sticky lg:top-28">
             <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
-              <h2 className="mb-5 text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">
-                Order summary
-              </h2>
+              <h2 className="mb-5 text-label-medium text-foreground">Order summary</h2>
               <dl className="space-y-3 text-body-medium">
                 <Row k={`Subtotal (${rows.length} items)`} v={formatINR(mrp)} />
-                <Row k="Discount" v={`− ${formatINR(savings)}`} accent="forest" />
+                <Row k="Discount" v={`- ${formatINR(savings)}`} accent="forest" />
                 <Row
                   k="Delivery"
                   v={shipping === 0 ? "FREE" : formatINR(shipping)}
                   accent={shipping === 0 ? "forest" : undefined}
                 />
-                <div className="border-t border-dashed border-[var(--border-muted)] pt-3 mt-3">
-                  <div className="flex justify-between items-baseline">
+                <div className="mt-3 border-t border-dashed border-[var(--border-muted)] pt-3">
+                  <div className="flex items-baseline justify-between">
                     <dt className="text-label-large text-foreground">Total</dt>
-                    <dd className="font-display text-title-h4 text-foreground">{formatINR(total)}</dd>
+                    <dd className="font-display text-title-h4 text-foreground">
+                      {formatINR(total)}
+                    </dd>
                   </div>
                 </div>
               </dl>
@@ -150,7 +195,7 @@ function CartPage() {
               )}
               <Link
                 to="/checkout"
-                className="button button-primary mt-5 flex w-full items-center justify-center gap-2 rounded-md h-12 text-label-medium"
+                className="button button-primary mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-md text-label-medium"
               >
                 Proceed to checkout <ArrowRight className="size-4" />
               </Link>
@@ -170,7 +215,9 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: "forest" }) {
   return (
     <div className="flex justify-between">
       <dt className="text-[var(--black-alpha-72)]">{k}</dt>
-      <dd className={accent === "forest" ? "text-[var(--accent-forest)]" : "text-foreground"}>{v}</dd>
+      <dd className={accent === "forest" ? "text-[var(--accent-forest)]" : "text-foreground"}>
+        {v}
+      </dd>
     </div>
   );
 }

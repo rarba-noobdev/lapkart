@@ -39,7 +39,10 @@ declare global {
 
 type RazorpayCheckout = {
   open: () => void;
-  on?: (event: "payment.failed", handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
+  on?: (
+    event: "payment.failed",
+    handler: (response: { error?: { description?: string; reason?: string } }) => void,
+  ) => void;
 };
 
 type RazorpayOptions = {
@@ -91,6 +94,29 @@ type DeliveryEstimate = {
   generatedAt: string;
 };
 
+type BackendCheckoutOrderResponse = {
+  razorpayOrder: {
+    order_id: string;
+    amount: number;
+    currency: string;
+  };
+  summary: {
+    subtotal: number;
+    shipping: number;
+    total: number;
+    amountPaise: number;
+    deliveryEstimate: DeliveryEstimate;
+    selectedCourier: CourierQuote;
+  };
+  error?: string;
+};
+
+type BackendCheckoutCompleteResponse = {
+  verified?: boolean;
+  orderId?: string;
+  error?: string;
+};
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID ?? "";
 
@@ -124,7 +150,11 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+  },
 };
 
 export const Route = createFileRoute("/_authenticated/checkout")({
@@ -134,9 +164,11 @@ export const Route = createFileRoute("/_authenticated/checkout")({
 
 function CheckoutPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, session, role } = useAuth();
   const { items, isHydrated: isCartHydrated } = useCartState();
-  const { data: products = [], isLoading: productsLoading } = useProductsByIds(items.map((item) => item.id));
+  const { data: products = [], isLoading: productsLoading } = useProductsByIds(
+    items.map((item) => item.id),
+  );
   const [busy, setBusy] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,13 +197,25 @@ function CheckoutPage() {
     const byId = new Map(products.map((product) => [product.id, product]));
     return items
       .map((item) => ({ product: byId.get(item.id), qty: item.qty }))
-      .filter((row): row is { product: NonNullable<typeof row.product>; qty: number } => Boolean(row.product));
+      .filter((row): row is { product: NonNullable<typeof row.product>; qty: number } =>
+        Boolean(row.product),
+      );
   }, [items, products]);
 
   const subtotal = rows.reduce((sum, row) => sum + row.product.price * row.qty, 0);
-  const shipping = subtotal > 999 || subtotal === 0 ? 0 : 49;
+  const selectedCourier =
+    deliveryEstimate?.couriers.find((courier) => courier.quoteId === selectedQuoteId) ?? null;
+  const shipping =
+    subtotal === 0
+      ? 0
+      : selectedCourier
+        ? subtotal > 999
+          ? 0
+          : selectedCourier.rate
+        : subtotal > 999
+          ? 0
+          : 49;
   const total = subtotal + shipping;
-  const amountPaise = Math.round(total * 100);
   const cartLoading = !isCartHydrated || (items.length > 0 && productsLoading);
   const hasValidAddress =
     address.fullName.trim().length > 1 &&
@@ -183,17 +227,34 @@ function CheckoutPage() {
   const hasDeliveryPin = address.latitude !== null && address.longitude !== null;
   const deliveryPin =
     hasDeliveryPin && address.locationSource
-      ? { latitude: address.latitude as number, longitude: address.longitude as number, source: address.locationSource }
+      ? {
+          latitude: address.latitude as number,
+          longitude: address.longitude as number,
+          source: address.locationSource,
+        }
       : null;
-  const selectedCourier =
-    deliveryEstimate?.couriers.find((courier) => courier.quoteId === selectedQuoteId) ?? null;
-
   const activeStep = useMemo(() => {
     if (orderId) return 3;
     if (selectedCourier && !estimateLoading) return 2;
     if (hasValidAddress) return 1;
     return 0;
   }, [orderId, selectedCourier, estimateLoading, hasValidAddress]);
+
+  useEffect(() => {
+    if (role === "admin") {
+      void navigate({ to: "/admin", replace: true });
+    }
+  }, [navigate, role]);
+
+  if (role === "admin") {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[var(--background-base)]">
+        <p className="text-body-medium text-[var(--black-alpha-56)]">
+          Redirecting to the admin console.
+        </p>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -224,7 +285,8 @@ function CheckoutPage() {
           pincode: current.pincode || data.pincode,
           latitude: current.latitude ?? data.latitude,
           longitude: current.longitude ?? data.longitude,
-          locationSource: current.locationSource ?? (data.location_source as DeliveryPin["source"] | null),
+          locationSource:
+            current.locationSource ?? (data.location_source as DeliveryPin["source"] | null),
           olaPlaceId: current.olaPlaceId ?? data.ola_place_id,
           formattedAddress: current.formattedAddress || data.formatted_address || "",
         }));
@@ -250,24 +312,35 @@ function CheckoutPage() {
         url.searchParams.set("longitude", String(address.longitude));
         url.searchParams.set("pincode", address.pincode.trim());
         url.searchParams.set("declaredValue", String(subtotal));
-        const response = await fetch(url, { signal: controller.signal });
-        const data = await response.json() as DeliveryEstimate & { error?: string };
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : undefined,
+        });
+        const data = (await response.json()) as DeliveryEstimate & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not calculate delivery estimate");
         setDeliveryEstimate(data);
         setSelectedQuoteId((current) => {
           if (data.couriers.some((courier) => courier.quoteId === current)) return current;
-          return data.couriers.find((courier) => courier.recommended)?.quoteId
-            ?? data.couriers[0]?.quoteId
-            ?? null;
+          return (
+            data.couriers.find((courier) => courier.recommended)?.quoteId ??
+            data.couriers[0]?.quoteId ??
+            null
+          );
         });
         if (data.couriers.length === 0) {
-          setEstimateError("No standard or Shiprocket Quick courier currently services this location");
+          setEstimateError(
+            "No standard or Shiprocket Quick courier currently services this location",
+          );
         }
       } catch (error) {
         if (controller.signal.aborted) return;
         setDeliveryEstimate(null);
         setSelectedQuoteId(null);
-        setEstimateError(error instanceof Error ? error.message : "Could not calculate delivery estimate");
+        setEstimateError(
+          error instanceof Error ? error.message : "Could not calculate delivery estimate",
+        );
       } finally {
         if (!controller.signal.aborted) setEstimateLoading(false);
       }
@@ -277,12 +350,24 @@ function CheckoutPage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [address.latitude, address.longitude, address.pincode, hasDeliveryPin, rows.length, subtotal]);
+  }, [
+    address.latitude,
+    address.longitude,
+    address.pincode,
+    hasDeliveryPin,
+    rows.length,
+    session?.access_token,
+    subtotal,
+  ]);
 
   const pay = async () => {
     setError(null);
     if (!user) {
       toast.error("Sign in before checkout");
+      return;
+    }
+    if (!session?.access_token) {
+      toast.error("Sign in again before checkout");
       return;
     }
     if (rows.length === 0) {
@@ -308,32 +393,39 @@ function CheckoutPage() {
     setBusy(true);
     try {
       await loadRazorpay();
-      const orderResponse = await fetch(`${apiBase}/api/create-order`, {
+      const orderResponse = await fetch(`${apiBase}/checkout/create-payment-order`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
-          amount: amountPaise,
-          currency: "INR",
-          receipt: `lk_${Date.now()}`,
+          items: rows.map(({ product, qty }) => ({ id: product.id, qty })),
+          address,
+          selectedQuoteId,
+          saveAddress,
         }),
       });
-      const orderResponseBody = await orderResponse.json().catch(() => null) as
-        | { order_id: string; amount: number; currency: string; error?: string }
-        | null;
+      const orderResponseBody = (await orderResponse
+        .json()
+        .catch(() => null)) as BackendCheckoutOrderResponse | null;
       if (!orderResponse.ok) {
         throw new Error(orderResponseBody?.error ?? "Could not create Razorpay order");
       }
-      if (!orderResponseBody?.order_id) {
+      if (!orderResponseBody?.razorpayOrder.order_id) {
         throw new Error("Razorpay order response was incomplete");
       }
+      setDeliveryEstimate(orderResponseBody.summary.deliveryEstimate);
+      setSelectedQuoteId(orderResponseBody.summary.selectedCourier.quoteId);
 
       const checkout = new window.Razorpay!({
         key: razorpayKey,
-        amount: orderResponseBody.amount,
-        currency: orderResponseBody.currency,
+        amount: orderResponseBody.razorpayOrder.amount,
+        currency: orderResponseBody.razorpayOrder.currency,
         name: "LapKart",
-        description: rows.length > 0 ? `${rows.length} laptop marketplace item(s)` : "LapKart test payment",
-        order_id: orderResponseBody.order_id,
+        description:
+          rows.length > 0 ? `${rows.length} laptop marketplace item(s)` : "LapKart test payment",
+        order_id: orderResponseBody.razorpayOrder.order_id,
         prefill: {
           name: address.fullName.trim(),
           email: address.email.trim() || user.email || "",
@@ -348,28 +440,28 @@ function CheckoutPage() {
         },
         handler: async (response) => {
           try {
-            const verifyResponse = await fetch(`${apiBase}/api/verify-payment`, {
+            const completeResponse = await fetch(`${apiBase}/checkout/complete-payment`, {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${session.access_token}`,
+              },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
               }),
             });
-            const verified = await verifyResponse.json().catch(() => null) as { verified?: boolean; error?: string } | null;
-            if (!verifyResponse.ok || !verified?.verified) {
-              throw new Error(verified?.error ?? "Razorpay signature verification failed");
+            const completed = (await completeResponse
+              .json()
+              .catch(() => null)) as BackendCheckoutCompleteResponse | null;
+            if (!completeResponse.ok || !completed?.verified || !completed.orderId) {
+              throw new Error(completed?.error ?? "Could not complete paid order");
             }
-            const createdOrderId = await placeOrder({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            });
-            setOrderId(createdOrderId);
+            setOrderId(completed.orderId);
             cart.clear();
             toast.success("Order placed and payment verified");
-            navigate({ to: "/order/$id", params: { id: createdOrderId } });
+            navigate({ to: "/order/$id", params: { id: completed.orderId } });
           } catch (error) {
             const message = error instanceof Error ? error.message : "Could not place order";
             setError(message);
@@ -394,108 +486,6 @@ function CheckoutPage() {
     }
   };
 
-  const placeOrder = async (payment: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) => {
-    if (!user) throw new Error("Sign in before checkout");
-    const createdOrderId = crypto.randomUUID();
-    const shippingAddress = [
-      address.line1.trim(),
-      address.line2.trim(),
-      `${address.city.trim()}, ${address.state.trim()} ${address.pincode.trim()}`,
-      "India",
-    ].filter(Boolean).join("\n");
-
-    const { error: orderError } = await supabase.from("orders").insert({
-      id: createdOrderId,
-      user_id: user.id,
-      status: "confirmed",
-      payment_status: "paid",
-      payment_method: "razorpay",
-      subtotal,
-      shipping,
-      total,
-      shipping_name: address.fullName.trim(),
-      shipping_phone: address.phone.replace(/\D/g, "").slice(-10),
-      shipping_email: address.email.trim() || user.email || null,
-      shipping_address: shippingAddress,
-      shipping_line1: address.line1.trim(),
-      shipping_line2: address.line2.trim() || null,
-      shipping_city: address.city.trim(),
-      shipping_state: address.state.trim(),
-      shipping_pincode: address.pincode.trim(),
-      shipping_country: "India",
-      shipping_latitude: address.latitude,
-      shipping_longitude: address.longitude,
-      shipping_location_source: address.locationSource,
-      shipping_place_id: address.olaPlaceId,
-      shipping_formatted_address: address.formattedAddress || null,
-      shipping_route_distance_meters: deliveryEstimate?.route.distanceMeters ?? null,
-      shipping_route_duration_seconds: deliveryEstimate?.route.durationSeconds ?? null,
-      shipping_estimate: deliveryEstimate ?? {},
-      shipping_courier_company_id: selectedCourier?.courierCompanyId ?? null,
-      shipping_courier_name: selectedCourier?.courierName ?? null,
-      shipping_service_type: selectedCourier?.serviceType ?? "standard",
-      shipping_expected_delivery_date: selectedCourier?.expectedDeliveryDate ?? null,
-      shipping_charge_estimate: selectedCourier?.rate ?? null,
-      tracking: [
-        {
-          label: "Order placed",
-          at: new Date().toISOString(),
-          razorpay_order_id: payment.razorpayOrderId,
-          razorpay_payment_id: payment.razorpayPaymentId,
-        },
-      ],
-    });
-    if (orderError) throw orderError;
-
-    const { error: itemsError } = await supabase.from("order_items").insert(
-      rows.map(({ product, qty }) => ({
-        order_id: createdOrderId,
-        product_id: product.id,
-        title: product.title,
-        image: product.images?.[0] ?? product.image,
-        brand: product.brand,
-        price: product.price,
-        unit_price: product.price,
-        qty,
-      })),
-    );
-    if (itemsError) throw itemsError;
-
-    const { error: paymentError } = await supabase.from("payments").insert({
-      order_id: createdOrderId,
-      provider: "razorpay",
-      method: "test",
-      amount: total,
-      status: "paid",
-      provider_order_id: payment.razorpayOrderId,
-      provider_payment_id: payment.razorpayPaymentId,
-      provider_signature: payment.razorpaySignature,
-      raw_payload: payment,
-    });
-    if (paymentError) throw paymentError;
-
-    if (saveAddress) {
-      await supabase.from("addresses").insert({
-        user_id: user.id,
-        full_name: address.fullName.trim(),
-        phone: address.phone.replace(/\D/g, "").slice(-10),
-        line1: address.line1.trim(),
-        line2: address.line2.trim() || null,
-        city: address.city.trim(),
-        state: address.state.trim(),
-        pincode: address.pincode.trim(),
-        latitude: address.latitude,
-        longitude: address.longitude,
-        location_source: address.locationSource,
-        ola_place_id: address.olaPlaceId,
-        formatted_address: address.formattedAddress || null,
-        is_default: true,
-      });
-    }
-
-    return createdOrderId;
-  };
-
   return (
     <DashboardShell
       eyebrow="secure checkout"
@@ -515,14 +505,19 @@ function CheckoutPage() {
         <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
           <motion.div variants={containerVariants} className="space-y-8">
             {/* Delivery Address */}
-            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+            <motion.section
+              variants={itemVariants}
+              className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]"
+            >
               <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
                   <MapPin className="size-4" />
                 </div>
                 <div>
                   <h2 className="text-label-large text-foreground">Delivery Address</h2>
-                  <p className="text-body-small text-[var(--black-alpha-48)]">Where should we ship your order?</p>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">
+                    Where should we ship your order?
+                  </p>
                 </div>
               </div>
               <div className="p-6">
@@ -556,7 +551,12 @@ function CheckoutPage() {
                   <InputField label="Pincode" icon={null}>
                     <input
                       value={address.pincode}
-                      onChange={(e) => setAddress({ ...address, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                      onChange={(e) =>
+                        setAddress({
+                          ...address,
+                          pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
+                        })
+                      }
                       inputMode="numeric"
                       maxLength={6}
                       className="input-field"
@@ -593,7 +593,9 @@ function CheckoutPage() {
                       onChange={(e) => setAddress({ ...address, state: e.target.value })}
                       className="input-field appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23999%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10"
                     >
-                      {indianStates.map((state) => <option key={state}>{state}</option>)}
+                      {indianStates.map((state) => (
+                        <option key={state}>{state}</option>
+                      ))}
                     </select>
                   </InputField>
                 </div>
@@ -604,26 +606,38 @@ function CheckoutPage() {
                     onChange={(e) => setSaveAddress(e.target.checked)}
                     className="size-5 accent-[var(--heat-100)]"
                   />
-                  <span className="text-body-small text-[var(--black-alpha-72)]">Save this address for future orders</span>
+                  <span className="text-body-small text-[var(--black-alpha-72)]">
+                    Save this address for future orders
+                  </span>
                 </label>
               </div>
             </motion.section>
 
             {/* Delivery Pin & Courier */}
-            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+            <motion.section
+              variants={itemVariants}
+              className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]"
+            >
               <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
                   <LocateFixed className="size-4" />
                 </div>
                 <div>
                   <h2 className="text-label-large text-foreground">Delivery Pin</h2>
-                  <p className="text-body-small text-[var(--black-alpha-48)]">Pin your location for accurate courier quotes</p>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">
+                    Pin your location for accurate courier quotes
+                  </p>
                 </div>
               </div>
               <div className="p-6">
                 <DeliveryMapPicker
                   value={deliveryPin}
-                  addressLabel={hasValidAddress ? `${address.city}, ${address.state} ${address.pincode}` : "delivery pin"}
+                  addressLabel={
+                    hasValidAddress
+                      ? `${address.city}, ${address.state} ${address.pincode}`
+                      : "delivery pin"
+                  }
+                  authToken={session?.access_token}
                   onChange={(pin) =>
                     setAddress((current) => ({
                       ...current,
@@ -658,25 +672,39 @@ function CheckoutPage() {
             </motion.section>
 
             {/* Payment Methods */}
-            <motion.section variants={itemVariants} className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
+            <motion.section
+              variants={itemVariants}
+              className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]"
+            >
               <div className="flex items-center gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-6 py-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--heat-100)] text-white">
                   <CreditCard className="size-4" />
                 </div>
                 <div>
                   <h2 className="text-label-large text-foreground">Payment</h2>
-                  <p className="text-body-small text-[var(--black-alpha-48)]">Secure checkout powered by Razorpay</p>
+                  <p className="text-body-small text-[var(--black-alpha-48)]">
+                    Secure checkout powered by Razorpay
+                  </p>
                 </div>
               </div>
               <div className="p-6">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {["UPI", "Cards", "Net Banking", "EMI", "GPay", "PhonePe", "Paytm", "Wallets"].map((method, i) => (
+                  {[
+                    "UPI",
+                    "Cards",
+                    "Net Banking",
+                    "EMI",
+                    "GPay",
+                    "PhonePe",
+                    "Paytm",
+                    "Wallets",
+                  ].map((method, i) => (
                     <motion.div
                       key={method}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.04, duration: 0.35 }}
-                      className="group flex items-center gap-3 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-3 transition-all hover:border-[var(--heat-40)] hover:bg-[var(--heat-4)] hover:shadow-[var(--shadow-card)]"
+                      className="group flex items-center gap-3 rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-3 transition-[border-color,background-color,box-shadow] hover:border-[var(--heat-40)] hover:bg-[var(--heat-4)] hover:shadow-[var(--shadow-card)]"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--heat-100)] shadow-sm transition-colors group-hover:bg-[var(--heat-100)] group-hover:text-white">
                         <Wallet className="size-4" />
@@ -699,7 +727,9 @@ function CheckoutPage() {
           <motion.aside variants={itemVariants} className="h-fit space-y-6">
             <div className="sticky top-6 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[var(--shadow-card)]">
               <div className="border-b border-[var(--border-faint)] bg-gradient-to-r from-[var(--heat-100)] to-[var(--heat-200)] px-6 py-4">
-                <p className="text-mono-x-small uppercase tracking-[0.2em] text-white/80">Order Summary</p>
+                <p className="text-mono-x-small uppercase tracking-[0.2em] text-white/80">
+                  Order Summary
+                </p>
                 {cartLoading ? (
                   <Skeleton className="mt-2 h-7 w-28 bg-white/20" />
                 ) : (
@@ -739,11 +769,19 @@ function CheckoutPage() {
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-label-small text-foreground">{product.title}</p>
-                              <p className="mt-0.5 text-body-small text-[var(--black-alpha-48)]">{product.brand}</p>
+                              <p className="truncate text-label-small text-foreground">
+                                {product.title}
+                              </p>
+                              <p className="mt-0.5 text-body-small text-[var(--black-alpha-48)]">
+                                {product.brand}
+                              </p>
                               <div className="mt-1 flex items-center gap-2">
-                                <span className="text-label-small text-foreground">{formatINR(product.price)}</span>
-                                <span className="rounded-sm bg-[var(--background-lighter)] px-1.5 py-0.5 text-mono-x-small text-[var(--black-alpha-48)]">x{qty}</span>
+                                <span className="text-label-small text-foreground">
+                                  {formatINR(product.price)}
+                                </span>
+                                <span className="rounded-sm bg-[var(--background-lighter)] px-1.5 py-0.5 text-mono-x-small text-[var(--black-alpha-48)]">
+                                  x{qty}
+                                </span>
                               </div>
                             </div>
                           </motion.div>
@@ -752,7 +790,9 @@ function CheckoutPage() {
                       {rows.length === 0 && (
                         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border-muted)] py-8 text-center">
                           <Package className="size-8 text-[var(--black-alpha-16)]" />
-                          <p className="mt-2 text-body-small text-[var(--black-alpha-48)]">Your cart is empty</p>
+                          <p className="mt-2 text-body-small text-[var(--black-alpha-48)]">
+                            Your cart is empty
+                          </p>
                           <Link
                             to="/products"
                             className="mt-3 inline-flex items-center gap-1 text-label-small text-[var(--heat-100)] hover:underline"
@@ -775,7 +815,11 @@ function CheckoutPage() {
                   <>
                     <div className="mt-5 space-y-2 border-t border-[var(--border-faint)] pt-5">
                       <SummaryRow label="Subtotal" value={formatINR(subtotal)} />
-                      <SummaryRow label="Shipping" value={shipping === 0 ? "FREE" : formatINR(shipping)} highlight={shipping === 0} />
+                      <SummaryRow
+                        label="Shipping"
+                        value={shipping === 0 ? "FREE" : formatINR(shipping)}
+                        highlight={shipping === 0}
+                      />
                       <SummaryRow label="Taxes" value="Included" />
                     </div>
 
@@ -801,16 +845,22 @@ function CheckoutPage() {
                   >
                     <div className="flex items-center gap-2">
                       <Truck className="size-4 text-[var(--heat-100)]" />
-                      <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--heat-100)]">Delivery Estimate</p>
+                      <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--heat-100)]">
+                        Delivery Estimate
+                      </p>
                     </div>
-                    <p className="mt-2 text-label-small text-foreground">{selectedCourier.courierName}</p>
+                    <p className="mt-2 text-label-small text-foreground">
+                      {selectedCourier.courierName}
+                    </p>
                     <p className="mt-1 text-body-small text-[var(--black-alpha-64)]">
-                      Expected {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}
+                      Expected{" "}
+                      {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
                       <RouteIcon className="size-3.5 text-[var(--black-alpha-48)]" />
                       <span className="text-mono-x-small text-[var(--black-alpha-48)]">
-                        {deliveryEstimate?.route.readableDistance || "—"} · {deliveryEstimate?.route.readableDuration || "—"}
+                        {deliveryEstimate?.route.readableDistance || "—"} ·{" "}
+                        {deliveryEstimate?.route.readableDuration || "—"}
                       </span>
                     </div>
                   </motion.div>
@@ -841,10 +891,21 @@ function CheckoutPage() {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={pay}
-                  disabled={cartLoading || busy || Boolean(orderId) || rows.length === 0 || estimateLoading || !selectedCourier}
+                  disabled={
+                    cartLoading ||
+                    busy ||
+                    Boolean(orderId) ||
+                    rows.length === 0 ||
+                    estimateLoading ||
+                    !selectedCourier
+                  }
                   className="button button-primary mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-label-medium disabled:opacity-60"
                 >
-                  {busy ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+                  {busy ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="size-4" />
+                  )}
                   {orderId ? "Order placed" : `Pay ${formatINR(total)}`}
                 </motion.button>
 
@@ -867,7 +928,13 @@ function CheckoutPage() {
   );
 }
 
-function StepIndicator({ steps, activeIndex }: { steps: { label: string; icon: React.ElementType }[]; activeIndex: number }) {
+function StepIndicator({
+  steps,
+  activeIndex,
+}: {
+  steps: { label: string; icon: React.ElementType }[];
+  activeIndex: number;
+}) {
   return (
     <div className="relative">
       <div className="absolute left-0 right-0 top-1/2 hidden h-px -translate-y-1/2 bg-[var(--border-faint)] md:block" />
@@ -915,7 +982,16 @@ function StepIndicator({ steps, activeIndex }: { steps: { label: string; icon: R
   );
 }
 
-function InputField({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean; icon?: React.ReactNode }) {
+function InputField({
+  label,
+  children,
+  wide = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+  icon?: React.ReactNode;
+}) {
   return (
     <label className={`group ${wide ? "md:col-span-2" : ""}`}>
       <span className="mb-1.5 block text-label-x-small text-[var(--black-alpha-56)]">{label}</span>
@@ -924,11 +1000,23 @@ function InputField({ label, children, wide = false }: { label: string; children
   );
 }
 
-function SummaryRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+function SummaryRow({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="text-body-small text-[var(--black-alpha-64)]">{label}</span>
-      <span className={`text-label-small ${highlight ? "text-[var(--accent-forest)]" : "text-foreground"}`}>{value}</span>
+      <span
+        className={`text-label-small ${highlight ? "text-[var(--accent-forest)]" : "text-foreground"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -987,24 +1075,41 @@ function DeliveryQuotePicker({
   }
 
   return (
-    <motion.div initial="hidden" animate="visible" variants={containerVariants} className="mt-5 space-y-4">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="mt-5 space-y-4"
+    >
       <div className="grid gap-3 sm:grid-cols-2">
-        <motion.div variants={itemVariants} className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+        >
           <div className="flex items-center gap-2">
             <RouteIcon className="size-4 text-[var(--heat-100)]" />
-            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">Road Distance</p>
+            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+              Road Distance
+            </p>
           </div>
           <p className="mt-2 font-display text-title-h5 text-foreground">
-            {estimate.route.readableDistance || `${(estimate.route.distanceMeters / 1000).toFixed(1)} km`}
+            {estimate.route.readableDistance ||
+              `${(estimate.route.distanceMeters / 1000).toFixed(1)} km`}
           </p>
         </motion.div>
-        <motion.div variants={itemVariants} className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-xl border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+        >
           <div className="flex items-center gap-2">
             <Timer className="size-4 text-[var(--heat-100)]" />
-            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">Route Time</p>
+            <p className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+              Route Time
+            </p>
           </div>
           <p className="mt-2 font-display text-title-h5 text-foreground">
-            {estimate.route.readableDuration || `${Math.ceil(estimate.route.durationSeconds / 60)} min`}
+            {estimate.route.readableDuration ||
+              `${Math.ceil(estimate.route.durationSeconds / 60)} min`}
           </p>
         </motion.div>
       </div>
@@ -1019,16 +1124,20 @@ function DeliveryQuotePicker({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.06 }}
-              className={`group flex w-full items-start justify-between gap-4 rounded-xl border p-4 text-left transition-all ${
+              className={`group flex w-full items-start justify-between gap-4 rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] ${
                 selected
                   ? "border-[var(--heat-100)] bg-gradient-to-r from-[var(--heat-4)] to-white shadow-[var(--shadow-card)]"
                   : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)] hover:shadow-[var(--shadow-card)]"
               }`}
             >
               <span className="flex min-w-0 gap-3">
-                <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                  selected ? "border-[var(--heat-100)] bg-[var(--heat-100)] text-white" : "border-[var(--black-alpha-24)]"
-                }`}>
+                <div
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                    selected
+                      ? "border-[var(--heat-100)] bg-[var(--heat-100)] text-white"
+                      : "border-[var(--black-alpha-24)]"
+                  }`}
+                >
                   {selected && <Check className="size-3" />}
                 </div>
                 <span className="min-w-0">
@@ -1046,12 +1155,15 @@ function DeliveryQuotePicker({
                     )}
                   </span>
                   <span className="mt-1 block text-body-small text-[var(--black-alpha-56)]">
-                    {courier.mode} · Expected {courier.etd || `${courier.estimatedDeliveryDays} day(s)`}
+                    {courier.mode} · Expected{" "}
+                    {courier.etd || `${courier.estimatedDeliveryDays} day(s)`}
                     {courier.rating ? ` · ${courier.rating} rating` : ""}
                   </span>
                 </span>
               </span>
-              <span className="shrink-0 text-label-small text-foreground">{formatINR(courier.rate)}</span>
+              <span className="shrink-0 text-label-small text-foreground">
+                {formatINR(courier.rate)}
+              </span>
             </motion.button>
           );
         })}

@@ -12,7 +12,13 @@ type AuthCtx = {
   signOut: () => Promise<void>;
 };
 
-const Ctx = createContext<AuthCtx>({ user: null, session: null, role: null, loading: true, signOut: async () => {} });
+const Ctx = createContext<AuthCtx>({
+  user: null,
+  session: null,
+  role: null,
+  loading: true,
+  signOut: async () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -47,15 +53,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("role")
       .eq("user_id", userId)
       .maybeSingle()
-      .then(({ data, error }) => {
-        if (!active) return;
-        setRole(error ? "user" : data?.role ?? "user");
-        setRoleLoading(false);
-      }, () => {
-        if (!active) return;
-        setRole("user");
-        setRoleLoading(false);
-      });
+      .then(
+        ({ data, error }) => {
+          if (!active) return;
+          setRole(error ? "user" : (data?.role ?? "user"));
+          setRoleLoading(false);
+        },
+        () => {
+          if (!active) return;
+          setRole("user");
+          setRoleLoading(false);
+        },
+      );
 
     return () => {
       active = false;

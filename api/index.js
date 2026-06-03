@@ -52,7 +52,12 @@ async function tryServeStatic(pathname, res) {
       const data = await readFile(candidatePath);
       res.statusCode = 200;
       res.setHeader("content-type", getContentType(candidatePath));
-      res.setHeader("cache-control", pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "public, max-age=3600");
+      res.setHeader(
+        "cache-control",
+        pathname.startsWith("/assets/")
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=3600",
+      );
       res.end(data);
       return true;
     } catch {
@@ -106,7 +111,9 @@ async function writeResponse(res, response) {
 
 export default async function handler(req, res) {
   try {
-    const url = new URL(`${req.headers["x-forwarded-proto"] || "https"}://${req.headers["x-forwarded-host"] || req.headers.host || "localhost"}${req.url || "/"}`);
+    const url = new URL(
+      `${req.headers["x-forwarded-proto"] || "https"}://${req.headers["x-forwarded-host"] || req.headers.host || "localhost"}${req.url || "/"}`,
+    );
     if (await tryServeStatic(url.pathname, res)) return;
 
     const request = buildRequest(req);

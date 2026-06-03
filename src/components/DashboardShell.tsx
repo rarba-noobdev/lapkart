@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { kpis } from "@/lib/marketplace";
 import type { LucideIcon } from "lucide-react";
 import { ArrowUpRight } from "lucide-react";
 
@@ -21,11 +20,13 @@ export function DashboardShell({
       <Header />
       <section className="border-b border-[var(--border-faint)] bg-white">
         <div className="container mx-auto px-4 py-10">
-          <p className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--heat-100)]">{eyebrow}</p>
+          <p className="text-label-small text-[var(--heat-100)]">{eyebrow}</p>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-5">
             <div>
               <h1 className="font-display text-title-h3 text-foreground">{title}</h1>
-              <p className="mt-2 max-w-2xl text-body-medium text-[var(--black-alpha-56)]">{description}</p>
+              <p className="mt-2 max-w-2xl text-body-medium text-[var(--black-alpha-56)]">
+                {description}
+              </p>
             </div>
             <Link
               to="/products"
@@ -42,11 +43,21 @@ export function DashboardShell({
   );
 }
 
-export function KpiGrid() {
+export function KpiGrid({
+  items,
+}: {
+  items: Array<{ icon: LucideIcon; label: string; value: string; trend?: string }>;
+}) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {kpis.map((item) => (
-        <MetricCard key={item.label} icon={item.icon} label={item.label} value={item.value} trend={item.trend} />
+      {items.map((item) => (
+        <MetricCard
+          key={item.label}
+          icon={item.icon}
+          label={item.label}
+          value={item.value}
+          trend={item.trend}
+        />
       ))}
     </div>
   );
@@ -61,15 +72,25 @@ export function MetricCard({
   icon: LucideIcon;
   label: string;
   value: string;
-  trend: string;
+  trend?: string;
 }) {
   return (
     <div className="rounded-lg border border-[var(--border-faint)] bg-white p-5">
       <div className="flex items-center justify-between">
         <Icon className="size-5 text-[var(--heat-100)]" />
-        <span className="text-mono-x-small uppercase tracking-[0.16em] text-[var(--accent-forest)]">{trend}</span>
+        {trend ? (
+          <span className="text-mono-x-small uppercase tracking-[0.16em] text-[var(--accent-forest)]">
+            {trend}
+          </span>
+        ) : (
+          <span className="text-mono-x-small uppercase tracking-[0.16em] text-[var(--black-alpha-32)]">
+            live
+          </span>
+        )}
       </div>
-      <p className="mt-5 text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">{label}</p>
+      <p className="mt-5 text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">
+        {label}
+      </p>
       <p className="mt-1 font-display text-[34px] leading-none text-foreground">{value}</p>
     </div>
   );

@@ -33,6 +33,7 @@ type Props = {
   onChange: (pin: DeliveryPin) => void;
   onAddressResolved?: (address: ResolvedDeliveryAddress) => void;
   addressLabel?: string;
+  authToken?: string | null;
 };
 
 type OlaMap = {
@@ -50,7 +51,8 @@ type OlaMap = {
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080";
 const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? "";
 const olaMapsStyleUrl = import.meta.env.VITE_OLA_MAPS_STYLE_URL ?? "";
-const defaultOlaMapsStyleUrl = "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json";
+const defaultOlaMapsStyleUrl =
+  "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json";
 const defaultCenter = { latitude: 12.9716, longitude: 77.5946 };
 const fallbackRasterStyle = {
   version: 8,
@@ -76,7 +78,13 @@ function olaStaticMapUrl(pin: { latitude: number; longitude: number }) {
   return `https://api.olamaps.io/tiles/v1/styles/default-light-standard/static/${pin.longitude},${pin.latitude},15/1000x640.png?${params.toString()}`;
 }
 
-export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressLabel }: Props) {
+export function DeliveryMapPicker({
+  value,
+  onChange,
+  onAddressResolved,
+  addressLabel,
+  authToken,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<OlaMap | null>(null);
   const suppressNextSearchRef = useRef(false);
@@ -109,13 +117,13 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
         let fallbackActive = false;
         let map;
         try {
-          map = await olaMaps.init({
+          map = (await olaMaps.init({
             ...options,
             style: olaMapsStyleUrl || defaultOlaMapsStyleUrl,
-          }) as OlaMap;
+          })) as OlaMap;
         } catch {
           fallbackActive = true;
-          map = await olaMaps.init({ ...options, style: fallbackRasterStyle }) as OlaMap;
+          map = (await olaMaps.init({ ...options, style: fallbackRasterStyle })) as OlaMap;
         }
 
         if (!active) {
@@ -216,8 +224,11 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
         url.searchParams.set("input", input.slice(0, 160));
         url.searchParams.set("latitude", String(center.latitude));
         url.searchParams.set("longitude", String(center.longitude));
-        const response = await fetch(url, { signal: controller.signal });
-        const data = await response.json() as { suggestions?: Suggestion[]; error?: string };
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+        });
+        const data = (await response.json()) as { suggestions?: Suggestion[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not search addresses");
         setSuggestions(data.suggestions ?? []);
         setLocationError(null);
@@ -234,7 +245,7 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [authToken, center.latitude, center.longitude, query]);
 
   const resolvePin = async (pin: DeliveryPin, selectedPlaceId?: string) => {
     try {
@@ -242,8 +253,10 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
       const url = new URL(`${apiBase}/maps/reverse-geocode`);
       url.searchParams.set("latitude", String(pin.latitude));
       url.searchParams.set("longitude", String(pin.longitude));
-      const response = await fetch(url);
-      const data = await response.json() as ResolvedDeliveryAddress & { error?: string };
+      const response = await fetch(url, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+      });
+      const data = (await response.json()) as ResolvedDeliveryAddress & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Could not resolve this address");
       const resolved = { ...data, placeId: selectedPlaceId || data.placeId };
       suppressNextSearchRef.current = true;
@@ -358,7 +371,9 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
             placeholder="Enter area, landmark, or pincode"
             className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white pl-9 pr-10 text-body-small outline-none focus:border-[var(--heat-100)]"
           />
-          {searching && <Loader2 className="absolute right-3 top-3 size-4 animate-spin text-[var(--heat-100)]" />}
+          {searching && (
+            <Loader2 className="absolute right-3 top-3 size-4 animate-spin text-[var(--heat-100)]" />
+          )}
           {suggestions.length > 0 && (
             <div className="absolute inset-x-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-md border border-[var(--border-muted)] bg-white shadow-[0_16px_32px_rgba(0,0,0,0.12)]">
               {suggestions.map((suggestion) => (
@@ -370,8 +385,12 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
                 >
                   <MapPin className="mt-0.5 size-4 shrink-0 text-[var(--heat-100)]" />
                   <span>
-                    <span className="block text-label-small text-foreground">{suggestion.mainText}</span>
-                    <span className="mt-0.5 block text-body-small text-[var(--black-alpha-56)]">{suggestion.secondaryText}</span>
+                    <span className="block text-label-small text-foreground">
+                      {suggestion.mainText}
+                    </span>
+                    <span className="mt-0.5 block text-body-small text-[var(--black-alpha-56)]">
+                      {suggestion.secondaryText}
+                    </span>
                   </span>
                 </button>
               ))}
@@ -393,10 +412,7 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
         />
         <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center">
           <div className="relative -translate-y-1/2 drop-shadow-[0_8px_7px_rgba(0,0,0,0.28)]">
-            <MapPin
-              className="size-14 fill-[var(--heat-100)] stroke-white"
-              strokeWidth={2.25}
-            />
+            <MapPin className="size-14 fill-[var(--heat-100)] stroke-white" strokeWidth={2.25} />
             <span className="absolute left-1/2 top-[38%] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[var(--heat-100)]" />
           </div>
         </div>
@@ -419,7 +435,9 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
               : `${center.latitude}, ${center.longitude}`}
           </p>
           {(locationError || resolving) && (
-            <p className={`mt-1 text-body-small ${locationError ? "text-red-700" : "text-[var(--black-alpha-56)]"}`}>
+            <p
+              className={`mt-1 text-body-small ${locationError ? "text-red-700" : "text-[var(--black-alpha-56)]"}`}
+            >
               {locationError ?? "Resolving selected address"}
             </p>
           )}
@@ -440,7 +458,11 @@ export function DeliveryMapPicker({ value, onChange, onAddressResolved, addressL
             disabled={resolving}
             className="button button-primary relative inline-flex h-10 items-center gap-2 rounded-md px-4 text-label-medium disabled:opacity-60"
           >
-            {resolving ? <Loader2 className="size-4 animate-spin" /> : <Crosshair className="size-4" />}
+            {resolving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Crosshair className="size-4" />
+            )}
             Confirm pin
           </button>
         </div>

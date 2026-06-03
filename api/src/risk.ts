@@ -1,4 +1,8 @@
-export function scoreFraud(input: { failedPayments?: number; orderValue?: number; accountAgeDays?: number }) {
+export function scoreFraud(input: {
+  failedPayments?: number;
+  orderValue?: number;
+  accountAgeDays?: number;
+}) {
   let score = 5;
   if ((input.failedPayments ?? 0) >= 3) score += 35;
   if ((input.orderValue ?? 0) > 75_000) score += 20;

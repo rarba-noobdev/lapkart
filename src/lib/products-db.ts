@@ -41,7 +41,8 @@ function normalize(r: Row): Product {
   };
 }
 
-const SELECT = "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights";
+const SELECT =
+  "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights";
 
 function useHydrated() {
   const [hydrated, setHydrated] = useState(false);
@@ -63,7 +64,11 @@ export function useProducts() {
     },
     staleTime: 60_000,
   });
-  return { ...query, data: hydrated ? query.data : undefined, isLoading: !hydrated || query.isLoading };
+  return {
+    ...query,
+    data: hydrated ? query.data : undefined,
+    isLoading: !hydrated || query.isLoading,
+  };
 }
 
 export function useProduct(id: string | undefined) {
@@ -82,7 +87,11 @@ export function useProduct(id: string | undefined) {
     },
     staleTime: 60_000,
   });
-  return { ...query, data: hydrated ? query.data : undefined, isLoading: !hydrated || query.isLoading };
+  return {
+    ...query,
+    data: hydrated ? query.data : undefined,
+    isLoading: !hydrated || query.isLoading,
+  };
 }
 
 export function useProductsByIds(ids: string[]) {
@@ -92,14 +101,15 @@ export function useProductsByIds(ids: string[]) {
     queryKey: ["products", "by-ids", key],
     enabled: key.length > 0,
     queryFn: async (): Promise<Product[]> => {
-      const { data, error } = await supabase
-        .from("products")
-        .select(SELECT)
-        .in("id", key);
+      const { data, error } = await supabase.from("products").select(SELECT).in("id", key);
       if (error) throw error;
       return (data as Row[]).map(normalize);
     },
     staleTime: 60_000,
   });
-  return { ...query, data: hydrated ? query.data : undefined, isLoading: !hydrated || query.isLoading };
+  return {
+    ...query,
+    data: hydrated ? query.data : undefined,
+    isLoading: !hydrated || query.isLoading,
+  };
 }
