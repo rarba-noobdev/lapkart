@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Crosshair, Loader2, LocateFixed, MapPin, Search } from "lucide-react";
 import { apiBase } from "@/lib/api-base";
+import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 
 export type DeliveryPin = {
   latitude: number;
@@ -115,8 +116,9 @@ export function DeliveryMapPicker({
         const url = new URL(`${apiBase}/maps/reverse-geocode`);
         url.searchParams.set("latitude", String(pin.latitude));
         url.searchParams.set("longitude", String(pin.longitude));
+        const authHeaders = authToken ? await getAuthorizationHeaders() : undefined;
         const response = await fetch(url, {
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+          headers: authHeaders,
         });
         const data = (await response.json()) as ResolvedDeliveryAddress & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not resolve this address");
@@ -266,9 +268,10 @@ export function DeliveryMapPicker({
         url.searchParams.set("input", input.slice(0, 160));
         url.searchParams.set("latitude", String(center.latitude));
         url.searchParams.set("longitude", String(center.longitude));
+        const authHeaders = authToken ? await getAuthorizationHeaders() : undefined;
         const response = await fetch(url, {
           signal: controller.signal,
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+          headers: authHeaders,
         });
         const data = (await response.json()) as { suggestions?: Suggestion[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not search addresses");

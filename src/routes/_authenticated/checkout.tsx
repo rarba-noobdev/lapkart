@@ -14,6 +14,7 @@ import { apiBase } from "@/lib/api-base";
 import { formatINR } from "@/lib/catalog";
 import { cart, useCartState } from "@/lib/cart-store";
 import { useAuth } from "@/lib/auth";
+import { getAccessToken, getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useProductsByIds } from "@/lib/products-db";
 import {
   Check,
@@ -302,11 +303,10 @@ function CheckoutPage() {
         url.searchParams.set("longitude", String(address.longitude));
         url.searchParams.set("pincode", address.pincode.trim());
         url.searchParams.set("declaredValue", String(subtotal));
+        const authHeaders = session?.access_token ? await getAuthorizationHeaders() : undefined;
         const response = await fetch(url, {
           signal: controller.signal,
-          headers: session?.access_token
-            ? { Authorization: `Bearer ${session.access_token}` }
-            : undefined,
+          headers: authHeaders,
         });
         const data = (await response.json()) as DeliveryEstimate & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not calculate delivery estimate");
@@ -356,7 +356,8 @@ function CheckoutPage() {
       toast.error("Sign in before checkout");
       return;
     }
-    if (!session?.access_token) {
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
       toast.error("Sign in again before checkout");
       return;
     }
@@ -387,7 +388,7 @@ function CheckoutPage() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${session.access_token}`,
+          ...(await getAuthorizationHeaders()),
         },
         body: JSON.stringify({
           items: rows.map(({ product, qty }) => ({ id: product.id, qty })),
@@ -434,7 +435,7 @@ function CheckoutPage() {
               method: "POST",
               headers: {
                 "content-type": "application/json",
-                authorization: `Bearer ${session.access_token}`,
+                ...(await getAuthorizationHeaders()),
               },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,

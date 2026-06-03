@@ -7,6 +7,7 @@ import { Header } from "@/components/Header";
 import { apiBase } from "@/lib/api-base";
 import { useAuth } from "@/lib/auth";
 import { formatINR } from "@/lib/catalog";
+import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
 
 export const Route = createFileRoute("/_authenticated/order/$id")({
@@ -89,9 +90,7 @@ function OrderPage() {
 
     try {
       const response = await fetch(`${apiBase}/orders/${id}/tracking`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: await getAuthorizationHeaders(),
       });
       const data = (await response.json()) as OrderTrackingResponse;
 

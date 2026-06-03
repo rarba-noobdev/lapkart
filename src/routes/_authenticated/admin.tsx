@@ -5,6 +5,7 @@ import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
 import { useAuth } from "@/lib/auth";
 import { apiBase } from "@/lib/api-base";
 import { categories, formatINR } from "@/lib/catalog";
+import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
 import {
   Area,
@@ -246,12 +247,12 @@ type OrderEditorState = {
   shippingPincode: string;
 };
 
-async function requestAdminApi<T>(accessToken: string, path: string, init?: RequestInit) {
+async function requestAdminApi<T>(_accessToken: string, path: string, init?: RequestInit) {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
+      ...(await getAuthorizationHeaders()),
       ...init?.headers,
     },
   });
