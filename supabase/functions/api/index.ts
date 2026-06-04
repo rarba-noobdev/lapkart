@@ -296,6 +296,7 @@ const paymentStatusSchema = z.enum([
   "cod_pending",
   "cod_cancelled",
   "failed",
+  "partially_refunded",
   "refunded",
 ]);
 
@@ -442,7 +443,7 @@ const adminRefundSchema = z.object({
   cancellationRequestId: z.string().uuid().optional(),
   returnRequestId: z.string().uuid().optional(),
   amount: z.coerce.number().positive().max(10_000_000).optional(),
-  reason: z.string().trim().max(500).optional().default(""),
+  reason: z.string().trim().min(12).max(500),
   speed: z.enum(["normal", "optimum"]).optional().default("normal"),
 });
 
@@ -486,6 +487,10 @@ const couponPatchSchema = couponWriteSchema.partial();
 
 function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function formatCurrencyForError(value: number) {
+  return `INR ${roundMoney(value).toFixed(2)}`;
 }
 
 function scoreFraud(input: z.infer<typeof fraudScoreSchema>) {
@@ -2377,7 +2382,7 @@ async function handle(req: Request) {
       adminDb
         .from("refunds")
         .select(
-          "id,amount,status,provider_refund_id,reason,created_at,processed_at,cancellation_request_id,return_request_id",
+          "id,amount,status,speed,provider_refund_id,reason,created_at,processed_at,cancellation_request_id,return_request_id",
         )
         .eq("order_id", orderId)
         .order("created_at", { ascending: false }),
@@ -2917,8 +2922,30 @@ async function handle(req: Request) {
     if (orderError) throw orderError;
     if (paymentError) throw paymentError;
     if (!order) throw new HttpError(404, "Order not found");
+    const { data: existingRefunds, error: existingRefundsError } = await adminDb
+      .from("refunds")
+      .select("amount,status")
+      .eq("order_id", input.orderId)
+      .not("status", "in", "(failed,cancelled)");
+    if (existingRefundsError) throw existingRefundsError;
+    const alreadyRefunded = roundMoney(
+      (existingRefunds ?? []).reduce((sum, refund) => sum + Number(refund.amount ?? 0), 0),
+    );
+    const paidAmount = roundMoney(Number(payment?.amount ?? order.total ?? 0));
+    const refundableRemaining = roundMoney(Math.max(0, paidAmount - alreadyRefunded));
+    const requestedAmount = roundMoney(input.amount ?? refundableRemaining);
+    if (requestedAmount <= 0) throw new HttpError(400, "Refund amount must be positive");
+    if (refundableRemaining <= 0) {
+      throw new HttpError(409, "This order has no refundable balance remaining");
+    }
+    if (requestedAmount > refundableRemaining) {
+      throw new HttpError(
+        400,
+        `Refund amount cannot exceed remaining refundable balance (${formatCurrencyForError(refundableRemaining)})`,
+      );
+    }
+    if (!payment) throw new HttpError(409, "Order does not have a payment record");
     if (String(payment?.provider ?? "").toLowerCase() === "cod") {
-      const amount = roundMoney(input.amount ?? Number(order.total ?? payment.amount ?? 0));
       const { data: refundRow, error: refundInsertError } = await adminDb
         .from("refunds")
         .insert({
@@ -2927,9 +2954,9 @@ async function handle(req: Request) {
           cancellation_request_id: input.cancellationRequestId ?? null,
           return_request_id: input.returnRequestId ?? null,
           provider: "razorpay",
-          amount,
+          amount: requestedAmount,
           status: "processed",
-          reason: input.reason || "COD order closed without online refund",
+          reason: input.reason,
           speed: input.speed,
           requested_by: adminUser.id,
           raw_payload: { provider: "cod", note: "No online payment was captured" },
@@ -2948,6 +2975,16 @@ async function handle(req: Request) {
           })
           .eq("id", input.cancellationRequestId);
       }
+      if (input.returnRequestId) {
+        await adminDb
+          .from("return_requests")
+          .update({
+            status: "refunded",
+            refund_id: refundRow.id,
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("id", input.returnRequestId);
+      }
       await adminDb
         .from("orders")
         .update({ payment_status: "cod_cancelled" })
@@ -2956,11 +2993,6 @@ async function handle(req: Request) {
     }
     if (!payment?.provider_payment_id)
       throw new HttpError(409, "Order does not have a Razorpay payment id");
-    const amount = roundMoney(input.amount ?? Number(order.total ?? payment.amount ?? 0));
-    if (amount <= 0) throw new HttpError(400, "Refund amount must be positive");
-    if (amount > Number(payment.amount ?? order.total ?? 0)) {
-      throw new HttpError(400, "Refund amount cannot exceed paid amount");
-    }
     const { data: refundRow, error: refundInsertError } = await adminDb
       .from("refunds")
       .insert({
@@ -2968,24 +3000,40 @@ async function handle(req: Request) {
         payment_id: payment.id,
         cancellation_request_id: input.cancellationRequestId ?? null,
         return_request_id: input.returnRequestId ?? null,
-        amount,
+        amount: requestedAmount,
         status: "pending",
-        reason: input.reason || null,
+        reason: input.reason,
         speed: input.speed,
         requested_by: adminUser.id,
       })
       .select("*")
       .single();
     if (refundInsertError) throw refundInsertError;
-    const providerRefund = await createRazorpayRefund({
-      paymentId: String(payment.provider_payment_id),
-      amountPaise: toPaise(amount),
-      speed: input.speed,
-      notes: {
-        lapkart_order_id: input.orderId,
-        lapkart_refund_id: refundRow.id,
-      },
-    });
+    let providerRefund: Record<string, unknown>;
+    try {
+      providerRefund = await createRazorpayRefund({
+        paymentId: String(payment.provider_payment_id),
+        amountPaise: toPaise(requestedAmount),
+        speed: input.speed,
+        notes: {
+          lapkart_order_id: input.orderId,
+          lapkart_refund_id: refundRow.id,
+          reason: input.reason.slice(0, 256),
+        },
+      });
+    } catch (error) {
+      await adminDb
+        .from("refunds")
+        .update({
+          status: "failed",
+          raw_payload: {
+            error: error instanceof Error ? error.message : String(error),
+            failed_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", refundRow.id);
+      throw error;
+    }
     const providerStatus = String(providerRefund.status ?? "created").toLowerCase();
     const { data: updatedRefund, error: refundUpdateError } = await adminDb
       .from("refunds")
@@ -2999,6 +3047,9 @@ async function handle(req: Request) {
       .select("*")
       .single();
     if (refundUpdateError) throw refundUpdateError;
+    const totalRefundedAfterThis = roundMoney(alreadyRefunded + requestedAmount);
+    const nextPaymentStatus =
+      totalRefundedAfterThis >= paidAmount ? "refunded" : "partially_refunded";
     if (input.cancellationRequestId) {
       await adminDb
         .from("order_cancellation_requests")
@@ -3008,7 +3059,10 @@ async function handle(req: Request) {
           resolved_at: new Date().toISOString(),
         })
         .eq("id", input.cancellationRequestId);
-      await adminDb.from("orders").update({ payment_status: "refunded" }).eq("id", input.orderId);
+      await adminDb
+        .from("orders")
+        .update({ payment_status: nextPaymentStatus })
+        .eq("id", input.orderId);
     }
     if (input.returnRequestId) {
       await adminDb
@@ -3019,9 +3073,27 @@ async function handle(req: Request) {
           resolved_at: new Date().toISOString(),
         })
         .eq("id", input.returnRequestId);
-      await adminDb.from("orders").update({ payment_status: "refunded" }).eq("id", input.orderId);
+      await adminDb
+        .from("orders")
+        .update({ payment_status: nextPaymentStatus })
+        .eq("id", input.orderId);
     }
-    return json(req, 200, { refund: updatedRefund, razorpay: providerRefund });
+    if (!input.cancellationRequestId && !input.returnRequestId) {
+      await adminDb
+        .from("orders")
+        .update({ payment_status: nextPaymentStatus })
+        .eq("id", input.orderId);
+    }
+    return json(req, 200, {
+      refund: updatedRefund,
+      razorpay: providerRefund,
+      refundable: {
+        paidAmount,
+        alreadyRefunded,
+        refundedNow: requestedAmount,
+        remaining: roundMoney(Math.max(0, paidAmount - totalRefundedAfterThis)),
+      },
+    });
   }
 
   if (req.method === "POST" && path === "/shipments/shiprocket/create") {
@@ -4030,7 +4102,9 @@ async function handle(req: Request) {
             .eq("shipping_direction", "outbound"),
           adminDb
             .from("payments")
-            .select("order_id,status,provider_payment_id,provider_order_id,created_at")
+            .select(
+              "id,order_id,provider,status,amount,provider_payment_id,provider_order_id,created_at",
+            )
             .in("order_id", orderIds),
           adminDb
             .from("order_cancellation_requests")
@@ -4047,7 +4121,7 @@ async function handle(req: Request) {
           adminDb
             .from("refunds")
             .select(
-              "id,order_id,amount,status,provider_refund_id,created_at,cancellation_request_id,return_request_id",
+              "id,order_id,amount,status,reason,speed,provider_refund_id,created_at,processed_at,cancellation_request_id,return_request_id",
             )
             .in("order_id", orderIds)
             .order("created_at", { ascending: false }),
@@ -4104,6 +4178,12 @@ async function handle(req: Request) {
     );
     const returnByOrder = latestByOrder((returnsResult.data ?? []) as Array<{ order_id: string }>);
     const refundByOrder = latestByOrder((refundsResult.data ?? []) as Array<{ order_id: string }>);
+    const refundsByOrder = new Map<string, Array<Record<string, unknown>>>();
+    for (const refund of refundsResult.data ?? []) {
+      const existing = refundsByOrder.get(refund.order_id) ?? [];
+      existing.push(refund);
+      refundsByOrder.set(refund.order_id, existing);
+    }
     const invoiceByOrder = new Map(
       (invoicesResult.data ?? []).map((invoice) => [invoice.order_id, invoice]),
     );
@@ -4126,6 +4206,11 @@ async function handle(req: Request) {
       orders: (orders ?? []).map((order) => {
         const shipment = shipmentByOrder.get(order.id);
         const payment = paymentByOrder.get(order.id);
+        const refundsForOrder = refundsByOrder.get(order.id) ?? [];
+        const activeRefundTotal = refundsForOrder
+          .filter((refund) => !["failed", "cancelled"].includes(String(refund.status ?? "")))
+          .reduce((sum, refund) => sum + Number(refund.amount ?? 0), 0);
+        const paidAmount = Number(payment?.amount ?? order.total ?? 0);
         return {
           id: order.id,
           userId: order.user_id,
@@ -4168,7 +4253,10 @@ async function handle(req: Request) {
             : null,
           payment: payment
             ? {
+                id: payment.id,
+                provider: payment.provider,
                 status: payment.status,
+                amount: Number(payment.amount ?? 0),
                 providerPaymentId: payment.provider_payment_id,
                 providerOrderId: payment.provider_order_id,
               }
@@ -4176,6 +4264,23 @@ async function handle(req: Request) {
           cancellationRequest: cancellationByOrder.get(order.id) ?? null,
           returnRequest: returnByOrder.get(order.id) ?? null,
           refund: refundByOrder.get(order.id) ?? null,
+          refunds: refundsForOrder.map((refund) => ({
+            id: refund.id,
+            amount: Number(refund.amount ?? 0),
+            status: refund.status,
+            reason: refund.reason,
+            speed: refund.speed,
+            providerRefundId: refund.provider_refund_id,
+            createdAt: refund.created_at,
+            processedAt: refund.processed_at,
+            cancellationRequestId: refund.cancellation_request_id,
+            returnRequestId: refund.return_request_id,
+          })),
+          refundSummary: {
+            paidAmount,
+            refundedAmount: roundMoney(activeRefundTotal),
+            refundableAmount: roundMoney(Math.max(0, paidAmount - activeRefundTotal)),
+          },
           invoice: invoiceByOrder.get(order.id) ?? null,
           adminEvents: (eventsByOrder.get(order.id) ?? []).map((event) => ({
             id: event.id,

@@ -318,7 +318,10 @@ type AdminOrderRecord = {
     expectedDeliveryDate: string | null;
   } | null;
   payment: {
+    id: string;
+    provider: string;
     status: string;
+    amount: number;
     providerPaymentId: string | null;
     providerOrderId: string | null;
   } | null;
@@ -351,6 +354,23 @@ type AdminOrderRecord = {
     cancellation_request_id: string | null;
     return_request_id: string | null;
   } | null;
+  refunds: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    reason: string | null;
+    speed: "normal" | "optimum";
+    providerRefundId: string | null;
+    createdAt: string;
+    processedAt: string | null;
+    cancellationRequestId: string | null;
+    returnRequestId: string | null;
+  }>;
+  refundSummary: {
+    paidAmount: number;
+    refundedAmount: number;
+    refundableAmount: number;
+  };
   invoice: {
     invoice_number: string;
     invoice_url: string | null;
@@ -374,6 +394,14 @@ type OrderEditorState = {
   status: string;
   paymentStatus: string;
   reason: string;
+};
+
+type RefundEditorState = {
+  amount: string;
+  reason: string;
+  speed: "normal" | "optimum";
+  cancellationRequestId: string | null;
+  returnRequestId: string | null;
 };
 
 async function requestAdminApi<T>(_accessToken: string, path: string, init?: RequestInit) {
@@ -536,6 +564,37 @@ function mapOrderToEditor(order: AdminOrderRecord): OrderEditorState {
   };
 }
 
+function emptyRefundEditor(): RefundEditorState {
+  return {
+    amount: "",
+    reason: "",
+    speed: "normal",
+    cancellationRequestId: null,
+    returnRequestId: null,
+  };
+}
+
+function mapOrderToRefundEditor(order: AdminOrderRecord): RefundEditorState {
+  return {
+    amount:
+      order.refundSummary.refundableAmount > 0 ? String(order.refundSummary.refundableAmount) : "",
+    reason: "",
+    speed: "normal",
+    cancellationRequestId:
+      order.cancellationRequest &&
+      ["approved", "refund_pending"].includes(order.cancellationRequest.status) &&
+      !order.cancellationRequest.refund_id
+        ? order.cancellationRequest.id
+        : null,
+    returnRequestId:
+      order.returnRequest &&
+      ["received", "refund_pending"].includes(order.returnRequest.status) &&
+      !order.returnRequest.refund_id
+        ? order.returnRequest.id
+        : null,
+  };
+}
+
 function parseLines(input: string) {
   return input
     .split(/\r?\n/)
@@ -547,6 +606,10 @@ function payloadNumber(input: string) {
   const value = input.trim();
   if (!value) return null;
   return Number(value);
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 const terminalOrderStatuses = new Set(["cancelled", "refunded", "returned"]);
@@ -569,6 +632,7 @@ const paymentStatusOptions = [
   { value: "cod_pending", label: "COD Pending" },
   { value: "cod_cancelled", label: "COD Cancelled" },
   { value: "failed", label: "Failed" },
+  { value: "partially_refunded", label: "Partially refunded" },
   { value: "refunded", label: "Refunded" },
 ];
 const blockedFulfillmentStatuses = new Set([
@@ -596,8 +660,9 @@ function statusTone(value: string): "heat" | "warning" | "neutral" | "danger" | 
   ) {
     return "danger";
   }
+  if (normalized.includes("partially_refunded")) return "warning";
   if (
-    ["paid", "delivered", "completed", "approved", "sent", "processed"].some((state) =>
+    ["paid", "delivered", "completed", "approved", "sent", "processed", "refunded"].some((state) =>
       normalized.includes(state),
     )
   ) {
@@ -2063,7 +2128,9 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<OrderEditorState>(emptyOrderEditor());
+  const [refundEditor, setRefundEditor] = useState<RefundEditorState>(emptyRefundEditor());
   const [workflowAction, setWorkflowAction] = useState<string | null>(null);
+  const [refundSaving, setRefundSaving] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -2107,11 +2174,13 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     if (!orders.length) {
       setSelectedId(null);
       setEditor(emptyOrderEditor());
+      setRefundEditor(emptyRefundEditor());
       return;
     }
     const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
     setSelectedId(selected.id);
     setEditor(mapOrderToEditor(selected));
+    setRefundEditor(mapOrderToRefundEditor(selected));
   }, [orders, selectedId]);
 
   const filtered = orders.filter((order) =>
@@ -2121,6 +2190,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   );
   const selectedOrder = orders.find((order) => order.id === selectedId) ?? null;
   const selectedOrderLocked = selectedOrder ? isTerminalOrder(selectedOrder) : false;
+  const refundableAmount = selectedOrder?.refundSummary.refundableAmount ?? 0;
 
   const saveOrder = async () => {
     if (!editor.id) return;
@@ -2217,6 +2287,64 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     }
   };
 
+  const prepareRefund = ({
+    amount,
+    reason,
+    cancellationRequestId = null,
+    returnRequestId = null,
+  }: {
+    amount?: number;
+    reason: string;
+    cancellationRequestId?: string | null;
+    returnRequestId?: string | null;
+  }) => {
+    setRefundEditor({
+      amount: String(roundMoney(Math.min(amount ?? refundableAmount, refundableAmount))),
+      reason: reason.slice(0, 500),
+      speed: "normal",
+      cancellationRequestId,
+      returnRequestId,
+    });
+    toast.info("Refund form prepared. Review the amount and reason before creating it.");
+  };
+
+  const createRefund = async () => {
+    if (!selectedOrder) return;
+    const amount = Number(refundEditor.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid refund amount");
+      return;
+    }
+    if (amount > refundableAmount) {
+      toast.error(`Refund cannot exceed ${formatINR(refundableAmount)} remaining`);
+      return;
+    }
+    if (refundEditor.reason.trim().length < 12) {
+      toast.error("Add a clear refund reason before creating the refund");
+      return;
+    }
+    try {
+      setRefundSaving(true);
+      await requestAdminApi<unknown>(accessToken, "/admin/refunds", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          amount,
+          reason: refundEditor.reason,
+          speed: refundEditor.speed,
+          cancellationRequestId: refundEditor.cancellationRequestId ?? undefined,
+          returnRequestId: refundEditor.returnRequestId ?? undefined,
+        }),
+      });
+      toast.success("Refund created");
+      await loadOrders();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Could not create refund");
+    } finally {
+      setRefundSaving(false);
+    }
+  };
+
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
       <Panel title="Recent orders">
@@ -2244,6 +2372,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 onClick={() => {
                   setSelectedId(order.id);
                   setEditor(mapOrderToEditor(order));
+                  setRefundEditor(mapOrderToRefundEditor(order));
                 }}
               >
                 <div className="grid gap-4 xl:grid-cols-[1.05fr_1.25fr_0.9fr_auto]">
@@ -2502,12 +2631,149 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               />
               <InfoTile
                 label="Refund"
-                value={
-                  selectedOrder.refund
-                    ? `${selectedOrder.refund.status} / ${formatINR(Number(selectedOrder.refund.amount ?? 0))}`
-                    : "No refund"
-                }
+                value={`${formatINR(selectedOrder.refundSummary.refundedAmount)} / ${formatINR(
+                  selectedOrder.refundSummary.paidAmount,
+                )}`}
               />
+            </div>
+
+            <div className="mt-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-label-small text-foreground">Refund handling</p>
+                  <p className="mt-1 max-w-2xl text-body-small text-[var(--black-alpha-56)]">
+                    Refunds are created against the captured payment. Partial refunds keep the
+                    payment as partially refunded until the remaining balance reaches zero.
+                  </p>
+                </div>
+                <StatusBadge
+                  value={`${formatINR(refundableAmount)} refundable`}
+                  accent={refundableAmount > 0 ? "warning" : "success"}
+                />
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <InfoTile label="Paid" value={formatINR(selectedOrder.refundSummary.paidAmount)} />
+                <InfoTile
+                  label="Refunded"
+                  value={formatINR(selectedOrder.refundSummary.refundedAmount)}
+                />
+                <InfoTile label="Remaining" value={formatINR(refundableAmount)} />
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr]">
+                <Field label="Refund amount">
+                  <TextInput
+                    value={refundEditor.amount}
+                    type="number"
+                    inputMode="decimal"
+                    disabled={refundSaving || refundableAmount <= 0}
+                    onChange={(value) =>
+                      setRefundEditor((current) => ({ ...current, amount: value }))
+                    }
+                  />
+                </Field>
+                <Field label="Refund speed">
+                  <SelectInput
+                    value={refundEditor.speed}
+                    disabled={refundSaving || refundableAmount <= 0}
+                    onChange={(value) =>
+                      setRefundEditor((current) => ({
+                        ...current,
+                        speed: value === "optimum" ? "optimum" : "normal",
+                      }))
+                    }
+                    options={[
+                      { value: "normal", label: "Normal" },
+                      { value: "optimum", label: "Optimum / instant if available" },
+                    ]}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Refund reason" className="mt-4">
+                <TextAreaInput
+                  value={refundEditor.reason}
+                  disabled={refundSaving || refundableAmount <= 0}
+                  onChange={(value) =>
+                    setRefundEditor((current) => ({ ...current, reason: value }))
+                  }
+                  rows={3}
+                  placeholder="Required. Example: Customer cancellation approved before packing, refunding full prepaid amount."
+                />
+              </Field>
+
+              {(refundEditor.cancellationRequestId || refundEditor.returnRequestId) && (
+                <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                  Linked to{" "}
+                  {refundEditor.cancellationRequestId ? "cancellation request" : "return request"}.
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void createRefund()}
+                  disabled={
+                    refundSaving ||
+                    refundableAmount <= 0 ||
+                    refundEditor.reason.trim().length < 12 ||
+                    Number(refundEditor.amount) <= 0
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--heat-100)] px-4 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {refundSaving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <WalletCards className="size-4" />
+                  )}
+                  Create refund
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRefundEditor(mapOrderToRefundEditor(selectedOrder))}
+                  disabled={refundSaving}
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-small text-foreground transition-colors hover:bg-[var(--background-lighter)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {selectedOrder.refunds.length > 0 && (
+                <div className="mt-5 space-y-2">
+                  <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                    Refund history
+                  </p>
+                  {selectedOrder.refunds.map((refund) => (
+                    <div
+                      key={refund.id}
+                      className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-label-small text-foreground">
+                            {formatINR(refund.amount)} · {refund.speed}
+                          </p>
+                          <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+                            {refund.reason || "No reason captured"}
+                          </p>
+                        </div>
+                        <StatusBadge value={refund.status} accent={statusTone(refund.status)} />
+                      </div>
+                      <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                        Created <SmartTime date={refund.createdAt} />
+                        {refund.processedAt ? (
+                          <>
+                            {" "}
+                            · Processed <SmartTime date={refund.processedAt} />
+                          </>
+                        ) : null}
+                        {refund.providerRefundId ? ` · ${refund.providerRefundId}` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {(selectedOrder.cancellationRequest || selectedOrder.returnRequest) && (
@@ -2569,21 +2835,17 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                         ) &&
                           !selectedOrder.cancellationRequest.refund_id && (
                             <WorkflowButton
-                              label="Refund"
-                              loading={workflowAction === "cancel-refund"}
-                              onClick={() =>
-                                void runWorkflowAction(
-                                  "cancel-refund",
-                                  "/admin/refunds",
-                                  {
-                                    orderId: selectedOrder.id,
-                                    cancellationRequestId: selectedOrder.cancellationRequest?.id,
-                                    amount: selectedOrder.total,
-                                    reason: "Approved cancellation",
-                                  },
-                                  "Refund created",
-                                )
-                              }
+                              label="Prepare refund"
+                              loading={false}
+                              disabled={refundableAmount <= 0}
+                              onClick={() => {
+                                if (!selectedOrder.cancellationRequest) return;
+                                prepareRefund({
+                                  amount: refundableAmount,
+                                  cancellationRequestId: selectedOrder.cancellationRequest.id,
+                                  reason: `Approved cancellation: ${selectedOrder.cancellationRequest.reason}`,
+                                });
+                              }}
                             />
                           )}
                       </div>
@@ -2687,21 +2949,17 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                         ) &&
                           !selectedOrder.returnRequest.refund_id && (
                             <WorkflowButton
-                              label="Refund"
-                              loading={workflowAction === "return-refund"}
-                              onClick={() =>
-                                void runWorkflowAction(
-                                  "return-refund",
-                                  "/admin/refunds",
-                                  {
-                                    orderId: selectedOrder.id,
-                                    returnRequestId: selectedOrder.returnRequest?.id,
-                                    amount: selectedOrder.total,
-                                    reason: "Approved return",
-                                  },
-                                  "Refund created",
-                                )
-                              }
+                              label="Prepare refund"
+                              loading={false}
+                              disabled={refundableAmount <= 0}
+                              onClick={() => {
+                                if (!selectedOrder.returnRequest) return;
+                                prepareRefund({
+                                  amount: refundableAmount,
+                                  returnRequestId: selectedOrder.returnRequest.id,
+                                  reason: `Approved return after receipt: ${selectedOrder.returnRequest.reason}`,
+                                });
+                              }}
                             />
                           )}
                       </div>
@@ -3760,18 +4018,20 @@ function ActionButton({
 function WorkflowButton({
   label,
   loading,
+  disabled = false,
   onClick,
 }: {
   label: string;
   loading: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={loading}
-      className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--heat-100)] px-3 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:opacity-60"
+      disabled={loading || disabled}
+      className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--heat-100)] px-3 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:cursor-not-allowed disabled:opacity-60"
     >
       {loading && <Loader2 className="size-4 animate-spin" />}
       {label}

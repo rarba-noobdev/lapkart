@@ -104,6 +104,7 @@ type OrderTrackingResponse = {
     id: string;
     amount: number;
     status: string;
+    speed: "normal" | "optimum";
     provider_refund_id: string | null;
     reason: string | null;
     created_at: string;
@@ -620,24 +621,32 @@ function OrderPage() {
                 {refunds.map((refund) => (
                   <div
                     key={refund.id}
-                    className="flex flex-wrap items-center justify-between gap-3 text-body-small"
+                    className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 text-body-small"
                   >
-                    <div>
-                      <p className="text-label-small text-foreground">
-                        {formatINR(Number(refund.amount ?? 0))}
-                      </p>
-                      <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-                        Requested <SmartTime date={refund.created_at} />
-                      </p>
-                      {refund.processed_at && (
-                        <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-                          Processed <SmartTime date={refund.processed_at} />
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-label-small text-foreground">
+                          {formatINR(Number(refund.amount ?? 0))}
                         </p>
-                      )}
+                        {refund.reason && (
+                          <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+                            {refund.reason}
+                          </p>
+                        )}
+                        <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Requested <SmartTime date={refund.created_at} /> · {refund.speed}
+                        </p>
+                        {refund.processed_at && (
+                          <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                            Processed <SmartTime date={refund.processed_at} />
+                            {refund.provider_refund_id ? ` · ${refund.provider_refund_id}` : ""}
+                          </p>
+                        )}
+                      </div>
+                      <span className="rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
+                        {refund.status.replaceAll("_", " ")}
+                      </span>
                     </div>
-                    <span className="rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
-                      {refund.status.replaceAll("_", " ")}
-                    </span>
                   </div>
                 ))}
               </div>
