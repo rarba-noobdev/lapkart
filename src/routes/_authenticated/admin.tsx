@@ -1,5 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
 import { useAuth } from "@/lib/auth";
@@ -117,6 +124,32 @@ type AdminAnalytics = {
   revenue: number;
   deliveredOrders: number;
   pendingFulfillment: number;
+  periodReports: Array<{
+    id: "daily" | "weekly" | "monthly";
+    label: string;
+    orders: number;
+    revenue: number;
+    averageOrderValue: number;
+    cancellations: number;
+    returns: number;
+    refunds: number;
+    refundAmount: number;
+  }>;
+  cancellationReport: {
+    total: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+    refunded: number;
+    cancelledOrders: number;
+    latest: Array<{
+      id: string;
+      orderId: string;
+      status: string;
+      reason: string | null;
+      requestedAt: string;
+    }>;
+  };
   monthlySeries: Array<{
     month: string;
     orders: number;
@@ -739,6 +772,9 @@ function AdminPage() {
       { table: "profiles" as const },
       { table: "payments" as const },
       { table: "shipments" as const },
+      { table: "order_cancellation_requests" as const },
+      { table: "return_requests" as const },
+      { table: "refunds" as const },
     ],
     [],
   );
@@ -810,14 +846,17 @@ function AdminPage() {
           Loading live admin metrics
         </div>
       ) : analytics ? (
-        <KpiGrid items={kpis} />
+        <AdminCommandCenter
+          analytics={analytics}
+          kpis={kpis}
+          onOpenOrders={() => setView("orders")}
+        />
       ) : null}
 
       <AdminTabs active={view} onChange={setView} />
 
       {view === "overview" && (
         <>
-          <FulfillmentQueue />
           {analytics && (
             <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
               <Panel title="Revenue and order trend">
@@ -881,6 +920,7 @@ function AdminPage() {
               </Panel>
             </div>
           )}
+          <FulfillmentQueue />
         </>
       )}
 
@@ -903,6 +943,137 @@ function AdminPage() {
   );
 }
 
+function AdminCommandCenter({
+  analytics,
+  kpis,
+  onOpenOrders,
+}: {
+  analytics: AdminAnalytics;
+  kpis: ComponentProps<typeof KpiGrid>["items"];
+  onOpenOrders: () => void;
+}) {
+  return (
+    <section className="space-y-5">
+      <KpiGrid items={kpis} />
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
+        <div className="rounded-lg border border-[var(--border-faint)] bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-title-h5 text-foreground">Operating reports</h2>
+              <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                Daily, weekly, and monthly order health from the current database.
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-56)]">
+              live
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {analytics.periodReports.map((report) => (
+              <div
+                key={report.id}
+                className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-label-small text-foreground">{report.label}</p>
+                    <p className="mt-1 text-title-h5 text-foreground">
+                      {formatINR(report.revenue)}
+                    </p>
+                  </div>
+                  <StatusBadge value={`${report.orders} orders`} accent="neutral" />
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-body-small">
+                  <ReportMetric label="AOV" value={formatINR(report.averageOrderValue)} />
+                  <ReportMetric label="Refunds" value={`${report.refunds}`} />
+                  <ReportMetric label="Cancels" value={`${report.cancellations}`} />
+                  <ReportMetric label="Returns" value={`${report.returns}`} />
+                </div>
+                {report.refundAmount > 0 && (
+                  <p className="mt-3 text-body-small text-[var(--black-alpha-56)]">
+                    {formatINR(report.refundAmount)} refunded
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-[var(--border-faint)] bg-white p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-title-h5 text-foreground">Cancellation watch</h2>
+              <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                Requests, rejected cases, and refund completion.
+              </p>
+            </div>
+            <StatusBadge
+              value={`${analytics.cancellationReport.pending} pending`}
+              accent={analytics.cancellationReport.pending > 0 ? "warning" : "success"}
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <InfoTile label="Requests" value={String(analytics.cancellationReport.total)} />
+            <InfoTile
+              label="Cancelled orders"
+              value={String(analytics.cancellationReport.cancelledOrders)}
+            />
+            <InfoTile label="Approved" value={String(analytics.cancellationReport.approved)} />
+            <InfoTile label="Refunded" value={String(analytics.cancellationReport.refunded)} />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {analytics.cancellationReport.latest.length === 0 ? (
+              <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 text-body-small text-[var(--black-alpha-56)]">
+                No cancellation requests yet.
+              </div>
+            ) : (
+              analytics.cancellationReport.latest.map((request) => (
+                <button
+                  key={request.id}
+                  type="button"
+                  onClick={onOpenOrders}
+                  className="w-full rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 text-left transition-colors hover:border-[var(--heat-40)]"
+                  title="Open orders"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-label-small text-foreground">
+                        #{request.orderId.slice(0, 8).toUpperCase()}
+                      </p>
+                      <p className="mt-1 line-clamp-1 text-body-small text-[var(--black-alpha-56)]">
+                        {request.reason || "No customer reason captured"}
+                      </p>
+                    </div>
+                    <StatusBadge value={request.status} accent={statusTone(request.status)} />
+                  </div>
+                  <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                    <SmartTime date={request.requestedAt} />
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReportMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+        {label}
+      </p>
+      <p className="mt-1 text-label-small text-foreground">{value}</p>
+    </div>
+  );
+}
+
 function AdminTabs({
   active,
   onChange,
@@ -911,7 +1082,7 @@ function AdminTabs({
   onChange: (view: AdminView) => void;
 }) {
   const items: Array<{ id: AdminView; label: string }> = [
-    { id: "overview", label: "Overview" },
+    { id: "overview", label: "Dashboard" },
     { id: "catalog", label: "Catalog" },
     { id: "orders", label: "Orders" },
     { id: "users", label: "Users" },
@@ -920,21 +1091,23 @@ function AdminTabs({
   ];
 
   return (
-    <div className="mt-6 flex flex-wrap gap-2">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => onChange(item.id)}
-          className={`inline-flex h-10 items-center rounded-md border px-4 text-label-small transition-colors ${
-            active === item.id
-              ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
-              : "border-[var(--border-muted)] bg-white text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-          }`}
-        >
-          {item.label}
-        </button>
-      ))}
+    <div className="sticky top-0 z-20 -mx-4 mt-6 border-y border-[var(--border-faint)] bg-[var(--background-base)]/95 px-4 py-3 backdrop-blur">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onChange(item.id)}
+            className={`inline-flex h-10 shrink-0 items-center rounded-md border px-4 text-label-small transition-colors ${
+              active === item.id
+                ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
+                : "border-[var(--border-muted)] bg-white text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -493,6 +493,18 @@ function formatCurrencyForError(value: number) {
   return `INR ${roundMoney(value).toFixed(2)}`;
 }
 
+function periodStart(daysBack: number) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - daysBack);
+  return date;
+}
+
+function monthStart() {
+  const date = new Date();
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
 function scoreFraud(input: z.infer<typeof fraudScoreSchema>) {
   let score = 5;
   if ((input.failedPayments ?? 0) >= 3) score += 35;
@@ -3731,15 +3743,36 @@ async function handle(req: Request) {
   if (req.method === "GET" && path === "/admin/analytics") {
     const adminDb = getSupabaseAdmin();
     await requireAdmin(req);
-    const [orders, products, users] = await Promise.all([
-      adminDb.from("orders").select("id,total,status,created_at,shipping_name"),
+    const [orders, products, users, cancellations, returnsResult, refunds] = await Promise.all([
+      adminDb.from("orders").select("id,total,status,payment_status,created_at,shipping_name"),
       adminDb.from("products").select("id,stock", { count: "exact", head: false }).limit(100),
       adminDb.from("profiles").select("id", { count: "exact", head: false }).limit(100),
+      adminDb
+        .from("order_cancellation_requests")
+        .select("id,order_id,status,reason,requested_at,resolved_at")
+        .order("requested_at", { ascending: false })
+        .limit(100),
+      adminDb
+        .from("return_requests")
+        .select("id,order_id,status,requested_at,resolved_at")
+        .order("requested_at", { ascending: false })
+        .limit(100),
+      adminDb
+        .from("refunds")
+        .select("id,order_id,amount,status,created_at,processed_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ]);
     if (orders.error) throw orders.error;
     if (products.error) throw products.error;
     if (users.error) throw users.error;
+    if (cancellations.error) throw cancellations.error;
+    if (returnsResult.error) throw returnsResult.error;
+    if (refunds.error) throw refunds.error;
     const orderRows = orders.data ?? [];
+    const cancellationRows = cancellations.data ?? [];
+    const returnRows = returnsResult.data ?? [];
+    const refundRows = refunds.data ?? [];
     const revenue = orderRows.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
     const deliveredOrders = orderRows.filter(
       (order) => String(order.status ?? "").toLowerCase() === "delivered",
@@ -3749,6 +3782,30 @@ async function handle(req: Request) {
         String(order.status ?? "").toLowerCase(),
       ),
     ).length;
+    const buildPeriodReport = (id: string, label: string, start: Date) => {
+      const inPeriod = (value: unknown) => {
+        const date = new Date(String(value));
+        return !Number.isNaN(date.getTime()) && date >= start;
+      };
+      const periodOrders = orderRows.filter((order) => inPeriod(order.created_at));
+      const periodRevenue = periodOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+      const periodRefunds = refundRows.filter((refund) => inPeriod(refund.created_at));
+      return {
+        id,
+        label,
+        orders: periodOrders.length,
+        revenue: roundMoney(periodRevenue),
+        averageOrderValue: periodOrders.length
+          ? roundMoney(periodRevenue / periodOrders.length)
+          : 0,
+        cancellations: cancellationRows.filter((request) => inPeriod(request.requested_at)).length,
+        returns: returnRows.filter((request) => inPeriod(request.requested_at)).length,
+        refunds: periodRefunds.length,
+        refundAmount: roundMoney(
+          periodRefunds.reduce((sum, refund) => sum + Number(refund.amount ?? 0), 0),
+        ),
+      };
+    };
     const monthFormatter = new Intl.DateTimeFormat("en-IN", { month: "short" });
     const today = new Date();
     const monthlySeries = Array.from({ length: 6 }, (_, index) => {
@@ -3766,6 +3823,14 @@ async function handle(req: Request) {
       bucket.orders += 1;
       bucket.revenue += Number(order.total ?? 0);
     }
+    const cancellationStatusCounts = cancellationRows.reduce<Record<string, number>>(
+      (counts, request) => {
+        const status = String(request.status ?? "pending");
+        counts[status] = (counts[status] ?? 0) + 1;
+        return counts;
+      },
+      {},
+    );
     return json(req, 200, {
       orders: orderRows.length,
       products: products.count ?? 0,
@@ -3773,6 +3838,30 @@ async function handle(req: Request) {
       revenue,
       deliveredOrders,
       pendingFulfillment,
+      periodReports: [
+        buildPeriodReport("daily", "Today", periodStart(0)),
+        buildPeriodReport("weekly", "Last 7 days", periodStart(6)),
+        buildPeriodReport("monthly", "This month", monthStart()),
+      ],
+      cancellationReport: {
+        total: cancellationRows.length,
+        pending: cancellationStatusCounts.pending ?? 0,
+        approved: cancellationStatusCounts.approved ?? 0,
+        rejected: cancellationStatusCounts.rejected ?? 0,
+        refunded: cancellationStatusCounts.refunded ?? 0,
+        cancelledOrders: orderRows.filter((order) =>
+          ["cancelled", "cancellation_requested"].includes(
+            String(order.status ?? "").toLowerCase(),
+          ),
+        ).length,
+        latest: cancellationRows.slice(0, 5).map((request) => ({
+          id: request.id,
+          orderId: request.order_id,
+          status: String(request.status ?? "pending"),
+          reason: request.reason ? String(request.reason) : null,
+          requestedAt: request.requested_at,
+        })),
+      },
       monthlySeries,
       recentOrders: orderRows
         .slice()
