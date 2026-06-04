@@ -373,15 +373,6 @@ type OrderEditorState = {
   id: string | null;
   status: string;
   paymentStatus: string;
-  shippingServiceType: "standard" | "quick";
-  shippingName: string;
-  shippingPhone: string;
-  shippingEmail: string;
-  shippingLine1: string;
-  shippingLine2: string;
-  shippingCity: string;
-  shippingState: string;
-  shippingPincode: string;
   reason: string;
 };
 
@@ -532,15 +523,6 @@ function emptyOrderEditor(): OrderEditorState {
     id: null,
     status: "confirmed",
     paymentStatus: "paid",
-    shippingServiceType: "standard",
-    shippingName: "",
-    shippingPhone: "",
-    shippingEmail: "",
-    shippingLine1: "",
-    shippingLine2: "",
-    shippingCity: "",
-    shippingState: "",
-    shippingPincode: "",
     reason: "",
   };
 }
@@ -550,15 +532,6 @@ function mapOrderToEditor(order: AdminOrderRecord): OrderEditorState {
     id: order.id,
     status: order.status,
     paymentStatus: order.paymentStatus,
-    shippingServiceType: order.shippingServiceType,
-    shippingName: order.shippingName ?? "",
-    shippingPhone: order.shippingPhone ?? "",
-    shippingEmail: order.shippingEmail ?? "",
-    shippingLine1: order.shippingLine1 ?? "",
-    shippingLine2: order.shippingLine2 ?? "",
-    shippingCity: order.shippingCity ?? "",
-    shippingState: order.shippingState ?? "",
-    shippingPincode: order.shippingPincode ?? "",
     reason: "",
   };
 }
@@ -578,6 +551,26 @@ function payloadNumber(input: string) {
 
 const terminalOrderStatuses = new Set(["cancelled", "refunded", "returned"]);
 const terminalPaymentStatuses = new Set(["refunded", "cod_cancelled"]);
+const manualOrderStatusOptions = [
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Processing" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "packed", label: "Packed" },
+  { value: "shipped", label: "Shipped" },
+  { value: "out_for_delivery", label: "Out for delivery" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "returned", label: "Returned" },
+];
+const manualOrderStatusValues = new Set(manualOrderStatusOptions.map((option) => option.value));
+const paymentStatusOptions = [
+  { value: "pending", label: "Pending" },
+  { value: "paid", label: "Paid" },
+  { value: "cod_pending", label: "COD Pending" },
+  { value: "cod_cancelled", label: "COD Cancelled" },
+  { value: "failed", label: "Failed" },
+  { value: "refunded", label: "Refunded" },
+];
 const blockedFulfillmentStatuses = new Set([
   "cancelled",
   "cancellation_requested",
@@ -2139,24 +2132,26 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       toast.error("Add a clear admin reason before saving");
       return;
     }
+    const payload: Record<string, unknown> = { reason: editor.reason };
+    if (selectedOrder && editor.status !== selectedOrder.status) {
+      if (!manualOrderStatusValues.has(editor.status)) {
+        toast.error("This order status is controlled by a workflow action");
+        return;
+      }
+      payload.status = editor.status;
+    }
+    if (selectedOrder && editor.paymentStatus !== selectedOrder.paymentStatus) {
+      payload.paymentStatus = editor.paymentStatus;
+    }
+    if (!("status" in payload) && !("paymentStatus" in payload)) {
+      toast.error("Change order status or payment status before saving");
+      return;
+    }
     try {
       setSaving(true);
       await requestAdminApi<{ order: unknown }>(accessToken, `/admin/orders/${editor.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          status: editor.status,
-          paymentStatus: editor.paymentStatus,
-          shippingServiceType: editor.shippingServiceType,
-          shippingName: editor.shippingName,
-          shippingPhone: editor.shippingPhone,
-          shippingEmail: editor.shippingEmail,
-          shippingLine1: editor.shippingLine1,
-          shippingLine2: editor.shippingLine2,
-          shippingCity: editor.shippingCity,
-          shippingState: editor.shippingState,
-          shippingPincode: editor.shippingPincode,
-          reason: editor.reason,
-        }),
+        body: JSON.stringify(payload),
       });
       toast.success("Order updated");
       await loadOrders();
@@ -2385,22 +2380,18 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   value={editor.status}
                   onChange={(value) => setEditor((current) => ({ ...current, status: value }))}
                   disabled={selectedOrderLocked}
-                  options={[
-                    { value: "pending", label: "Pending" },
-                    { value: "processing", label: "Processing" },
-                    { value: "confirmed", label: "Confirmed" },
-                    { value: "packed", label: "Packed" },
-                    { value: "shipped", label: "Shipped" },
-                    { value: "out_for_delivery", label: "Out for delivery" },
-                    { value: "delivered", label: "Delivered" },
-                    { value: "cancellation_requested", label: "Cancellation requested" },
-                    { value: "cancelled", label: "Cancelled" },
-                    { value: "return_requested", label: "Return requested" },
-                    { value: "return_approved", label: "Return approved" },
-                    { value: "return_received", label: "Return received" },
-                    { value: "returned", label: "Returned" },
-                    { value: "refunded", label: "Refunded" },
-                  ]}
+                  options={
+                    manualOrderStatusValues.has(editor.status)
+                      ? manualOrderStatusOptions
+                      : [
+                          {
+                            value: editor.status,
+                            label: `${editor.status.replaceAll("_", " ")} (workflow state)`,
+                            disabled: true,
+                          },
+                          ...manualOrderStatusOptions,
+                        ]
+                  }
                 />
               </Field>
               <Field label="Payment status">
@@ -2410,117 +2401,25 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, paymentStatus: value }))
                   }
-                  options={[
-                    { value: "paid", label: "Paid" },
-                    { value: "cod_pending", label: "COD Pending" },
-                    { value: "cod_cancelled", label: "COD Cancelled" },
-                    { value: "refunded", label: "Refunded" },
-                    { value: "failed", label: "Failed" },
-                    { value: "pending", label: "Pending" },
-                  ]}
-                />
-              </Field>
-              <Field label="Shipping service type">
-                <SelectInput
-                  value={editor.shippingServiceType}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({
-                      ...current,
-                      shippingServiceType: value as "standard" | "quick",
-                    }))
-                  }
-                  options={[
-                    { value: "standard", label: "Standard" },
-                    { value: "quick", label: "Quick" },
-                  ]}
-                />
-              </Field>
-              <Field label="Customer email">
-                <TextInput
-                  value={editor.shippingEmail}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingEmail: value }))
-                  }
-                />
-              </Field>
-              <Field label="Customer name">
-                <TextInput
-                  value={editor.shippingName}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingName: value }))
-                  }
-                />
-              </Field>
-              <Field label="Phone">
-                <TextInput
-                  value={editor.shippingPhone}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingPhone: value }))
-                  }
-                />
-              </Field>
-              <Field label="Address line 1" className="sm:col-span-2">
-                <TextInput
-                  value={editor.shippingLine1}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingLine1: value }))
-                  }
-                />
-              </Field>
-              <Field label="Address line 2" className="sm:col-span-2">
-                <TextInput
-                  value={editor.shippingLine2}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingLine2: value }))
-                  }
-                />
-              </Field>
-              <Field label="City">
-                <TextInput
-                  value={editor.shippingCity}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingCity: value }))
-                  }
-                />
-              </Field>
-              <Field label="State">
-                <TextInput
-                  value={editor.shippingState}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingState: value }))
-                  }
-                />
-              </Field>
-              <Field label="Pincode">
-                <TextInput
-                  value={editor.shippingPincode}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, shippingPincode: value }))
-                  }
-                  inputMode="numeric"
+                  options={paymentStatusOptions}
                 />
               </Field>
             </div>
 
-            <div className="mt-5 rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
-              <Field label="Admin reason">
+            <div className="mt-4 rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-4">
+              <Field label="Reason for change">
                 <TextAreaInput
                   value={editor.reason}
                   disabled={selectedOrderLocked}
                   onChange={(value) => setEditor((current) => ({ ...current, reason: value }))}
                   rows={3}
-                  placeholder="Required for any status, payment, service, or address change"
+                  placeholder="Required. Example: Customer called support and asked to cancel before packing."
                 />
               </Field>
+              <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                Manual edits are limited to order/payment state. Customer cancellation and return
+                request states are handled through the workflow cards below.
+              </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -2547,6 +2446,41 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               </div>
             </div>
 
+            <div className="mt-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
+              <p className="text-label-small text-foreground">Customer and delivery</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <InfoTile label="Email" value={selectedOrder.shippingEmail || "Not captured"} />
+                <InfoTile label="Phone" value={selectedOrder.shippingPhone || "Not captured"} />
+                <InfoTile
+                  label="Delivery service"
+                  value={selectedOrder.shippingServiceType.replaceAll("_", " ")}
+                />
+                <InfoTile
+                  label="Courier"
+                  value={
+                    selectedOrder.shipment?.courierName ||
+                    selectedOrder.shippingCourierName ||
+                    "Not assigned"
+                  }
+                />
+                <InfoTile
+                  label="Address"
+                  value={
+                    [
+                      selectedOrder.shippingLine1,
+                      selectedOrder.shippingLine2,
+                      selectedOrder.shippingCity,
+                      selectedOrder.shippingState,
+                      selectedOrder.shippingPincode,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "Address pending"
+                  }
+                />
+                <InfoTile label="Items" value={selectedOrder.itemSummary || "No item summary"} />
+              </div>
+            </div>
+
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <InfoTile
                 label="Placed"
@@ -2557,7 +2491,6 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 value={<SmartTime date={selectedOrder.updatedAt} showFull />}
               />
               <InfoTile label="Payment method" value={selectedOrder.paymentMethod} />
-              <InfoTile label="Items" value={selectedOrder.itemSummary || "No item summary"} />
               <InfoTile
                 label="Shipment"
                 value={selectedOrder.shipment?.status || "Shipment not created"}
@@ -3949,7 +3882,7 @@ function SelectInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; disabled?: boolean }>;
   disabled?: boolean;
 }) {
   return (
@@ -3960,7 +3893,7 @@ function SelectInput({
       className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground disabled:cursor-not-allowed disabled:bg-[var(--background-lighter)] disabled:text-[var(--black-alpha-48)]"
     >
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
+        <option key={option.value} value={option.value} disabled={option.disabled}>
           {option.label}
         </option>
       ))}

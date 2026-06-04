@@ -286,13 +286,8 @@ const orderStatusSchema = z.enum([
   "shipped",
   "out_for_delivery",
   "delivered",
-  "cancellation_requested",
   "cancelled",
-  "return_requested",
-  "return_approved",
-  "return_received",
   "returned",
-  "refunded",
 ]);
 
 const paymentStatusSchema = z.enum([
@@ -308,23 +303,12 @@ const adminOrderUpdateSchema = z
   .object({
     status: orderStatusSchema.optional(),
     paymentStatus: paymentStatusSchema.optional(),
-    shippingServiceType: z.enum(["standard", "quick"]).optional(),
-    shippingName: nullableTrimmedString(120),
-    shippingPhone: nullableTrimmedString(30),
-    shippingEmail: nullableTrimmedString(160),
-    shippingLine1: nullableTrimmedString(200),
-    shippingLine2: nullableTrimmedString(200),
-    shippingCity: nullableTrimmedString(80),
-    shippingState: nullableTrimmedString(80),
-    shippingPincode: z
-      .string()
-      .trim()
-      .regex(/^[0-9]{6}$/)
-      .optional()
-      .transform((value) => value ?? undefined),
     reason: z.string().trim().min(12).max(500),
   })
-  .refine((value) => Object.keys(value).length > 0, "At least one order field must be provided");
+  .refine(
+    (value) => value.status !== undefined || value.paymentStatus !== undefined,
+    "Order status or payment status must be provided",
+  );
 
 const latitudeSchema = z.coerce.number().min(-90).max(90);
 const longitudeSchema = z.coerce.number().min(-180).max(180);
@@ -4216,9 +4200,7 @@ async function handle(req: Request) {
     const input = adminOrderUpdateSchema.parse(await req.json());
     const { data: existingOrder, error: existingOrderError } = await adminDb
       .from("orders")
-      .select(
-        "id,status,payment_status,shipping_service_type,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_address",
-      )
+      .select("id,user_id,status,payment_status")
       .eq("id", orderId)
       .single();
     if (existingOrderError) throw existingOrderError;
@@ -4236,37 +4218,6 @@ async function handle(req: Request) {
     const payload: Record<string, unknown> = {};
     if ("status" in input) payload.status = input.status?.toLowerCase();
     if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
-    if ("shippingServiceType" in input) payload.shipping_service_type = input.shippingServiceType;
-    if ("shippingName" in input) payload.shipping_name = input.shippingName ?? null;
-    if ("shippingPhone" in input) payload.shipping_phone = input.shippingPhone ?? null;
-    if ("shippingEmail" in input) payload.shipping_email = input.shippingEmail ?? null;
-    if ("shippingLine1" in input) payload.shipping_line1 = input.shippingLine1 ?? null;
-    if ("shippingLine2" in input) payload.shipping_line2 = input.shippingLine2 ?? null;
-    if ("shippingCity" in input) payload.shipping_city = input.shippingCity ?? null;
-    if ("shippingState" in input) payload.shipping_state = input.shippingState ?? null;
-    if ("shippingPincode" in input) payload.shipping_pincode = input.shippingPincode ?? null;
-    const addressFieldsTouched = [
-      "shippingLine1",
-      "shippingLine2",
-      "shippingCity",
-      "shippingState",
-      "shippingPincode",
-    ].some((field) => field in input);
-    if (addressFieldsTouched) {
-      const line1 =
-        ("shippingLine1" in input ? input.shippingLine1 : existingOrder.shipping_line1) ?? null;
-      const line2 =
-        ("shippingLine2" in input ? input.shippingLine2 : existingOrder.shipping_line2) ?? null;
-      const city =
-        ("shippingCity" in input ? input.shippingCity : existingOrder.shipping_city) ?? null;
-      const state =
-        ("shippingState" in input ? input.shippingState : existingOrder.shipping_state) ?? null;
-      const pincode =
-        ("shippingPincode" in input ? input.shippingPincode : existingOrder.shipping_pincode) ??
-        null;
-      payload.shipping_address = [line1, line2, city, state, pincode].filter(Boolean).join(", ");
-      payload.shipping_formatted_address = payload.shipping_address;
-    }
     const changedFields = Object.entries(payload).filter(([key, value]) => {
       const existingValue = (existingOrder as Record<string, unknown>)[key];
       return String(existingValue ?? "") !== String(value ?? "");
@@ -4275,25 +4226,16 @@ async function handle(req: Request) {
       throw new HttpError(400, "No order fields changed");
     }
     const changedFieldNames = changedFields.map(([key]) => key);
-    const protectedFieldChanged = changedFieldNames.some((field) =>
-      ["status", "payment_status", "shipping_service_type"].includes(field),
-    );
     const eventType = changedFieldNames.includes("status")
       ? payload.status === "cancelled"
         ? "manual_cancel"
         : "manual_update"
-      : changedFieldNames.includes("payment_status")
-        ? "payment_update"
-        : changedFieldNames.includes("shipping_service_type")
-          ? "shipping_update"
-          : "address_update";
+      : "payment_update";
     const { data, error } = await adminDb
       .from("orders")
       .update(payload)
       .eq("id", orderId)
-      .select(
-        "id,status,payment_status,shipping_service_type,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_address,updated_at",
-      )
+      .select("id,status,payment_status,updated_at")
       .single();
     if (error) throw error;
     const { error: eventError } = await adminDb.from("admin_order_events").insert({
@@ -4309,27 +4251,39 @@ async function handle(req: Request) {
       ),
       to_state: Object.fromEntries(changedFields),
       metadata: {
-        protectedFieldChanged,
         changedFields: changedFieldNames,
         source: "admin_order_editor",
       },
     });
     if (eventError) throw eventError;
+    if (payload.status === "cancelled") {
+      const { data: existingCancellation, error: cancellationLookupError } = await adminDb
+        .from("order_cancellation_requests")
+        .select("id")
+        .eq("order_id", orderId)
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancellationLookupError) throw cancellationLookupError;
+      if (!existingCancellation) {
+        const { error: cancellationInsertError } = await adminDb
+          .from("order_cancellation_requests")
+          .insert({
+            order_id: orderId,
+            user_id: existingOrder.user_id,
+            status: "approved",
+            reason: input.reason,
+            admin_note: "Manual admin cancellation",
+            resolved_at: new Date().toISOString(),
+          });
+        if (cancellationInsertError) throw cancellationInsertError;
+      }
+    }
     return json(req, 200, {
       order: {
         id: data.id,
         status: data.status,
         paymentStatus: data.payment_status,
-        shippingServiceType: data.shipping_service_type,
-        shippingName: data.shipping_name,
-        shippingPhone: data.shipping_phone,
-        shippingEmail: data.shipping_email,
-        shippingLine1: data.shipping_line1,
-        shippingLine2: data.shipping_line2,
-        shippingCity: data.shipping_city,
-        shippingState: data.shipping_state,
-        shippingPincode: data.shipping_pincode,
-        shippingAddress: data.shipping_address,
         updatedAt: data.updated_at,
       },
     });
