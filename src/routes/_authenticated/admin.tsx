@@ -42,6 +42,8 @@ import {
   Users,
   WalletCards,
   X,
+  AlertTriangle,
+  Ban,
 } from "lucide-react";
 
 const categoryOptions = categories.map((category) => ({
@@ -300,6 +302,14 @@ type AdminOrderRecord = {
   shippingServiceType: "standard" | "quick";
   shippingCourierName: string | null;
   itemSummary: string;
+  items: Array<{
+    id: string;
+    title: string;
+    image: string | null;
+    brand: string | null;
+    qty: number;
+    price: number;
+  }>;
   shipment: {
     status: string;
     awbCode: string | null;
@@ -347,6 +357,16 @@ type AdminOrderRecord = {
     status: string;
     generated_at: string;
   } | null;
+  adminEvents: Array<{
+    id: string;
+    eventType: string;
+    reason: string;
+    createdAt: string;
+    adminUserId: string | null;
+    adminEmail: string | null;
+    fromState: Record<string, unknown>;
+    toState: Record<string, unknown>;
+  }>;
 };
 
 type OrderEditorState = {
@@ -362,6 +382,7 @@ type OrderEditorState = {
   shippingCity: string;
   shippingState: string;
   shippingPincode: string;
+  reason: string;
 };
 
 async function requestAdminApi<T>(_accessToken: string, path: string, init?: RequestInit) {
@@ -520,6 +541,7 @@ function emptyOrderEditor(): OrderEditorState {
     shippingCity: "",
     shippingState: "",
     shippingPincode: "",
+    reason: "",
   };
 }
 
@@ -537,6 +559,7 @@ function mapOrderToEditor(order: AdminOrderRecord): OrderEditorState {
     shippingCity: order.shippingCity ?? "",
     shippingState: order.shippingState ?? "",
     shippingPincode: order.shippingPincode ?? "",
+    reason: "",
   };
 }
 
@@ -551,6 +574,54 @@ function payloadNumber(input: string) {
   const value = input.trim();
   if (!value) return null;
   return Number(value);
+}
+
+const terminalOrderStatuses = new Set(["cancelled", "refunded", "returned"]);
+const terminalPaymentStatuses = new Set(["refunded", "cod_cancelled"]);
+const blockedFulfillmentStatuses = new Set([
+  "cancelled",
+  "cancellation_requested",
+  "return_requested",
+  "refunded",
+]);
+
+function isTerminalOrder(order: Pick<AdminOrderRecord, "status" | "paymentStatus">) {
+  return (
+    terminalOrderStatuses.has(order.status.toLowerCase()) ||
+    terminalPaymentStatuses.has(order.paymentStatus.toLowerCase())
+  );
+}
+
+function isCancelledOrder(order: Pick<AdminOrderRecord, "status">) {
+  return order.status.toLowerCase() === "cancelled";
+}
+
+function statusTone(value: string): "heat" | "warning" | "neutral" | "danger" | "success" {
+  const normalized = value.toLowerCase();
+  if (
+    ["cancelled", "failed", "rejected", "cod_cancelled"].some((state) => normalized.includes(state))
+  ) {
+    return "danger";
+  }
+  if (
+    ["paid", "delivered", "completed", "approved", "sent", "processed"].some((state) =>
+      normalized.includes(state),
+    )
+  ) {
+    return "success";
+  }
+  if (
+    ["pending", "requested", "return", "refund", "pickup"].some((state) =>
+      normalized.includes(state),
+    )
+  ) {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function orderCanCreateShipment(order: FulfillmentOrder) {
+  return !order.shipment && !blockedFulfillmentStatuses.has(order.status.toLowerCase());
 }
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -2034,6 +2105,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       { table: "return_requests" as const },
       { table: "refunds" as const },
       { table: "order_invoices" as const },
+      { table: "admin_order_events" as const },
     ],
     debounceMs: 240,
   });
@@ -2055,9 +2127,18 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       .includes(search.toLowerCase()),
   );
   const selectedOrder = orders.find((order) => order.id === selectedId) ?? null;
+  const selectedOrderLocked = selectedOrder ? isTerminalOrder(selectedOrder) : false;
 
   const saveOrder = async () => {
     if (!editor.id) return;
+    if (selectedOrderLocked) {
+      toast.error("Terminal orders are locked. Change them manually in the database if needed.");
+      return;
+    }
+    if (editor.reason.trim().length < 12) {
+      toast.error("Add a clear admin reason before saving");
+      return;
+    }
     try {
       setSaving(true);
       await requestAdminApi<{ order: unknown }>(accessToken, `/admin/orders/${editor.id}`, {
@@ -2074,12 +2155,47 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
           shippingCity: editor.shippingCity,
           shippingState: editor.shippingState,
           shippingPincode: editor.shippingPincode,
+          reason: editor.reason,
         }),
       });
       toast.success("Order updated");
       await loadOrders();
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Could not update order");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const manualCancelOrder = async () => {
+    if (!editor.id || !selectedOrder) return;
+    if (selectedOrderLocked) {
+      toast.error("This order is already locked");
+      return;
+    }
+    if (editor.reason.trim().length < 12) {
+      toast.error("Add the cancellation reason first");
+      return;
+    }
+    setEditor((current) => ({
+      ...current,
+      status: "cancelled",
+      paymentStatus: current.paymentStatus === "paid" ? "failed" : current.paymentStatus,
+    }));
+    try {
+      setSaving(true);
+      await requestAdminApi<{ order: unknown }>(accessToken, `/admin/orders/${editor.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "cancelled",
+          paymentStatus: editor.paymentStatus === "paid" ? "failed" : editor.paymentStatus,
+          reason: editor.reason,
+        }),
+      });
+      toast.success("Order cancelled");
+      await loadOrders();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Could not cancel order");
     } finally {
       setSaving(false);
     }
@@ -2114,57 +2230,61 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
           onChange={setSearch}
           placeholder="Search order, customer, or city"
         />
-        <div className="mt-5 overflow-x-auto">
-          <table className="min-w-[760px] w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-[var(--border-faint)] text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-                <th className="px-3 py-3 font-normal">Order</th>
-                <th className="px-3 py-3 font-normal">Customer</th>
-                <th className="px-3 py-3 font-normal">Shipment</th>
-                <th className="px-3 py-3 font-normal">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((order) => (
-                <tr
-                  key={order.id}
-                  className={`cursor-pointer border-b border-[var(--border-faint)] align-top transition-colors hover:bg-[var(--heat-4)] ${
-                    order.id === selectedId ? "bg-[var(--heat-4)]" : ""
-                  }`}
-                  onClick={() => {
-                    setSelectedId(order.id);
-                    setEditor(mapOrderToEditor(order));
-                  }}
-                >
-                  <td className="px-3 py-4">
-                    <p className="text-label-small text-foreground">
-                      #{order.id.slice(0, 8).toUpperCase()}
-                    </p>
+        <div className="mt-5 space-y-3">
+          {filtered.map((order) => {
+            const selected = order.id === selectedId;
+            const cancelled = isCancelledOrder(order);
+            const locked = isTerminalOrder(order);
+            return (
+              <button
+                key={order.id}
+                type="button"
+                className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                  selected
+                    ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
+                    : cancelled
+                      ? "border-red-200 bg-red-50/55 hover:border-red-300"
+                      : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)] hover:bg-[var(--background-lighter)]"
+                }`}
+                onClick={() => {
+                  setSelectedId(order.id);
+                  setEditor(mapOrderToEditor(order));
+                }}
+              >
+                <div className="grid gap-4 xl:grid-cols-[1.05fr_1.25fr_0.9fr_auto]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-label-medium text-foreground">
+                        #{order.id.slice(0, 8).toUpperCase()}
+                      </p>
+                      {locked && <Ban className="size-4 text-red-600" aria-label="Locked order" />}
+                    </div>
                     <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
                       Placed <SmartTime date={order.createdAt} />
                     </p>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <StatusBadge value={order.status} />
-                      <StatusBadge value={order.paymentStatus} accent="neutral" />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <StatusBadge value={order.status} accent={statusTone(order.status)} />
+                      <StatusBadge
+                        value={order.paymentStatus}
+                        accent={statusTone(order.paymentStatus)}
+                      />
                       {order.cancellationRequest && (
                         <StatusBadge
                           value={`cancel ${order.cancellationRequest.status}`}
-                          accent="warning"
-                        />
-                      )}
-                      {order.returnRequest && (
-                        <StatusBadge
-                          value={`return ${order.returnRequest.status}`}
-                          accent="warning"
+                          accent={statusTone(order.cancellationRequest.status)}
                         />
                       )}
                       {order.refund && (
-                        <StatusBadge value={`refund ${order.refund.status}`} accent="neutral" />
+                        <StatusBadge
+                          value={`refund ${order.refund.status}`}
+                          accent={statusTone(order.refund.status)}
+                        />
                       )}
                     </div>
-                  </td>
-                  <td className="px-3 py-4">
-                    <p className="text-body-small text-foreground">
+                  </div>
+
+                  <div>
+                    <p className="text-label-small text-foreground">
                       {order.shippingName || order.userEmail || "Customer"}
                     </p>
                     <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
@@ -2173,28 +2293,44 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                     <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
                       {[order.shippingCity, order.shippingState, order.shippingPincode]
                         .filter(Boolean)
-                        .join(", ")}
+                        .join(", ") || "Address pending"}
                     </p>
-                  </td>
-                  <td className="px-3 py-4">
-                    <p className="text-body-small text-foreground">
-                      {order.shipment?.courierName ||
-                        order.shippingCourierName ||
-                        "Shipment pending"}
+                  </div>
+
+                  <div>
+                    <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                      Ordered
                     </p>
+                    <div className="mt-2 space-y-1">
+                      {order.items.slice(0, 3).map((item) => (
+                        <p key={item.id} className="line-clamp-1 text-body-small text-foreground">
+                          {item.title}{" "}
+                          <span className="text-[var(--black-alpha-48)]">x{item.qty}</span>
+                        </p>
+                      ))}
+                      {order.items.length > 3 && (
+                        <p className="text-body-small text-[var(--black-alpha-56)]">
+                          +{order.items.length - 3} more item
+                          {order.items.length - 3 === 1 ? "" : "s"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="xl:text-right">
+                    <p className="text-label-large text-foreground">{formatINR(order.total)}</p>
                     <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
                       {order.shipment?.awbCode
                         ? `AWB ${order.shipment.awbCode}`
-                        : order.shippingServiceType}
+                        : order.shipment?.courierName ||
+                          order.shippingCourierName ||
+                          "Shipment pending"}
                     </p>
-                  </td>
-                  <td className="px-3 py-4 text-label-small text-foreground">
-                    {formatINR(order.total)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
           {!loading && filtered.length === 0 && (
             <EmptyState message="No orders match the current search." />
           )}
@@ -2215,11 +2351,40 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       <Panel title="Edit order">
         {selectedOrder ? (
           <>
+            {selectedOrderLocked && (
+              <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className="flex items-start gap-3">
+                  <Ban className="mt-0.5 size-5 shrink-0 text-red-600" />
+                  <div>
+                    <p className="text-label-small text-red-800">Terminal order locked</p>
+                    <p className="mt-1 text-body-small text-red-700">
+                      This order is {selectedOrder.status.replaceAll("_", " ")} with payment{" "}
+                      {selectedOrder.paymentStatus.replaceAll("_", " ")}. Status, payment, service,
+                      and address edits are disabled in the admin app. Use the database only for an
+                      exceptional correction.
+                    </p>
+                    {selectedOrder.cancellationRequest?.reason && (
+                      <p className="mt-2 text-body-small text-red-800">
+                        Cancellation reason: {selectedOrder.cancellationRequest.reason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <InfoTile label="Order" value={`#${selectedOrder.id.slice(0, 8).toUpperCase()}`} />
+              <InfoTile label="Customer" value={selectedOrder.shippingName || "Customer"} />
+              <InfoTile label="Total" value={formatINR(selectedOrder.total)} />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Order status">
                 <SelectInput
                   value={editor.status}
                   onChange={(value) => setEditor((current) => ({ ...current, status: value }))}
+                  disabled={selectedOrderLocked}
                   options={[
                     { value: "pending", label: "Pending" },
                     { value: "processing", label: "Processing" },
@@ -2241,6 +2406,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Payment status">
                 <SelectInput
                   value={editor.paymentStatus}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, paymentStatus: value }))
                   }
@@ -2257,6 +2423,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Shipping service type">
                 <SelectInput
                   value={editor.shippingServiceType}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({
                       ...current,
@@ -2272,6 +2439,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Customer email">
                 <TextInput
                   value={editor.shippingEmail}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingEmail: value }))
                   }
@@ -2280,6 +2448,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Customer name">
                 <TextInput
                   value={editor.shippingName}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingName: value }))
                   }
@@ -2288,6 +2457,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Phone">
                 <TextInput
                   value={editor.shippingPhone}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingPhone: value }))
                   }
@@ -2296,6 +2466,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Address line 1" className="sm:col-span-2">
                 <TextInput
                   value={editor.shippingLine1}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingLine1: value }))
                   }
@@ -2304,6 +2475,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Address line 2" className="sm:col-span-2">
                 <TextInput
                   value={editor.shippingLine2}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingLine2: value }))
                   }
@@ -2312,6 +2484,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="City">
                 <TextInput
                   value={editor.shippingCity}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingCity: value }))
                   }
@@ -2320,6 +2493,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="State">
                 <TextInput
                   value={editor.shippingState}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingState: value }))
                   }
@@ -2328,12 +2502,49 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <Field label="Pincode">
                 <TextInput
                   value={editor.shippingPincode}
+                  disabled={selectedOrderLocked}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, shippingPincode: value }))
                   }
                   inputMode="numeric"
                 />
               </Field>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+              <Field label="Admin reason">
+                <TextAreaInput
+                  value={editor.reason}
+                  disabled={selectedOrderLocked}
+                  onChange={(value) => setEditor((current) => ({ ...current, reason: value }))}
+                  rows={3}
+                  placeholder="Required for any status, payment, service, or address change"
+                />
+              </Field>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveOrder()}
+                  disabled={saving || selectedOrderLocked || editor.reason.trim().length < 12}
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--heat-100)] px-4 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
+                  Save reasoned change
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void manualCancelOrder()}
+                  disabled={saving || selectedOrderLocked || editor.reason.trim().length < 12}
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-label-small text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Ban className="size-4" />
+                  Cancel order
+                </button>
+              </div>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -2578,17 +2789,37 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               </a>
             )}
 
-            <div className="mt-5">
-              <button
-                type="button"
-                onClick={() => void saveOrder()}
-                disabled={saving}
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--heat-100)] px-4 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:opacity-60"
-              >
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Save order
-              </button>
-            </div>
+            {selectedOrder.adminEvents.length > 0 && (
+              <div className="mt-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
+                <p className="text-label-small text-foreground">Admin history</p>
+                <div className="mt-3 space-y-3">
+                  {selectedOrder.adminEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-label-small text-foreground">
+                            {event.eventType.replaceAll("_", " ")}
+                          </p>
+                          <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+                            {event.reason}
+                          </p>
+                        </div>
+                        <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          <SmartTime date={event.createdAt} />
+                        </p>
+                      </div>
+                      <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                        {event.adminEmail || "Admin"} changed{" "}
+                        {Object.keys(event.toState ?? {}).join(", ") || "order fields"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <EmptyState message="Select an order to edit it." />
@@ -2824,7 +3055,7 @@ function FulfillmentQueue() {
   const [error, setError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
-  const [selectedShipmentIds, setSelectedShipmentIds] = useState<string[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
 
   const request = useCallback(
     async <T,>(path: string, init?: RequestInit) => {
@@ -2894,28 +3125,48 @@ function FulfillmentQueue() {
   };
 
   const detailOrder = orders.find((order) => order.id === detailOrderId) ?? null;
-  const selectedShipmentSet = new Set(selectedShipmentIds);
-  const selectableShipmentIds = orders
+  const selectedOrderSet = new Set(selectedOrderIds);
+  const selectableOrderIds = orders.map((order) => order.id);
+  const selectedOrders = orders.filter((order) => selectedOrderSet.has(order.id));
+  const selectedShipmentIds = selectedOrders
     .map((order) => order.shipment?.id)
     .filter((id): id is string => Boolean(id));
-  const allVisibleShipmentsSelected =
-    selectableShipmentIds.length > 0 &&
-    selectableShipmentIds.every((shipmentId) => selectedShipmentSet.has(shipmentId));
-  const toggleShipmentSelection = (shipmentId: string) => {
-    setSelectedShipmentIds((current) =>
-      current.includes(shipmentId)
-        ? current.filter((id) => id !== shipmentId)
-        : [...current, shipmentId],
+  const selectedOrdersWithoutShipment = selectedOrders.filter((order) => !order.shipment);
+  const allVisibleOrdersSelected =
+    selectableOrderIds.length > 0 &&
+    selectableOrderIds.every((orderId) => selectedOrderSet.has(orderId));
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds((current) =>
+      current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId],
     );
   };
-  const toggleAllVisibleShipments = () => {
-    setSelectedShipmentIds(allVisibleShipmentsSelected ? [] : selectableShipmentIds);
+  const toggleAllVisibleOrders = () => {
+    setSelectedOrderIds(allVisibleOrdersSelected ? [] : selectableOrderIds);
+  };
+  const runBulkCreateShipments = async () => {
+    if (!selectedOrderIds.length) {
+      toast.error("Select orders first");
+      return;
+    }
+    const creatableOrderIds = selectedOrders
+      .filter((order) => orderCanCreateShipment(order))
+      .map((order) => order.id);
+    if (!creatableOrderIds.length) {
+      toast.error("Selected orders already have shipments or are not eligible");
+      return;
+    }
+    await runAction(
+      "bulk:create_orders",
+      "/shipments/shiprocket/bulk",
+      postJson({ action: "create_orders", orderIds: creatableOrderIds }),
+    );
+    setSelectedOrderIds([]);
   };
   const runBulkAction = async (
     action: "assign_awb" | "schedule_pickup" | "generate_labels" | "refresh_tracking",
   ) => {
     if (!selectedShipmentIds.length) {
-      toast.error("Select shipments first");
+      toast.error("Select orders that already have shipments");
       return;
     }
     await runAction(
@@ -2923,7 +3174,7 @@ function FulfillmentQueue() {
       "/shipments/shiprocket/bulk",
       postJson({ action, shipmentIds: selectedShipmentIds }),
     );
-    setSelectedShipmentIds([]);
+    setSelectedOrderIds([]);
   };
 
   return (
@@ -2962,8 +3213,16 @@ function FulfillmentQueue() {
 
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
           <span className="mr-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-            {selectedShipmentIds.length} selected
+            {selectedOrderIds.length} selected / {selectedOrdersWithoutShipment.length} need
+            shipment
           </span>
+          <ActionButton
+            icon={PackagePlus}
+            label="Bulk create shipments"
+            loading={activeAction === "bulk:create_orders"}
+            disabled={!selectedOrderIds.length || Boolean(activeAction)}
+            onClick={() => void runBulkCreateShipments()}
+          />
           <ActionButton
             icon={Send}
             label="Bulk AWB"
@@ -3007,9 +3266,9 @@ function FulfillmentQueue() {
                 <th className="w-10 px-3 py-3 font-normal">
                   <input
                     type="checkbox"
-                    checked={allVisibleShipmentsSelected}
-                    onChange={toggleAllVisibleShipments}
-                    aria-label="Select all visible shipments"
+                    checked={allVisibleOrdersSelected}
+                    onChange={toggleAllVisibleOrders}
+                    aria-label="Select all visible orders"
                     className="size-4 accent-[var(--heat-100)]"
                   />
                 </th>
@@ -3028,14 +3287,8 @@ function FulfillmentQueue() {
                   onOpenDetails={() => setDetailOrderId(order.id)}
                   activeAction={activeAction}
                   runAction={runAction}
-                  selected={Boolean(
-                    order.shipment?.id && selectedShipmentSet.has(order.shipment.id),
-                  )}
-                  onToggleSelected={
-                    order.shipment?.id
-                      ? () => toggleShipmentSelection(order.shipment!.id)
-                      : undefined
-                  }
+                  selected={selectedOrderSet.has(order.id)}
+                  onToggleSelected={() => toggleOrderSelection(order.id)}
                 />
               ))}
             </tbody>
@@ -3095,21 +3348,17 @@ function FulfillmentRow({
       className="cursor-pointer border-b border-[var(--border-faint)] align-top transition-colors last:border-b-0 hover:bg-[var(--background-lighter)]"
     >
       <td className="px-3 py-4">
-        {order.shipment ? (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(event) => {
-              event.stopPropagation();
-              onToggleSelected?.();
-            }}
-            onClick={(event) => event.stopPropagation()}
-            aria-label={`Select shipment for order ${order.id.slice(0, 8)}`}
-            className="size-4 accent-[var(--heat-100)]"
-          />
-        ) : (
-          <span className="block size-4" aria-hidden="true" />
-        )}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(event) => {
+            event.stopPropagation();
+            onToggleSelected?.();
+          }}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Select order ${order.id.slice(0, 8)}`}
+          className="size-4 accent-[var(--heat-100)]"
+        />
       </td>
       <td className="px-3 py-4">
         <div className="group text-left">
@@ -3129,6 +3378,16 @@ function FulfillmentRow({
           <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
             {order.items.length} item{order.items.length === 1 ? "" : "s"}
           </p>
+          <div className="mt-2 space-y-1">
+            {order.items.slice(0, 2).map((item) => (
+              <p
+                key={item.id}
+                className="line-clamp-1 text-body-small text-[var(--black-alpha-72)]"
+              >
+                {item.title} x{item.qty}
+              </p>
+            ))}
+          </div>
         </div>
       </td>
       <td className="px-3 py-4">
@@ -3637,11 +3896,13 @@ function TextInput({
   onChange,
   inputMode,
   type = "text",
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   type?: React.HTMLInputTypeAttribute;
+  disabled?: boolean;
 }) {
   return (
     <input
@@ -3649,7 +3910,8 @@ function TextInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       inputMode={inputMode}
-      className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground"
+      disabled={disabled}
+      className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground disabled:cursor-not-allowed disabled:bg-[var(--background-lighter)] disabled:text-[var(--black-alpha-48)]"
     />
   );
 }
@@ -3658,17 +3920,23 @@ function TextAreaInput({
   value,
   onChange,
   rows,
+  placeholder,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   rows: number;
+  placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <textarea
       value={value}
       onChange={(event) => onChange(event.target.value)}
       rows={rows}
-      className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-3 text-body-medium text-foreground"
+      placeholder={placeholder}
+      disabled={disabled}
+      className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-3 text-body-medium text-foreground placeholder:text-[var(--black-alpha-40)] disabled:cursor-not-allowed disabled:bg-[var(--background-lighter)] disabled:text-[var(--black-alpha-48)]"
     />
   );
 }
@@ -3677,16 +3945,19 @@ function SelectInput({
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
 }) {
   return (
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground"
+      disabled={disabled}
+      className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground disabled:cursor-not-allowed disabled:bg-[var(--background-lighter)] disabled:text-[var(--black-alpha-48)]"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -3702,14 +3973,18 @@ function StatusBadge({
   accent = "heat",
 }: {
   value: string;
-  accent?: "heat" | "warning" | "neutral";
+  accent?: "heat" | "warning" | "neutral" | "danger" | "success";
 }) {
   const classes =
     accent === "warning"
       ? "border border-[var(--accent-honey)]/30 bg-amber-50 text-[var(--accent-honey)]"
-      : accent === "neutral"
-        ? "border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-64)]"
-        : "border border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]";
+      : accent === "danger"
+        ? "border border-red-200 bg-red-50 text-red-700"
+        : accent === "success"
+          ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+          : accent === "neutral"
+            ? "border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-64)]"
+            : "border border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]";
 
   return (
     <span

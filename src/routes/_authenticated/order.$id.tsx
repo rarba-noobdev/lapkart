@@ -1,7 +1,16 @@
 ﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, ExternalLink, Loader2, Package, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  Package,
+  Truck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
@@ -247,6 +256,9 @@ function OrderPage() {
   }
 
   const liveTracking = shipment?.trackingActivities ?? [];
+  const isCancelled = order.status.toLowerCase() === "cancelled";
+  const isFailedPayment = order.payment_status.toLowerCase() === "failed";
+  const isNegativeOrder = isCancelled || isFailedPayment;
   const currentShipmentLabel =
     shipment?.status?.replaceAll("_", " ") || order.status.replaceAll("_", " ");
   const shipmentNote = shipment?.expectedDeliveryDate
@@ -256,6 +268,17 @@ function OrderPage() {
       : shipment?.trackingActivities[0]?.activity || "Carrier update pending";
   const latestCancellation = cancellationRequests[0] ?? null;
   const latestReturn = returnRequests[0] ?? null;
+  const HeroIcon = isCancelled ? Ban : isFailedPayment ? AlertTriangle : CheckCircle2;
+  const heroTitle = isCancelled
+    ? "Order cancelled"
+    : isFailedPayment
+      ? "Payment failed"
+      : "Thank you for your order";
+  const heroEyebrow = isCancelled
+    ? "Order closed"
+    : isFailedPayment
+      ? "Payment not completed"
+      : "Order confirmed";
 
   const openInvoice = async () => {
     if (!invoice) return;
@@ -339,9 +362,11 @@ function OrderPage() {
           initial={{ scale: 0.92, opacity: 0, rotate: -10 }}
           animate={{ scale: 1, opacity: 1, rotate: 0 }}
           transition={{ type: "spring", stiffness: 220, damping: 18 }}
-          className="mx-auto grid size-20 place-items-center rounded-full bg-[var(--heat-100)] text-white shadow-[0_20px_50px_-20px_var(--heat-100)] animate-heat-glow"
+          className={`mx-auto grid size-20 place-items-center rounded-full text-white shadow-[0_20px_50px_-20px_rgba(0,0,0,0.35)] ${
+            isNegativeOrder ? "bg-red-600" : "bg-[var(--heat-100)] animate-heat-glow"
+          }`}
         >
-          <CheckCircle2 className="size-10" strokeWidth={2} />
+          <HeroIcon className="size-10" strokeWidth={2} />
         </motion.div>
 
         <motion.div
@@ -350,76 +375,86 @@ function OrderPage() {
           transition={{ delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="mt-6 text-center"
         >
-          <span className="text-label-small text-[var(--heat-100)]">Order confirmed</span>
-          <h1 className="mt-2 font-display text-title-h2 text-foreground">
-            Thank you for your order
-          </h1>
+          <span
+            className={`text-label-small ${isNegativeOrder ? "text-red-700" : "text-[var(--heat-100)]"}`}
+          >
+            {heroEyebrow}
+          </span>
+          <h1 className="mt-2 font-display text-title-h2 text-foreground">{heroTitle}</h1>
           <p className="mt-3 text-body-large text-[var(--black-alpha-56)]">
             <span className="text-mono-small text-foreground">
               #{order.id.slice(0, 8).toUpperCase()}
             </span>
             <span className="mx-2">/</span>
-            Paid <span className="font-medium text-foreground">{formatINR(order.total)}</span>
+            {order.payment_status.replaceAll("_", " ")}{" "}
+            <span className="font-medium text-foreground">{formatINR(order.total)}</span>
           </p>
+          {latestCancellation?.reason && (
+            <p className="mx-auto mt-3 max-w-xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-body-small text-red-800">
+              Cancellation reason: {latestCancellation.reason}
+            </p>
+          )}
         </motion.div>
 
-        <div className="mt-12 grid gap-3 md:grid-cols-3">
-          {[
-            {
-              icon: CheckCircle2,
-              label: "Confirmed",
-              note: <SmartTime date={order.created_at} />,
-              active: true,
-              current: true,
-            },
-            {
-              icon: Package,
-              label: "Packed",
-              note: shipment?.awbCode ? `AWB ${shipment.awbCode}` : "Within 24h",
-              active: Boolean(shipment?.awbCode),
-              current: !shipment?.trackingActivities.length && Boolean(shipment?.awbCode),
-            },
-            {
-              icon: Truck,
-              label: shipment?.trackingActivities.length ? "Live tracking" : "On the way",
-              note: shipmentNote,
-              active: Boolean(shipment),
-              current: Boolean(shipment?.trackingActivities.length),
-            },
-          ].map((step, index) => (
-            <motion.div
-              key={step.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-              className={`relative rounded-lg border p-5 ${
-                step.current
-                  ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
-                  : step.active
-                    ? "border-[var(--border-muted)] bg-white"
-                    : "border-[var(--border-faint)] bg-white opacity-60"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`grid size-9 place-items-center rounded-md ${
-                    step.current
-                      ? "bg-[var(--heat-100)] text-white shadow-[0_2px_8px_0_var(--heat-40)]"
-                      : "bg-[var(--background-lighter)] text-[var(--black-alpha-48)]"
-                  }`}
-                >
-                  <step.icon className="size-4" strokeWidth={2.2} />
+        {!isNegativeOrder && (
+          <div className="mt-12 grid gap-3 md:grid-cols-3">
+            {[
+              {
+                icon: CheckCircle2,
+                label: "Confirmed",
+                note: <SmartTime date={order.created_at} />,
+                active: true,
+                current: true,
+              },
+              {
+                icon: Package,
+                label: "Packed",
+                note: shipment?.awbCode ? `AWB ${shipment.awbCode}` : "Within 24h",
+                active: Boolean(shipment?.awbCode),
+                current: !shipment?.trackingActivities.length && Boolean(shipment?.awbCode),
+              },
+              {
+                icon: Truck,
+                label: shipment?.trackingActivities.length ? "Live tracking" : "On the way",
+                note: shipmentNote,
+                active: Boolean(shipment),
+                current: Boolean(shipment?.trackingActivities.length),
+              },
+            ].map((step, index) => (
+              <motion.div
+                key={step.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 + index * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                className={`relative rounded-lg border p-5 ${
+                  step.current
+                    ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
+                    : step.active
+                      ? "border-[var(--border-muted)] bg-white"
+                      : "border-[var(--border-faint)] bg-white opacity-60"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`grid size-9 place-items-center rounded-md ${
+                      step.current
+                        ? "bg-[var(--heat-100)] text-white shadow-[0_2px_8px_0_var(--heat-40)]"
+                        : "bg-[var(--background-lighter)] text-[var(--black-alpha-48)]"
+                    }`}
+                  >
+                    <step.icon className="size-4" strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <p className="text-label-small text-foreground">{step.label}</p>
+                    <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                      {step.note}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-label-small text-foreground">{step.label}</p>
-                  <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-                    {step.note}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <div className="rounded-lg border border-[var(--border-muted)] bg-white p-6">
@@ -472,7 +507,11 @@ function OrderPage() {
                 {order.coupon_code ? ` with ${order.coupon_code}` : ""}
               </p>
             )}
-            <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--accent-forest)]">
+            <p
+              className={`mt-1 text-mono-x-small uppercase tracking-wider ${
+                isFailedPayment ? "text-red-700" : "text-[var(--accent-forest)]"
+              }`}
+            >
               {order.payment_status.replaceAll("_", " ")}
             </p>
             {invoice && (

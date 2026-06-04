@@ -206,7 +206,13 @@ const labelsSchema = z.object({
 });
 
 const bulkFulfillmentSchema = z.object({
-  action: z.enum(["assign_awb", "schedule_pickup", "generate_labels", "refresh_tracking"]),
+  action: z.enum([
+    "create_orders",
+    "assign_awb",
+    "schedule_pickup",
+    "generate_labels",
+    "refresh_tracking",
+  ]),
   orderIds: z.array(z.string().uuid()).max(50).optional().default([]),
   shipmentIds: z.array(z.string().uuid()).max(50).optional().default([]),
 });
@@ -316,6 +322,7 @@ const adminOrderUpdateSchema = z
       .regex(/^[0-9]{6}$/)
       .optional()
       .transform((value) => value ?? undefined),
+    reason: z.string().trim().min(12).max(500),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one order field must be provided");
 
@@ -893,6 +900,100 @@ async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
   if (error) throw error;
 
   return { shipment: updatedShipment, tracking: response };
+}
+
+async function createShiprocketShipmentForOrder(
+  adminDb: ReturnType<typeof getSupabaseAdmin>,
+  input: z.infer<typeof createShiprocketShipmentSchema>,
+) {
+  const { data: order, error: orderError } = await adminDb
+    .from("orders")
+    .select("*")
+    .eq("id", input.orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!order) throw new HttpError(404, "Order not found");
+  if (
+    ["cancelled", "cancellation_requested", "return_requested", "refunded"].includes(
+      String(order.status ?? "").toLowerCase(),
+    )
+  ) {
+    throw new HttpError(409, "This order is not eligible for shipment creation");
+  }
+  const items = await getOrderItemsWithSku([input.orderId]);
+  if (!items.length) throw new HttpError(400, "Order has no items");
+  const { data: existingShipment, error: existingShipmentError } = await adminDb
+    .from("shipments")
+    .select("*")
+    .eq("order_id", input.orderId)
+    .eq("provider", "shiprocket")
+    .eq("shipping_direction", "outbound")
+    .maybeSingle();
+  if (existingShipmentError) throw existingShipmentError;
+  if (existingShipment) {
+    throw new HttpError(409, "Shiprocket shipment already exists for this order");
+  }
+  const payload = toShiprocketOrderPayload({
+    order,
+    items,
+    package: input.package,
+    pickupLocation: input.pickupLocation,
+  });
+  const { data: pickupLocation, error: pickupLocationError } = await adminDb
+    .from("shipping_pickup_locations")
+    .select("id")
+    .eq("provider", "shiprocket")
+    .eq("pickup_location", payload.pickup_location)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (pickupLocationError) throw pickupLocationError;
+  if (!pickupLocation) {
+    throw new HttpError(400, "Shiprocket pickup location is not synced or active");
+  }
+  const response = await createShiprocketOrder(payload);
+  const shiprocketOrderId = Number(response.order_id ?? response.orderId);
+  const shiprocketShipmentId = Number(response.shipment_id ?? response.shipmentId);
+  const { data: shipment, error: shipmentError } = await adminDb
+    .from("shipments")
+    .insert({
+      order_id: input.orderId,
+      provider: "shiprocket",
+      pickup_location_id: pickupLocation.id,
+      shipping_direction: "outbound",
+      shipping_service_type: order.shipping_service_type ?? "standard",
+      status: shiprocketShipmentId ? "created" : "pending",
+      shiprocket_order_id: Number.isFinite(shiprocketOrderId) ? shiprocketOrderId : null,
+      shiprocket_shipment_id: Number.isFinite(shiprocketShipmentId) ? shiprocketShipmentId : null,
+      shiprocket_channel_order_id: String(order.id),
+      courier_company_id: order.shipping_courier_company_id ?? null,
+      courier_name: order.shipping_courier_name ?? null,
+      shipping_charge: order.shipping_charge_estimate ?? 0,
+      expected_delivery_date: order.shipping_expected_delivery_date ?? null,
+      request_payload: payload,
+      raw_create_response: response,
+      raw_payload: response,
+    })
+    .select("*")
+    .single();
+  if (shipmentError) throw shipmentError;
+  await adminDb.from("shipment_packages").insert({
+    shipment_id: shipment.id,
+    package_number: 1,
+    weight_kg: payload.weight,
+    length_cm: payload.length,
+    breadth_cm: payload.breadth,
+    height_cm: payload.height,
+    declared_value: payload.sub_total,
+    item_count: payload.order_items.reduce((sum, item) => sum + item.units, 0),
+    sku_summary: payload.order_items
+      .map((item) => item.sku)
+      .join(", ")
+      .slice(0, 500),
+    order_item_ids: items.map((item) => item.id),
+    raw_payload: payload,
+  });
+
+  return { shipment, shiprocket: response };
 }
 
 async function syncShiprocketPickupLocations(addresses: ShiprocketPickupAddress[]) {
@@ -2944,92 +3045,10 @@ async function handle(req: Request) {
     await requireAdmin(req);
     requireLivePaymentEnvironment();
     const input = createShiprocketShipmentSchema.parse(await req.json());
-    const { data: order, error: orderError } = await adminDb
-      .from("orders")
-      .select("*")
-      .eq("id", input.orderId)
-      .maybeSingle();
-    if (orderError) throw orderError;
-    if (!order) throw new HttpError(404, "Order not found");
-    if (
-      ["cancelled", "cancellation_requested", "return_requested", "refunded"].includes(
-        String(order.status ?? "").toLowerCase(),
-      )
-    ) {
-      throw new HttpError(409, "This order is not eligible for shipment creation");
-    }
-    const items = await getOrderItemsWithSku([input.orderId]);
-    if (!items.length) throw new HttpError(400, "Order has no items");
-    const { data: existingShipment, error: existingShipmentError } = await adminDb
-      .from("shipments")
-      .select("*")
-      .eq("order_id", input.orderId)
-      .eq("provider", "shiprocket")
-      .maybeSingle();
-    if (existingShipmentError) throw existingShipmentError;
-    if (existingShipment) {
-      return json(req, 409, {
-        error: "Shiprocket shipment already exists for this order",
-        shipment: existingShipment,
-      });
-    }
-    const payload = toShiprocketOrderPayload({
-      order,
-      items,
-      package: input.package,
-      pickupLocation: input.pickupLocation,
-    });
-    const { data: pickupLocation, error: pickupLocationError } = await adminDb
-      .from("shipping_pickup_locations")
-      .select("id")
-      .eq("provider", "shiprocket")
-      .eq("pickup_location", payload.pickup_location)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (pickupLocationError) throw pickupLocationError;
-    if (!pickupLocation)
-      throw new HttpError(400, "Shiprocket pickup location is not synced or active");
-    const response = await createShiprocketOrder(payload);
-    const shiprocketOrderId = Number(response.order_id ?? response.orderId);
-    const shiprocketShipmentId = Number(response.shipment_id ?? response.shipmentId);
-    const { data: shipment, error: shipmentError } = await adminDb
-      .from("shipments")
-      .insert({
-        order_id: input.orderId,
-        provider: "shiprocket",
-        pickup_location_id: pickupLocation.id,
-        shipping_service_type: order.shipping_service_type ?? "standard",
-        status: shiprocketShipmentId ? "created" : "pending",
-        shiprocket_order_id: Number.isFinite(shiprocketOrderId) ? shiprocketOrderId : null,
-        shiprocket_shipment_id: Number.isFinite(shiprocketShipmentId) ? shiprocketShipmentId : null,
-        shiprocket_channel_order_id: String(order.id),
-        courier_company_id: order.shipping_courier_company_id ?? null,
-        courier_name: order.shipping_courier_name ?? null,
-        shipping_charge: order.shipping_charge_estimate ?? 0,
-        expected_delivery_date: order.shipping_expected_delivery_date ?? null,
-        request_payload: payload,
-        raw_create_response: response,
-        raw_payload: response,
-      })
-      .select("*")
-      .single();
-    if (shipmentError) throw shipmentError;
-    await adminDb.from("shipment_packages").insert({
-      shipment_id: shipment.id,
-      package_number: 1,
-      weight_kg: payload.weight,
-      length_cm: payload.length,
-      breadth_cm: payload.breadth,
-      height_cm: payload.height,
-      declared_value: payload.sub_total,
-      item_count: payload.order_items.reduce((sum, item) => sum + item.units, 0),
-      sku_summary: payload.order_items
-        .map((item) => item.sku)
-        .join(", ")
-        .slice(0, 500),
-      order_item_ids: items.map((item) => item.id),
-      raw_payload: payload,
-    });
+    const { shipment, shiprocket: response } = await createShiprocketShipmentForOrder(
+      adminDb,
+      input,
+    );
     return json(req, 200, { shipment, shiprocket: response });
   }
 
@@ -3316,17 +3335,22 @@ async function handle(req: Request) {
     const adminUser = await requireAdmin(req);
     requireLivePaymentEnvironment();
     const input = bulkFulfillmentSchema.parse(await req.json());
-    if (!input.shipmentIds.length) {
+    if (input.action === "create_orders" && !input.orderIds.length) {
+      throw new HttpError(400, "Select at least one order");
+    }
+    if (input.action !== "create_orders" && !input.shipmentIds.length) {
       throw new HttpError(400, "Select at least one shipment");
     }
     const batchType =
-      input.action === "assign_awb"
-        ? "assign_awb"
-        : input.action === "schedule_pickup"
-          ? "schedule_pickup"
-          : input.action === "generate_labels"
-            ? "generate_labels"
-            : "refresh_tracking";
+      input.action === "create_orders"
+        ? "create_orders"
+        : input.action === "assign_awb"
+          ? "assign_awb"
+          : input.action === "schedule_pickup"
+            ? "schedule_pickup"
+            : input.action === "generate_labels"
+              ? "generate_labels"
+              : "refresh_tracking";
     const { data: batch, error: batchError } = await adminDb
       .from("shipping_batches")
       .insert({
@@ -3334,7 +3358,8 @@ async function handle(req: Request) {
         batch_type: batchType,
         status: "processing",
         requested_by: adminUser.id,
-        total_count: input.shipmentIds.length,
+        total_count:
+          input.action === "create_orders" ? input.orderIds.length : input.shipmentIds.length,
         request_payload: input,
         started_at: new Date().toISOString(),
       })
@@ -3342,15 +3367,63 @@ async function handle(req: Request) {
       .single();
     if (batchError) throw batchError;
 
+    const results: Array<Record<string, unknown>> = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    if (input.action === "create_orders") {
+      for (const orderId of input.orderIds) {
+        try {
+          const { shipment, shiprocket } = await createShiprocketShipmentForOrder(adminDb, {
+            orderId,
+          });
+          successCount += 1;
+          results.push({ orderId, shipmentId: shipment.id, status: "completed", shiprocket });
+          await adminDb.from("shipping_batch_items").insert({
+            batch_id: batch.id,
+            order_id: orderId,
+            shipment_id: shipment.id,
+            status: "completed",
+            provider_reference: firstString(shipment.shiprocket_shipment_id),
+            response_payload: shiprocket,
+          });
+        } catch (error) {
+          failureCount += 1;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          results.push({ orderId, status: "failed", error: errorMessage });
+          await adminDb.from("shipping_batch_items").insert({
+            batch_id: batch.id,
+            order_id: orderId,
+            status: "failed",
+            error_message: errorMessage,
+          });
+        }
+      }
+
+      const finalStatus =
+        failureCount === 0 ? "completed" : successCount === 0 ? "failed" : "partially_failed";
+      const { data: updatedBatch, error: updateBatchError } = await adminDb
+        .from("shipping_batches")
+        .update({
+          status: finalStatus,
+          success_count: successCount,
+          failure_count: failureCount,
+          response_payload: { results },
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", batch.id)
+        .select("*")
+        .single();
+      if (updateBatchError) throw updateBatchError;
+      return json(req, 200, { batch: updatedBatch, results });
+    }
+
     const { data: shipments, error: shipmentsError } = await adminDb
       .from("shipments")
       .select("*")
       .in("id", input.shipmentIds);
     if (shipmentsError) throw shipmentsError;
     const shipmentRows = (shipments ?? []) as Array<Record<string, unknown>>;
-    const results: Array<Record<string, unknown>> = [];
-    let successCount = 0;
-    let failureCount = 0;
 
     if (input.action === "generate_labels") {
       try {
@@ -3959,9 +4032,13 @@ async function handle(req: Request) {
       returnsResult,
       refundsResult,
       invoicesResult,
+      eventsResult,
     ] = orderIds.length
       ? await Promise.all([
-          adminDb.from("order_items").select("order_id,title,qty").in("order_id", orderIds),
+          adminDb
+            .from("order_items")
+            .select("id,order_id,title,image,brand,qty,price,unit_price")
+            .in("order_id", orderIds),
           adminDb
             .from("shipments")
             .select("order_id,status,awb_code,courier_name,tracking_url,expected_delivery_date")
@@ -3994,8 +4071,14 @@ async function handle(req: Request) {
             .from("order_invoices")
             .select("order_id,invoice_number,invoice_url,status,generated_at")
             .in("order_id", orderIds),
+          adminDb
+            .from("admin_order_events")
+            .select("id,order_id,admin_user_id,event_type,reason,from_state,to_state,created_at")
+            .in("order_id", orderIds)
+            .order("created_at", { ascending: false }),
         ])
       : [
+          { data: [], error: null },
           { data: [], error: null },
           { data: [], error: null },
           { data: [], error: null },
@@ -4011,11 +4094,16 @@ async function handle(req: Request) {
     if (returnsResult.error) throw returnsResult.error;
     if (refundsResult.error) throw refundsResult.error;
     if (invoicesResult.error) throw invoicesResult.error;
+    if (eventsResult.error) throw eventsResult.error;
     const itemSummaryByOrder = new Map<string, string>();
+    const itemsByOrder = new Map<string, Array<Record<string, unknown>>>();
     for (const item of itemsResult.data ?? []) {
       const existing = itemSummaryByOrder.get(item.order_id) ?? "";
       const nextItem = `${item.title} x${item.qty}`;
       itemSummaryByOrder.set(item.order_id, existing ? `${existing}, ${nextItem}` : nextItem);
+      const existingItems = itemsByOrder.get(item.order_id) ?? [];
+      existingItems.push(item);
+      itemsByOrder.set(item.order_id, existingItems);
     }
     const shipmentByOrder = new Map(
       (shipmentsResult.data ?? []).map((shipment) => [shipment.order_id, shipment]),
@@ -4035,6 +4123,12 @@ async function handle(req: Request) {
     const invoiceByOrder = new Map(
       (invoicesResult.data ?? []).map((invoice) => [invoice.order_id, invoice]),
     );
+    const eventsByOrder = new Map<string, Array<Record<string, unknown>>>();
+    for (const event of eventsResult.data ?? []) {
+      const existing = eventsByOrder.get(event.order_id) ?? [];
+      if (existing.length < 8) existing.push(event);
+      eventsByOrder.set(event.order_id, existing);
+    }
     const paymentByOrder = new Map(
       (paymentsResult.data ?? [])
         .slice()
@@ -4071,6 +4165,14 @@ async function handle(req: Request) {
           shippingServiceType: order.shipping_service_type,
           shippingCourierName: order.shipping_courier_name,
           itemSummary: itemSummaryByOrder.get(order.id) ?? "",
+          items: (itemsByOrder.get(order.id) ?? []).map((item) => ({
+            id: item.id,
+            title: item.title,
+            image: item.image,
+            brand: item.brand,
+            qty: item.qty,
+            price: Number(item.price ?? item.unit_price ?? 0),
+          })),
           shipment: shipment
             ? {
                 status: shipment.status,
@@ -4091,6 +4193,16 @@ async function handle(req: Request) {
           returnRequest: returnByOrder.get(order.id) ?? null,
           refund: refundByOrder.get(order.id) ?? null,
           invoice: invoiceByOrder.get(order.id) ?? null,
+          adminEvents: (eventsByOrder.get(order.id) ?? []).map((event) => ({
+            id: event.id,
+            eventType: event.event_type,
+            reason: event.reason,
+            createdAt: event.created_at,
+            adminUserId: event.admin_user_id,
+            adminEmail: userEmailById.get(String(event.admin_user_id ?? "")) ?? null,
+            fromState: event.from_state,
+            toState: event.to_state,
+          })),
         };
       }),
     });
@@ -4099,7 +4211,7 @@ async function handle(req: Request) {
   const adminOrderMatch = matchRoute(path, /^\/admin\/orders\/([^/]+)$/);
   if (req.method === "PATCH" && adminOrderMatch) {
     const adminDb = getSupabaseAdmin();
-    await requireAdmin(req);
+    const adminUser = await requireAdmin(req);
     const { orderId } = orderIdParamSchema.parse({ orderId: adminOrderMatch[1] });
     const input = adminOrderUpdateSchema.parse(await req.json());
     const { data: existingOrder, error: existingOrderError } = await adminDb
@@ -4110,6 +4222,17 @@ async function handle(req: Request) {
       .eq("id", orderId)
       .single();
     if (existingOrderError) throw existingOrderError;
+    const currentOrderStatus = String(existingOrder.status ?? "").toLowerCase();
+    const currentPaymentStatus = String(existingOrder.payment_status ?? "").toLowerCase();
+    const isTerminalOrder = ["cancelled", "refunded", "returned"].includes(currentOrderStatus);
+    const isTerminalPayment = ["refunded", "cod_cancelled"].includes(currentPaymentStatus);
+    if (isTerminalOrder || isTerminalPayment) {
+      throw new HttpError(
+        409,
+        "This order is in a terminal state. Change it manually in the database only if you need an exception.",
+      );
+    }
+
     const payload: Record<string, unknown> = {};
     if ("status" in input) payload.status = input.status?.toLowerCase();
     if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
@@ -4144,6 +4267,26 @@ async function handle(req: Request) {
       payload.shipping_address = [line1, line2, city, state, pincode].filter(Boolean).join(", ");
       payload.shipping_formatted_address = payload.shipping_address;
     }
+    const changedFields = Object.entries(payload).filter(([key, value]) => {
+      const existingValue = (existingOrder as Record<string, unknown>)[key];
+      return String(existingValue ?? "") !== String(value ?? "");
+    });
+    if (!changedFields.length) {
+      throw new HttpError(400, "No order fields changed");
+    }
+    const changedFieldNames = changedFields.map(([key]) => key);
+    const protectedFieldChanged = changedFieldNames.some((field) =>
+      ["status", "payment_status", "shipping_service_type"].includes(field),
+    );
+    const eventType = changedFieldNames.includes("status")
+      ? payload.status === "cancelled"
+        ? "manual_cancel"
+        : "manual_update"
+      : changedFieldNames.includes("payment_status")
+        ? "payment_update"
+        : changedFieldNames.includes("shipping_service_type")
+          ? "shipping_update"
+          : "address_update";
     const { data, error } = await adminDb
       .from("orders")
       .update(payload)
@@ -4153,6 +4296,25 @@ async function handle(req: Request) {
       )
       .single();
     if (error) throw error;
+    const { error: eventError } = await adminDb.from("admin_order_events").insert({
+      order_id: orderId,
+      admin_user_id: adminUser.id,
+      event_type: eventType,
+      reason: input.reason,
+      from_state: Object.fromEntries(
+        changedFields.map(([key]) => [
+          key,
+          (existingOrder as Record<string, unknown>)[key] ?? null,
+        ]),
+      ),
+      to_state: Object.fromEntries(changedFields),
+      metadata: {
+        protectedFieldChanged,
+        changedFields: changedFieldNames,
+        source: "admin_order_editor",
+      },
+    });
+    if (eventError) throw eventError;
     return json(req, 200, {
       order: {
         id: data.id,
