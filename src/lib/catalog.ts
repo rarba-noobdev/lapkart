@@ -39,6 +39,13 @@ export type Product = {
   compatibility: string;
   warranty: string;
   highlights: string[];
+  authenticity_grade?: "oem" | "compatible" | "refurbished" | "open_box";
+  condition_grade?: "new" | "open_box" | "refurbished" | "used";
+  hsn_code?: string;
+  gst_rate?: number;
+  doa_policy_days?: number;
+  local_delivery_eligible?: boolean;
+  cod_eligible?: boolean;
 };
 
 export function discountPct(p: Pick<Product, "price" | "mrp">) {

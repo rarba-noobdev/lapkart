@@ -70,6 +70,48 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string, 
   };
 }
 
+export async function createRazorpayRefund(input: {
+  paymentId: string;
+  amountPaise: number;
+  speed?: "normal" | "optimum";
+  notes?: Record<string, string>;
+}) {
+  if (!config.razorpayKeyId || !config.razorpayKeySecret) {
+    throw new Error("Razorpay credentials are not configured");
+  }
+
+  const response = await fetch(
+    `https://api.razorpay.com/v1/payments/${encodeURIComponent(input.paymentId)}/refund`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${encodeBase64(`${config.razorpayKeyId}:${config.razorpayKeySecret}`)}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: input.amountPaise,
+        speed: input.speed ?? "normal",
+        notes: input.notes ?? {},
+      }),
+    },
+  );
+
+  const text = await response.text();
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  if (!response.ok) {
+    const description =
+      typeof data.error === "object" && data.error && "description" in data.error
+        ? String((data.error as { description?: unknown }).description)
+        : null;
+    const message = description || `Razorpay refund failed with HTTP ${response.status}`;
+    const error = new Error(message) as Error & { statusCode?: number };
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
 export async function verifyRazorpaySignature(input: {
   orderId: string;
   paymentId: string;

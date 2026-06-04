@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ExternalLink, Loader2, Package, Truck } from "lucide-react";
+import { toast } from "sonner";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { apiBase } from "@/lib/api-base";
@@ -20,6 +21,8 @@ type OrderRow = {
   total: number;
   subtotal: number;
   shipping: number;
+  discount_total: number;
+  coupon_code: string | null;
   status: string;
   payment_status: string;
   shipping_name: string;
@@ -67,6 +70,46 @@ type OrderTrackingResponse = {
   order: OrderRow;
   items: Item[];
   shipment: ShipmentTracking;
+  cancellationRequests: Array<{
+    id: string;
+    status: string;
+    reason: string;
+    admin_note: string | null;
+    requested_at: string;
+    resolved_at: string | null;
+    refund_id: string | null;
+  }>;
+  returnRequests: Array<{
+    id: string;
+    status: string;
+    reason: string;
+    condition_notes: string | null;
+    admin_note: string | null;
+    requested_at: string;
+    resolved_at: string | null;
+    received_at: string | null;
+    refund_id: string | null;
+  }>;
+  refunds: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    provider_refund_id: string | null;
+    reason: string | null;
+    created_at: string;
+    processed_at: string | null;
+  }>;
+  invoice: {
+    id: string;
+    invoice_number: string;
+    invoice_url: string | null;
+    status: string;
+    generated_at: string;
+  } | null;
+  capabilities: {
+    canCancel: boolean;
+    canReturn: boolean;
+  };
   error?: string;
 };
 
@@ -77,6 +120,19 @@ function OrderPage() {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [shipment, setShipment] = useState<ShipmentTracking>(null);
+  const [cancellationRequests, setCancellationRequests] = useState<
+    OrderTrackingResponse["cancellationRequests"]
+  >([]);
+  const [returnRequests, setReturnRequests] = useState<OrderTrackingResponse["returnRequests"]>([]);
+  const [refunds, setRefunds] = useState<OrderTrackingResponse["refunds"]>([]);
+  const [invoice, setInvoice] = useState<OrderTrackingResponse["invoice"]>(null);
+  const [capabilities, setCapabilities] = useState<OrderTrackingResponse["capabilities"]>({
+    canCancel: false,
+    canReturn: false,
+  });
+  const [cancelReason, setCancelReason] = useState("");
+  const [returnReason, setReturnReason] = useState("");
+  const [submittingWorkflow, setSubmittingWorkflow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadOrder = useCallback(async () => {
@@ -105,6 +161,11 @@ function OrderPage() {
       setOrder(data.order);
       setItems(data.items ?? []);
       setShipment(data.shipment ?? null);
+      setCancellationRequests(data.cancellationRequests ?? []);
+      setReturnRequests(data.returnRequests ?? []);
+      setRefunds(data.refunds ?? []);
+      setInvoice(data.invoice ?? null);
+      setCapabilities(data.capabilities ?? { canCancel: false, canReturn: false });
       setLoading(false);
     } catch {
       setOrder(null);
@@ -126,6 +187,10 @@ function OrderPage() {
             { table: "order_items" as const, filter: `order_id=eq.${id}` },
             { table: "shipments" as const, filter: `order_id=eq.${id}` },
             { table: "shipment_events" as const },
+            { table: "order_cancellation_requests" as const, filter: `order_id=eq.${id}` },
+            { table: "return_requests" as const, filter: `order_id=eq.${id}` },
+            { table: "refunds" as const, filter: `order_id=eq.${id}` },
+            { table: "order_invoices" as const, filter: `order_id=eq.${id}` },
           ]
         : [],
     [id, user?.id],
@@ -188,6 +253,82 @@ function OrderPage() {
     : order.shipping_expected_delivery_date
       ? `Expected ${order.shipping_expected_delivery_date}`
       : shipment?.trackingActivities[0]?.activity || "Carrier update pending";
+  const latestCancellation = cancellationRequests[0] ?? null;
+  const latestReturn = returnRequests[0] ?? null;
+
+  const openInvoice = async () => {
+    if (!invoice) return;
+    try {
+      const response = await fetch(`${apiBase}/orders/${id}/invoice`, {
+        headers: await getAuthorizationHeaders(),
+      });
+      if (!response.ok) throw new Error("Could not open invoice");
+      const html = await response.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open invoice");
+    }
+  };
+
+  const submitCancellation = async () => {
+    if (!cancelReason.trim()) {
+      toast.error("Add a cancellation reason");
+      return;
+    }
+    setSubmittingWorkflow("cancel");
+    try {
+      const response = await fetch(`${apiBase}/orders/${id}/cancellation-requests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await getAuthorizationHeaders()),
+        },
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Could not request cancellation");
+      setCancelReason("");
+      toast.success("Cancellation request sent");
+      await loadOrder();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not request cancellation");
+    } finally {
+      setSubmittingWorkflow(null);
+    }
+  };
+
+  const submitReturn = async () => {
+    if (!returnReason.trim()) {
+      toast.error("Add a return reason");
+      return;
+    }
+    setSubmittingWorkflow("return");
+    try {
+      const response = await fetch(`${apiBase}/orders/${id}/return-requests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await getAuthorizationHeaders()),
+        },
+        body: JSON.stringify({
+          reason: returnReason,
+          items: items.map((item) => ({ orderItemId: item.id, qty: item.qty })),
+        }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Could not request return");
+      setReturnReason("");
+      toast.success("Return request sent");
+      await loadOrder();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not request return");
+    } finally {
+      setSubmittingWorkflow(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--background-base)]">
@@ -324,10 +465,126 @@ function OrderPage() {
               Payment
             </h2>
             <p className="text-label-medium text-foreground">{formatINR(order.total)}</p>
+            {order.discount_total > 0 && (
+              <p className="mt-1 text-body-small text-[var(--accent-forest)]">
+                Saved {formatINR(order.discount_total)}
+                {order.coupon_code ? ` with ${order.coupon_code}` : ""}
+              </p>
+            )}
             <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--accent-forest)]">
               {order.payment_status.replaceAll("_", " ")}
             </p>
+            {invoice && (
+              <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                Invoice {invoice.invoice_number}
+              </p>
+            )}
           </div>
+        </div>
+
+        <div className="mt-6 rounded-lg border border-[var(--border-muted)] bg-white p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-mono-x-small uppercase tracking-[0.22em] text-[var(--black-alpha-48)]">
+                Order support
+              </h2>
+              <p className="mt-2 text-label-medium text-foreground">
+                Cancellations, returns, refunds, and invoice status
+              </p>
+            </div>
+            {invoice && (
+              <button
+                type="button"
+                onClick={openInvoice}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border-muted)] px-3 text-label-small text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+              >
+                Invoice <ExternalLink className="size-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+              <p className="text-label-small text-foreground">Cancel order</p>
+              {latestCancellation ? (
+                <p className="mt-2 text-body-small text-[var(--black-alpha-64)]">
+                  Latest request: {latestCancellation.status.replaceAll("_", " ")}
+                </p>
+              ) : capabilities.canCancel ? (
+                <div className="mt-3 space-y-3">
+                  <textarea
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                    rows={3}
+                    placeholder="Why do you want to cancel?"
+                    className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void submitCancellation()}
+                    disabled={submittingWorkflow === "cancel"}
+                    className="button button-primary inline-flex h-9 items-center rounded-md px-4 text-label-small disabled:opacity-60"
+                  >
+                    {submittingWorkflow === "cancel" ? "Sending..." : "Request cancellation"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                  Cancellation is available before shipment starts.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
+              <p className="text-label-small text-foreground">Return items</p>
+              {latestReturn ? (
+                <p className="mt-2 text-body-small text-[var(--black-alpha-64)]">
+                  Latest request: {latestReturn.status.replaceAll("_", " ")}
+                </p>
+              ) : capabilities.canReturn ? (
+                <div className="mt-3 space-y-3">
+                  <textarea
+                    value={returnReason}
+                    onChange={(event) => setReturnReason(event.target.value)}
+                    rows={3}
+                    placeholder="Describe the return reason and condition"
+                    className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void submitReturn()}
+                    disabled={submittingWorkflow === "return"}
+                    className="button button-primary inline-flex h-9 items-center rounded-md px-4 text-label-small disabled:opacity-60"
+                  >
+                    {submittingWorkflow === "return" ? "Sending..." : "Request return"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                  Returns open after delivery and stay available for 7 days.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {refunds.length > 0 && (
+            <div className="mt-4 rounded-md border border-[var(--border-faint)] p-4">
+              <p className="text-label-small text-foreground">Refunds</p>
+              <div className="mt-3 space-y-2">
+                {refunds.map((refund) => (
+                  <div
+                    key={refund.id}
+                    className="flex flex-wrap items-center justify-between gap-3 text-body-small"
+                  >
+                    <span>{formatINR(Number(refund.amount ?? 0))}</span>
+                    <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
+                      {refund.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 rounded-lg border border-[var(--border-muted)] bg-white p-6">

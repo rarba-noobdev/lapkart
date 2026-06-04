@@ -19,6 +19,13 @@ type Row = {
   compatibility: string | null;
   warranty: string | null;
   highlights: string[] | null;
+  authenticity_grade?: "oem" | "compatible" | "refurbished" | "open_box" | null;
+  condition_grade?: "new" | "open_box" | "refurbished" | "used" | null;
+  hsn_code?: string | null;
+  gst_rate?: string | number | null;
+  doa_policy_days?: number | null;
+  local_delivery_eligible?: boolean | null;
+  cod_eligible?: boolean | null;
 };
 
 function normalize(r: Row): Product {
@@ -38,11 +45,18 @@ function normalize(r: Row): Product {
     compatibility: r.compatibility ?? "",
     warranty: r.warranty ?? "",
     highlights: r.highlights ?? [],
+    authenticity_grade: r.authenticity_grade ?? "compatible",
+    condition_grade: r.condition_grade ?? "new",
+    hsn_code: r.hsn_code ?? undefined,
+    gst_rate: Number(r.gst_rate ?? 18),
+    doa_policy_days: r.doa_policy_days ?? 7,
+    local_delivery_eligible: r.local_delivery_eligible ?? true,
+    cod_eligible: r.cod_eligible ?? true,
   };
 }
 
 const SELECT =
-  "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights";
+  "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible";
 
 function useHydrated() {
   const [hydrated, setHydrated] = useState(false);

@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CreditCard,
+  BadgePercent,
   Loader2,
   LocateFixed,
   MapPin,
@@ -105,17 +106,46 @@ type BackendCheckoutOrderResponse = {
   summary: {
     subtotal: number;
     shipping: number;
+    discountTotal: number;
     total: number;
     amountPaise: number;
+    coupon: {
+      id: string;
+      code: string;
+      description: string | null;
+      discountAmount: number;
+    } | null;
     deliveryEstimate: DeliveryEstimate;
     selectedCourier: CourierQuote;
+    cod: {
+      eligible: boolean;
+      reason: string | null;
+      cap: number;
+    };
+    deliveryPromise: {
+      label: string;
+      detail: string;
+      serviceType: "standard" | "quick";
+    };
   };
+  error?: string;
+};
+
+type BackendCheckoutPreviewResponse = {
+  summary?: BackendCheckoutOrderResponse["summary"];
   error?: string;
 };
 
 type BackendCheckoutCompleteResponse = {
   verified?: boolean;
   orderId?: string;
+  error?: string;
+};
+
+type BackendCodOrderResponse = {
+  orderId?: string;
+  codReference?: string;
+  summary?: BackendCheckoutOrderResponse["summary"];
   error?: string;
 };
 
@@ -178,6 +208,12 @@ function CheckoutPage() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<"razorpay" | "cod">("razorpay");
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedSummary, setAppliedSummary] = useState<
+    BackendCheckoutOrderResponse["summary"] | null
+  >(null);
+  const [couponBusy, setCouponBusy] = useState(false);
   const [address, setAddress] = useState({
     fullName: "",
     phone: "",
@@ -217,6 +253,19 @@ function CheckoutPage() {
           ? 0
           : 49;
   const total = subtotal + shipping;
+  const discountTotal = appliedSummary?.coupon ? appliedSummary.discountTotal : 0;
+  const payableTotal = appliedSummary?.coupon ? appliedSummary.total : total;
+  const localCodAllowed =
+    isLocalCodAddress(address.city, address.state, address.pincode) &&
+    payableTotal <= 4000 &&
+    rows.every((row) => row.product.cod_eligible !== false);
+  const codEligibility = appliedSummary?.cod ?? {
+    eligible: localCodAllowed,
+    reason: localCodAllowed
+      ? null
+      : "COD is available only for Chennai orders up to INR 4,000 on eligible products.",
+    cap: 4000,
+  };
   const cartLoading = !isCartHydrated || (items.length > 0 && productsLoading);
   const hasValidAddress =
     address.fullName.trim().length > 1 &&
@@ -246,6 +295,24 @@ function CheckoutPage() {
       void navigate({ to: "/admin", replace: true });
     }
   }, [navigate, role]);
+
+  useEffect(() => {
+    if (paymentMode === "cod" && !codEligibility.eligible) {
+      setPaymentMode("razorpay");
+    }
+  }, [codEligibility.eligible, paymentMode]);
+
+  useEffect(() => {
+    setAppliedSummary(null);
+  }, [
+    address.latitude,
+    address.longitude,
+    address.pincode,
+    couponCode,
+    rows.length,
+    selectedQuoteId,
+    subtotal,
+  ]);
 
   useEffect(() => {
     if (!user) return;
@@ -350,6 +417,51 @@ function CheckoutPage() {
     subtotal,
   ]);
 
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) {
+      setAppliedSummary(null);
+      return;
+    }
+    if (!hasValidAddress || !hasDeliveryPin || !selectedCourier) {
+      toast.error("Confirm delivery address and courier before applying a coupon");
+      return;
+    }
+    setCouponBusy(true);
+    try {
+      const response = await fetch(`${apiBase}/checkout/preview`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(await getAuthorizationHeaders()),
+        },
+        body: JSON.stringify({
+          items: rows.map(({ product, qty }) => ({ id: product.id, qty })),
+          address,
+          selectedQuoteId,
+          saveAddress,
+          couponCode: code,
+        }),
+      });
+      const body = (await response
+        .json()
+        .catch(() => null)) as BackendCheckoutPreviewResponse | null;
+      if (!response.ok || !body?.summary) {
+        throw new Error(body?.error ?? "Coupon could not be applied");
+      }
+      setDeliveryEstimate(body.summary.deliveryEstimate);
+      setSelectedQuoteId(body.summary.selectedCourier.quoteId);
+      setAppliedSummary(body.summary);
+      toast.success(`${body.summary.coupon?.code ?? code.toUpperCase()} applied`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Coupon could not be applied";
+      setAppliedSummary(null);
+      toast.error(message);
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
   const pay = async () => {
     setError(null);
     if (!user) {
@@ -377,6 +489,49 @@ function CheckoutPage() {
       toast.error("Select an available delivery estimate before payment");
       return;
     }
+    if (paymentMode === "cod") {
+      if (!codEligibility.eligible) {
+        toast.error(codEligibility.reason ?? "COD is not available for this order");
+        return;
+      }
+      setBusy(true);
+      try {
+        const response = await fetch(`${apiBase}/checkout/create-cod-order`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(await getAuthorizationHeaders()),
+          },
+          body: JSON.stringify({
+            items: rows.map(({ product, qty }) => ({ id: product.id, qty })),
+            address,
+            selectedQuoteId,
+            saveAddress,
+            couponCode: couponCode.trim(),
+          }),
+        });
+        const body = (await response.json().catch(() => null)) as BackendCodOrderResponse | null;
+        if (!response.ok || !body?.orderId) {
+          throw new Error(body?.error ?? "Could not place COD order");
+        }
+        if (body.summary) {
+          setDeliveryEstimate(body.summary.deliveryEstimate);
+          setSelectedQuoteId(body.summary.selectedCourier.quoteId);
+          setAppliedSummary(body.summary);
+        }
+        setOrderId(body.orderId);
+        cart.clear();
+        toast.success("COD order placed");
+        navigate({ to: "/order/$id", params: { id: body.orderId } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not place COD order";
+        setError(message);
+        toast.error(message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!razorpayKey) {
       toast.error("Razorpay key is missing. Restart Vite after updating .env.");
       return;
@@ -395,6 +550,7 @@ function CheckoutPage() {
           address,
           selectedQuoteId,
           saveAddress,
+          couponCode: couponCode.trim(),
         }),
       });
       const orderResponseBody = (await orderResponse
@@ -408,6 +564,7 @@ function CheckoutPage() {
       }
       setDeliveryEstimate(orderResponseBody.summary.deliveryEstimate);
       setSelectedQuoteId(orderResponseBody.summary.selectedCourier.quoteId);
+      setAppliedSummary(orderResponseBody.summary);
 
       const checkout = new window.Razorpay!({
         key: razorpayKey,
@@ -684,11 +841,50 @@ function CheckoutPage() {
                 <div>
                   <h2 className="text-label-large text-foreground">Payment</h2>
                   <p className="text-body-small text-[var(--black-alpha-48)]">
-                    Secure checkout powered by Razorpay
+                    Choose prepaid Razorpay or eligible local COD
                   </p>
                 </div>
               </div>
               <div className="p-6">
+                <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode("razorpay")}
+                    className={`rounded-xl border p-4 text-left transition-colors ${
+                      paymentMode === "razorpay"
+                        ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
+                        : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-label-small text-foreground">
+                      <CreditCard className="size-4 text-[var(--heat-100)]" />
+                      Prepaid
+                    </span>
+                    <span className="mt-2 block text-body-small text-[var(--black-alpha-56)]">
+                      Razorpay order with server-side signature verification.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => codEligibility.eligible && setPaymentMode("cod")}
+                    disabled={!codEligibility.eligible}
+                    className={`rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      paymentMode === "cod"
+                        ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
+                        : "border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-label-small text-foreground">
+                      <Wallet className="size-4 text-[var(--heat-100)]" />
+                      Cash on delivery
+                    </span>
+                    <span className="mt-2 block text-body-small text-[var(--black-alpha-56)]">
+                      {codEligibility.eligible
+                        ? `Available up to ${formatINR(codEligibility.cap)} for this address.`
+                        : codEligibility.reason}
+                    </span>
+                  </button>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     "UPI",
@@ -717,7 +913,8 @@ function CheckoutPage() {
                 <div className="mt-5 flex items-center gap-2 rounded-xl border border-[var(--heat-20)] bg-[var(--heat-4)] px-4 py-3">
                   <ShieldCheck className="size-4 text-[var(--heat-100)]" />
                   <span className="text-body-small text-[var(--black-alpha-72)]">
-                    All transactions are encrypted and verified by Razorpay.
+                    Prepaid payments are encrypted by Razorpay. COD orders are verified by our
+                    checkout rules before fulfillment.
                   </span>
                 </div>
               </div>
@@ -734,7 +931,9 @@ function CheckoutPage() {
                 {cartLoading ? (
                   <Skeleton className="mt-2 h-7 w-28 bg-white/20" />
                 ) : (
-                  <h2 className="mt-1 font-display text-title-h5 text-white">{formatINR(total)}</h2>
+                  <h2 className="mt-1 font-display text-title-h5 text-white">
+                    {formatINR(payableTotal)}
+                  </h2>
                 )}
               </div>
 
@@ -821,18 +1020,68 @@ function CheckoutPage() {
                         value={shipping === 0 ? "FREE" : formatINR(shipping)}
                         highlight={shipping === 0}
                       />
+                      {discountTotal > 0 && (
+                        <SummaryRow
+                          label={`Coupon ${appliedSummary?.coupon?.code ?? ""}`.trim()}
+                          value={`-${formatINR(discountTotal)}`}
+                          highlight
+                        />
+                      )}
                       <SummaryRow label="Taxes" value="Included" />
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-[var(--border-faint)] bg-white p-3">
+                      <label className="text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+                        Coupon
+                      </label>
+                      <div className="mt-2 flex gap-2">
+                        <div className="relative min-w-0 flex-1">
+                          <BadgePercent className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--black-alpha-40)]" />
+                          <input
+                            value={couponCode}
+                            onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                            placeholder="SAVE10"
+                            className="h-11 w-full rounded-lg border border-[var(--border-muted)] pl-9 pr-3 text-label-small uppercase outline-none focus:border-[var(--heat-100)]"
+                            maxLength={40}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={applyCoupon}
+                          disabled={couponBusy || !couponCode.trim()}
+                          className="button button-secondary h-11 shrink-0 rounded-lg px-4 text-label-small disabled:opacity-50"
+                        >
+                          {couponBusy ? <Loader2 className="size-4 animate-spin" /> : "Apply"}
+                        </button>
+                      </div>
+                      {appliedSummary?.coupon && (
+                        <div className="mt-2 flex items-center justify-between text-body-small">
+                          <span className="text-[var(--accent-forest)]">
+                            {appliedSummary.coupon.code} saved {formatINR(discountTotal)}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-[var(--heat-100)] hover:underline"
+                            onClick={() => {
+                              setCouponCode("");
+                              setAppliedSummary(null);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-4 flex items-center justify-between border-t border-[var(--border-faint)] pt-4">
                       <span className="text-label-medium text-foreground">Total</span>
                       <motion.span
-                        key={total}
+                        key={payableTotal}
                         initial={{ scale: 1.1, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         className="font-display text-title-h5 text-foreground"
                       >
-                        {formatINR(total)}
+                        {formatINR(payableTotal)}
                       </motion.span>
                     </div>
                   </>
@@ -857,11 +1106,17 @@ function CheckoutPage() {
                       Expected{" "}
                       {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}
                     </p>
+                    {appliedSummary?.deliveryPromise && (
+                      <p className="mt-1 text-body-small text-[var(--accent-forest)]">
+                        {appliedSummary.deliveryPromise.label} /{" "}
+                        {appliedSummary.deliveryPromise.detail}
+                      </p>
+                    )}
                     <div className="mt-2 flex items-center gap-2">
                       <RouteIcon className="size-3.5 text-[var(--black-alpha-48)]" />
                       <span className="text-mono-x-small text-[var(--black-alpha-48)]">
-                        {deliveryEstimate?.route.readableDistance || "—"} ·{" "}
-                        {deliveryEstimate?.route.readableDuration || "—"}
+                        {deliveryEstimate?.route.readableDistance || "-"} /{" "}
+                        {deliveryEstimate?.route.readableDuration || "-"}
                       </span>
                     </div>
                   </motion.div>
@@ -904,10 +1159,16 @@ function CheckoutPage() {
                 >
                   {busy ? (
                     <Loader2 className="size-4 animate-spin" />
+                  ) : paymentMode === "cod" ? (
+                    <Wallet className="size-4" />
                   ) : (
                     <CreditCard className="size-4" />
                   )}
-                  {orderId ? "Order placed" : `Pay ${formatINR(total)}`}
+                  {orderId
+                    ? "Order placed"
+                    : paymentMode === "cod"
+                      ? `Place COD order ${formatINR(payableTotal)}`
+                      : `Pay ${formatINR(payableTotal)}`}
                 </motion.button>
 
                 {orderId && (
@@ -917,7 +1178,7 @@ function CheckoutPage() {
                     className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/10 p-3 text-body-small text-[var(--accent-forest)]"
                   >
                     <CheckCircle2 className="size-4 shrink-0" />
-                    Payment successful. Redirecting to order details…
+                    Order placed. Redirecting to order details...
                   </motion.div>
                 )}
               </div>
@@ -1031,6 +1292,16 @@ function loadRazorpay() {
     script.onerror = () => reject(new Error("Could not load Razorpay Checkout"));
     document.body.appendChild(script);
   });
+}
+
+function isLocalCodAddress(city: string, state: string, pincode: string) {
+  const normalizedCity = city.trim().toLowerCase();
+  const normalizedState = state.trim().toLowerCase();
+  const normalizedPincode = pincode.trim();
+  return (
+    normalizedPincode.startsWith("600") ||
+    (normalizedCity.includes("chennai") && normalizedState.includes("tamil"))
+  );
 }
 
 function DeliveryQuotePicker({
@@ -1156,9 +1427,9 @@ function DeliveryQuotePicker({
                     )}
                   </span>
                   <span className="mt-1 block text-body-small text-[var(--black-alpha-56)]">
-                    {courier.mode} · Expected{" "}
+                    {courier.mode} / Expected{" "}
                     {courier.etd || `${courier.estimatedDeliveryDays} day(s)`}
-                    {courier.rating ? ` · ${courier.rating} rating` : ""}
+                    {courier.rating ? ` / ${courier.rating} rating` : ""}
                   </span>
                 </span>
               </span>

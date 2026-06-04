@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import {
   BarChart3,
+  BadgePercent,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -25,6 +26,7 @@ import {
   Eye,
   Loader2,
   MapPin,
+  MessageSquare,
   Package,
   PackagePlus,
   Plus,
@@ -125,7 +127,7 @@ type AdminAnalytics = {
   }>;
 };
 
-type AdminView = "overview" | "catalog" | "orders" | "users";
+type AdminView = "overview" | "catalog" | "orders" | "users" | "promos" | "support";
 
 type AdminProduct = {
   id: string;
@@ -149,6 +151,13 @@ type AdminProduct = {
   length_cm: number | null;
   breadth_cm: number | null;
   height_cm: number | null;
+  authenticity_grade: "oem" | "compatible" | "refurbished" | "open_box" | null;
+  condition_grade: "new" | "open_box" | "refurbished" | "used" | null;
+  hsn_code: string | null;
+  gst_rate: number | null;
+  doa_policy_days: number | null;
+  local_delivery_eligible: boolean | null;
+  cod_eligible: boolean | null;
   updated_at: string;
 };
 
@@ -174,6 +183,13 @@ type ProductEditorState = {
   lengthCm: string;
   breadthCm: string;
   heightCm: string;
+  authenticityGrade: "oem" | "compatible" | "refurbished" | "open_box";
+  conditionGrade: "new" | "open_box" | "refurbished" | "used";
+  hsnCode: string;
+  gstRate: string;
+  doaPolicyDays: string;
+  localDeliveryEligible: boolean;
+  codEligible: boolean;
 };
 
 type AdminUserRecord = {
@@ -193,6 +209,70 @@ type UserEditorState = {
   role: "admin" | "user";
   fullName: string;
   phone: string;
+};
+
+type AdminCoupon = {
+  id: string;
+  code: string;
+  description: string | null;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  minimumSubtotal: number;
+  maxDiscount: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  usageLimit: number | null;
+  perUserLimit: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  usedCount: number;
+  discountGiven: number;
+};
+
+type CouponEditorState = {
+  id: string | null;
+  code: string;
+  description: string;
+  discountType: "percent" | "fixed";
+  discountValue: string;
+  minimumSubtotal: string;
+  maxDiscount: string;
+  startsAt: string;
+  endsAt: string;
+  usageLimit: string;
+  perUserLimit: string;
+  active: boolean;
+};
+
+type AdminProductQuestion = {
+  id: string;
+  question: string;
+  answer: string | null;
+  status: "pending" | "published" | "rejected";
+  created_at: string;
+  answered_at: string | null;
+  products: {
+    id: string;
+    title: string;
+    brand: string;
+    image: string;
+  } | null;
+};
+
+type AdminStockNotificationEvent = {
+  id: string;
+  email: string;
+  status: "pending" | "sent" | "failed" | "cancelled";
+  payload: Record<string, unknown>;
+  created_at: string;
+  processed_at: string | null;
+  products: {
+    id: string;
+    title: string;
+    brand: string;
+    image: string;
+  } | null;
 };
 
 type AdminOrderRecord = {
@@ -229,6 +309,37 @@ type AdminOrderRecord = {
     status: string;
     providerPaymentId: string | null;
     providerOrderId: string | null;
+  } | null;
+  cancellationRequest: {
+    id: string;
+    status: string;
+    reason: string;
+    admin_note: string | null;
+    requested_at: string;
+    refund_id: string | null;
+  } | null;
+  returnRequest: {
+    id: string;
+    status: string;
+    reason: string;
+    admin_note: string | null;
+    requested_at: string;
+    refund_id: string | null;
+  } | null;
+  refund: {
+    id: string;
+    amount: number;
+    status: string;
+    provider_refund_id: string | null;
+    created_at: string;
+    cancellation_request_id: string | null;
+    return_request_id: string | null;
+  } | null;
+  invoice: {
+    invoice_number: string;
+    invoice_url: string | null;
+    status: string;
+    generated_at: string;
   } | null;
 };
 
@@ -284,6 +395,13 @@ function emptyProductEditor(): ProductEditorState {
     lengthCm: "",
     breadthCm: "",
     heightCm: "",
+    authenticityGrade: "compatible",
+    conditionGrade: "new",
+    hsnCode: "",
+    gstRate: "18",
+    doaPolicyDays: "7",
+    localDeliveryEligible: true,
+    codEligible: true,
   };
 }
 
@@ -312,6 +430,13 @@ function mapProductToEditor(product: AdminProduct): ProductEditorState {
     lengthCm: product.length_cm === null ? "" : String(product.length_cm),
     breadthCm: product.breadth_cm === null ? "" : String(product.breadth_cm),
     heightCm: product.height_cm === null ? "" : String(product.height_cm),
+    authenticityGrade: product.authenticity_grade ?? "compatible",
+    conditionGrade: product.condition_grade ?? "new",
+    hsnCode: product.hsn_code ?? "",
+    gstRate: product.gst_rate === null ? "18" : String(product.gst_rate),
+    doaPolicyDays: product.doa_policy_days === null ? "7" : String(product.doa_policy_days),
+    localDeliveryEligible: product.local_delivery_eligible !== false,
+    codEligible: product.cod_eligible !== false,
   };
 }
 
@@ -325,6 +450,53 @@ function mapUserToEditor(user: AdminUserRecord): UserEditorState {
     role: user.role,
     fullName: user.fullName ?? "",
     phone: user.phone ?? "",
+  };
+}
+
+function toDateTimeInput(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 16);
+}
+
+function fromDateTimeInput(value: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function emptyCouponEditor(): CouponEditorState {
+  return {
+    id: null,
+    code: "",
+    description: "",
+    discountType: "percent",
+    discountValue: "",
+    minimumSubtotal: "0",
+    maxDiscount: "",
+    startsAt: "",
+    endsAt: "",
+    usageLimit: "",
+    perUserLimit: "1",
+    active: true,
+  };
+}
+
+function mapCouponToEditor(coupon: AdminCoupon): CouponEditorState {
+  return {
+    id: coupon.id,
+    code: coupon.code,
+    description: coupon.description ?? "",
+    discountType: coupon.discountType,
+    discountValue: String(coupon.discountValue),
+    minimumSubtotal: String(coupon.minimumSubtotal),
+    maxDiscount: coupon.maxDiscount === null ? "" : String(coupon.maxDiscount),
+    startsAt: toDateTimeInput(coupon.startsAt),
+    endsAt: toDateTimeInput(coupon.endsAt),
+    usageLimit: coupon.usageLimit === null ? "" : String(coupon.usageLimit),
+    perUserLimit: String(coupon.perUserLimit),
+    active: coupon.active,
   };
 }
 
@@ -586,6 +758,12 @@ function AdminPage() {
       {view === "users" && session?.access_token && (
         <UsersManager accessToken={session.access_token} />
       )}
+      {view === "promos" && session?.access_token && (
+        <CouponsManager accessToken={session.access_token} />
+      )}
+      {view === "support" && session?.access_token && (
+        <SupportManager accessToken={session.access_token} />
+      )}
     </DashboardShell>
   );
 }
@@ -602,6 +780,8 @@ function AdminTabs({
     { id: "catalog", label: "Catalog" },
     { id: "orders", label: "Orders" },
     { id: "users", label: "Users" },
+    { id: "promos", label: "Promos" },
+    { id: "support", label: "Support" },
   ];
 
   return (
@@ -718,6 +898,13 @@ function CatalogManager({ accessToken }: { accessToken: string }) {
         lengthCm: payloadNumber(editor.lengthCm),
         breadthCm: payloadNumber(editor.breadthCm),
         heightCm: payloadNumber(editor.heightCm),
+        authenticityGrade: editor.authenticityGrade,
+        conditionGrade: editor.conditionGrade,
+        hsnCode: editor.hsnCode,
+        gstRate: payloadNumber(editor.gstRate) ?? 18,
+        doaPolicyDays: payloadNumber(editor.doaPolicyDays) ?? 7,
+        localDeliveryEligible: editor.localDeliveryEligible,
+        codEligible: editor.codEligible,
       };
 
       if (selectedId === "new" || !editor.id) {
@@ -910,6 +1097,94 @@ function CatalogManager({ accessToken }: { accessToken: string }) {
                     { value: "active", label: "Active" },
                     { value: "draft", label: "Draft" },
                     { value: "archived", label: "Archived" },
+                  ]}
+                />
+              </Field>
+            </div>
+          </FormSection>
+
+          <FormSection title="Trust, tax, and checkout rules">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Field label="Authenticity">
+                <SelectInput
+                  value={editor.authenticityGrade}
+                  onChange={(value) =>
+                    setEditor((current) => ({
+                      ...current,
+                      authenticityGrade: value as ProductEditorState["authenticityGrade"],
+                    }))
+                  }
+                  options={[
+                    { value: "oem", label: "OEM" },
+                    { value: "compatible", label: "Compatible" },
+                    { value: "refurbished", label: "Refurbished" },
+                    { value: "open_box", label: "Open box" },
+                  ]}
+                />
+              </Field>
+              <Field label="Condition">
+                <SelectInput
+                  value={editor.conditionGrade}
+                  onChange={(value) =>
+                    setEditor((current) => ({
+                      ...current,
+                      conditionGrade: value as ProductEditorState["conditionGrade"],
+                    }))
+                  }
+                  options={[
+                    { value: "new", label: "New" },
+                    { value: "open_box", label: "Open box" },
+                    { value: "refurbished", label: "Refurbished" },
+                    { value: "used", label: "Used" },
+                  ]}
+                />
+              </Field>
+              <Field label="HSN code">
+                <TextInput
+                  value={editor.hsnCode}
+                  onChange={(value) => setEditor((current) => ({ ...current, hsnCode: value }))}
+                />
+              </Field>
+              <Field label="GST rate">
+                <TextInput
+                  value={editor.gstRate}
+                  onChange={(value) => setEditor((current) => ({ ...current, gstRate: value }))}
+                  inputMode="decimal"
+                />
+              </Field>
+              <Field label="DOA days">
+                <TextInput
+                  value={editor.doaPolicyDays}
+                  onChange={(value) =>
+                    setEditor((current) => ({ ...current, doaPolicyDays: value }))
+                  }
+                  inputMode="numeric"
+                />
+              </Field>
+              <Field label="Local delivery">
+                <SelectInput
+                  value={editor.localDeliveryEligible ? "yes" : "no"}
+                  onChange={(value) =>
+                    setEditor((current) => ({
+                      ...current,
+                      localDeliveryEligible: value === "yes",
+                    }))
+                  }
+                  options={[
+                    { value: "yes", label: "Eligible" },
+                    { value: "no", label: "Not eligible" },
+                  ]}
+                />
+              </Field>
+              <Field label="COD">
+                <SelectInput
+                  value={editor.codEligible ? "yes" : "no"}
+                  onChange={(value) =>
+                    setEditor((current) => ({ ...current, codEligible: value === "yes" }))
+                  }
+                  options={[
+                    { value: "yes", label: "Eligible" },
+                    { value: "no", label: "Prepaid only" },
                   ]}
                 />
               </Field>
@@ -1133,6 +1408,556 @@ function FormSection({ title, children }: { title: string; children: React.React
   );
 }
 
+function CouponsManager({ accessToken }: { accessToken: string }) {
+  const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
+  const [editor, setEditor] = useState<CouponEditorState>(emptyCouponEditor());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCoupons = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await requestAdminApi<{ coupons: AdminCoupon[] }>(
+        accessToken,
+        "/admin/coupons",
+      );
+      setCoupons(response.coupons);
+      setError(null);
+      setSelectedId((current) => {
+        if (current === "new") return current;
+        return response.coupons.some((coupon) => coupon.id === current)
+          ? current
+          : (response.coupons[0]?.id ?? null);
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load coupons");
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void loadCoupons();
+  }, [loadCoupons]);
+
+  useEffect(() => {
+    if (selectedId === "new") {
+      setEditor(emptyCouponEditor());
+      return;
+    }
+    const coupon = coupons.find((item) => item.id === selectedId);
+    if (coupon) setEditor(mapCouponToEditor(coupon));
+  }, [coupons, selectedId]);
+
+  const realtimeTargets = useMemo(
+    () => [{ table: "coupons" as const }, { table: "coupon_redemptions" as const }],
+    [],
+  );
+
+  useRealtimeRefresh({
+    channelName: "admin-coupons",
+    enabled: Boolean(accessToken),
+    onRefresh: loadCoupons,
+    targets: realtimeTargets,
+    debounceMs: 220,
+  });
+
+  const saveCoupon = async () => {
+    if (!editor.code.trim()) {
+      toast.error("Coupon code is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        code: editor.code.trim().toUpperCase(),
+        description: editor.description.trim(),
+        discountType: editor.discountType,
+        discountValue: Number(editor.discountValue),
+        minimumSubtotal: Number(editor.minimumSubtotal || 0),
+        maxDiscount: editor.maxDiscount ? Number(editor.maxDiscount) : null,
+        startsAt: fromDateTimeInput(editor.startsAt),
+        endsAt: fromDateTimeInput(editor.endsAt),
+        usageLimit: editor.usageLimit ? Number(editor.usageLimit) : null,
+        perUserLimit: Number(editor.perUserLimit || 1),
+        active: editor.active,
+      };
+      if (editor.id) {
+        await requestAdminApi(accessToken, `/admin/coupons/${editor.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const response = await requestAdminApi<{ coupon: { id: string } }>(
+          accessToken,
+          "/admin/coupons",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+        );
+        setSelectedId(response.coupon.id);
+      }
+      toast.success("Coupon saved");
+      await loadCoupons();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Could not save coupon");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCoupon = async () => {
+    if (!editor.id) return;
+    setDeleting(true);
+    try {
+      await requestAdminApi(accessToken, `/admin/coupons/${editor.id}`, { method: "DELETE" });
+      toast.success("Coupon removed or deactivated");
+      setSelectedId(null);
+      await loadCoupons();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Could not remove coupon");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const selectedCoupon = coupons.find((coupon) => coupon.id === selectedId) ?? null;
+
+  return (
+    <Panel
+      className="mt-6"
+      title="Promotions"
+      action={
+        <button
+          type="button"
+          onClick={() => setSelectedId("new")}
+          className="button button-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-label-small"
+        >
+          <Plus className="size-4" />
+          New coupon
+        </button>
+      }
+    >
+      {error && (
+        <p className="mb-4 rounded-md border border-red-500/20 bg-red-50 p-3 text-body-small text-red-700">
+          {error}
+        </p>
+      )}
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)]">
+          <div className="grid grid-cols-[1fr_auto_auto] border-b border-[var(--border-faint)] px-4 py-3 text-mono-x-small uppercase tracking-[0.16em] text-[var(--black-alpha-48)]">
+            <span>Code</span>
+            <span>Used</span>
+            <span>Status</span>
+          </div>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 p-8 text-body-small text-[var(--black-alpha-56)]">
+              <Loader2 className="size-4 animate-spin text-[var(--heat-100)]" />
+              Loading coupons
+            </div>
+          ) : coupons.length === 0 ? (
+            <div className="p-8 text-body-small text-[var(--black-alpha-56)]">
+              No coupons have been created yet.
+            </div>
+          ) : (
+            coupons.map((coupon) => (
+              <button
+                key={coupon.id}
+                type="button"
+                onClick={() => setSelectedId(coupon.id)}
+                className={`grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-[var(--border-faint)] px-4 py-3 text-left transition-colors last:border-b-0 ${
+                  selectedId === coupon.id
+                    ? "bg-[var(--heat-4)] text-[var(--heat-100)]"
+                    : "bg-white text-foreground hover:bg-[var(--background-lighter)]"
+                }`}
+              >
+                <span>
+                  <span className="flex items-center gap-2 text-label-small">
+                    <BadgePercent className="size-4" />
+                    {coupon.code}
+                  </span>
+                  <span className="mt-1 block text-body-small text-[var(--black-alpha-56)]">
+                    {coupon.discountType === "percent"
+                      ? `${coupon.discountValue}% off`
+                      : `${formatINR(coupon.discountValue)} off`}
+                  </span>
+                </span>
+                <span className="text-label-small">{coupon.usedCount}</span>
+                <span
+                  className={`rounded-full px-2 py-1 text-mono-x-small uppercase tracking-wider ${
+                    coupon.active
+                      ? "bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]"
+                      : "bg-[var(--black-alpha-8)] text-[var(--black-alpha-48)]"
+                  }`}
+                >
+                  {coupon.active ? "Active" : "Off"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="rounded-lg border border-[var(--border-muted)] bg-white p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">
+                {editor.id ? "Edit coupon" : "Create coupon"}
+              </p>
+              <h3 className="mt-1 text-title-h5 text-foreground">
+                {editor.code || "New campaign"}
+              </h3>
+            </div>
+            {selectedCoupon && (
+              <div className="text-right text-body-small text-[var(--black-alpha-56)]">
+                <p>{selectedCoupon.usedCount} redemptions</p>
+                <p>{formatINR(selectedCoupon.discountGiven)} discounts</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Field label="Code">
+              <TextInput
+                value={editor.code}
+                onChange={(value) =>
+                  setEditor((current) => ({ ...current, code: value.toUpperCase() }))
+                }
+              />
+            </Field>
+            <Field label="Discount type">
+              <SelectInput
+                value={editor.discountType}
+                onChange={(value) =>
+                  setEditor((current) => ({
+                    ...current,
+                    discountType: value as CouponEditorState["discountType"],
+                  }))
+                }
+                options={[
+                  { value: "percent", label: "Percent" },
+                  { value: "fixed", label: "Fixed amount" },
+                ]}
+              />
+            </Field>
+            <Field
+              label={editor.discountType === "percent" ? "Discount percent" : "Discount amount"}
+            >
+              <TextInput
+                value={editor.discountValue}
+                onChange={(value) => setEditor((current) => ({ ...current, discountValue: value }))}
+                type="number"
+              />
+            </Field>
+            <Field label="Minimum subtotal">
+              <TextInput
+                value={editor.minimumSubtotal}
+                onChange={(value) =>
+                  setEditor((current) => ({ ...current, minimumSubtotal: value }))
+                }
+                type="number"
+              />
+            </Field>
+            <Field label="Max discount">
+              <TextInput
+                value={editor.maxDiscount}
+                onChange={(value) => setEditor((current) => ({ ...current, maxDiscount: value }))}
+                type="number"
+              />
+            </Field>
+            <Field label="Total usage limit">
+              <TextInput
+                value={editor.usageLimit}
+                onChange={(value) => setEditor((current) => ({ ...current, usageLimit: value }))}
+                type="number"
+              />
+            </Field>
+            <Field label="Per user limit">
+              <TextInput
+                value={editor.perUserLimit}
+                onChange={(value) => setEditor((current) => ({ ...current, perUserLimit: value }))}
+                type="number"
+              />
+            </Field>
+            <Field label="Status">
+              <SelectInput
+                value={editor.active ? "active" : "inactive"}
+                onChange={(value) =>
+                  setEditor((current) => ({ ...current, active: value === "active" }))
+                }
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ]}
+              />
+            </Field>
+            <Field label="Starts at">
+              <TextInput
+                value={editor.startsAt}
+                onChange={(value) => setEditor((current) => ({ ...current, startsAt: value }))}
+                type="datetime-local"
+              />
+            </Field>
+            <Field label="Ends at">
+              <TextInput
+                value={editor.endsAt}
+                onChange={(value) => setEditor((current) => ({ ...current, endsAt: value }))}
+                type="datetime-local"
+              />
+            </Field>
+          </div>
+          <Field label="Description" className="mt-4">
+            <TextAreaInput
+              value={editor.description}
+              onChange={(value) => setEditor((current) => ({ ...current, description: value }))}
+              rows={3}
+            />
+          </Field>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void saveCoupon()}
+              disabled={saving}
+              className="button button-primary inline-flex h-10 items-center gap-2 rounded-md px-4 text-label-small disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Save coupon
+            </button>
+            {editor.id && (
+              <button
+                type="button"
+                onClick={() => void deleteCoupon()}
+                disabled={deleting}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-red-500/20 bg-red-50 px-4 text-label-small text-red-700 transition-colors hover:border-red-500/40 disabled:opacity-60"
+              >
+                {deleting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function SupportManager({ accessToken }: { accessToken: string }) {
+  const [questions, setQuestions] = useState<AdminProductQuestion[]>([]);
+  const [events, setEvents] = useState<AdminStockNotificationEvent[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+
+  const loadSupport = useCallback(async () => {
+    try {
+      const [questionResponse, eventResponse] = await Promise.all([
+        requestAdminApi<{ questions: AdminProductQuestion[] }>(
+          accessToken,
+          "/admin/product-questions",
+        ),
+        requestAdminApi<{ events: AdminStockNotificationEvent[] }>(
+          accessToken,
+          "/admin/stock-notification-events",
+        ),
+      ]);
+      setQuestions(questionResponse.questions);
+      setEvents(eventResponse.events);
+      setAnswers((current) => {
+        const next = { ...current };
+        for (const question of questionResponse.questions) {
+          if (next[question.id] === undefined) next[question.id] = question.answer ?? "";
+        }
+        return next;
+      });
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Could not load support");
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void loadSupport();
+  }, [loadSupport]);
+
+  useRealtimeRefresh({
+    channelName: "admin-support",
+    onRefresh: loadSupport,
+    targets: [
+      { table: "product_questions" },
+      { table: "stock_notification_events" },
+      { table: "products" },
+    ],
+  });
+
+  const updateQuestion = async (questionId: string, status: AdminProductQuestion["status"]) => {
+    try {
+      await requestAdminApi<{ question: AdminProductQuestion }>(
+        accessToken,
+        `/admin/product-questions/${questionId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            status,
+            answer: answers[questionId]?.trim() || undefined,
+          }),
+        },
+      );
+      toast.success(status === "published" ? "Answer published" : "Question updated");
+      await loadSupport();
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Could not update question",
+      );
+    }
+  };
+
+  const updateStockEvent = async (
+    eventId: string,
+    status: AdminStockNotificationEvent["status"],
+  ) => {
+    try {
+      await requestAdminApi<{ event: AdminStockNotificationEvent }>(
+        accessToken,
+        `/admin/stock-notification-events/${eventId}`,
+        { method: "PATCH", body: JSON.stringify({ status }) },
+      );
+      toast.success("Stock notification updated");
+      await loadSupport();
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Could not update notification",
+      );
+    }
+  };
+
+  return (
+    <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      <Panel title="Product questions">
+        {loading ? (
+          <LoadingInline label="Loading product questions" />
+        ) : questions.length === 0 ? (
+          <EmptyState message="No product questions are waiting for admin review." />
+        ) : (
+          <div className="space-y-3">
+            {questions.map((question) => (
+              <div key={question.id} className="rounded-lg border border-[var(--border-faint)] p-4">
+                <div className="flex gap-3">
+                  <ProductThumb
+                    src={question.products?.image}
+                    alt={question.products?.title ?? "Product"}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="truncate text-label-small text-foreground">
+                        {question.products?.title ?? "Deleted product"}
+                      </p>
+                      <StatusBadge value={question.status} accent="neutral" />
+                    </div>
+                    <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                      {question.products?.brand ?? "Unknown brand"}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 text-body-small text-foreground">Q: {question.question}</p>
+                <textarea
+                  value={answers[question.id] ?? ""}
+                  onChange={(event) =>
+                    setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                  }
+                  rows={3}
+                  placeholder="Answer with exact compatibility, condition, or packing details"
+                  className="mt-3 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small outline-none focus:border-[var(--heat-100)]"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void updateQuestion(question.id, "published")}
+                    className="button button-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-label-small"
+                  >
+                    <MessageSquare className="size-4" />
+                    Publish
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateQuestion(question.id, "rejected")}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground hover:border-[var(--heat-40)]"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Back-in-stock outbox">
+        {loading ? (
+          <LoadingInline label="Loading notification events" />
+        ) : events.length === 0 ? (
+          <EmptyState message="No stock notification events have been queued." />
+        ) : (
+          <div className="space-y-3">
+            {events.map((event) => (
+              <div key={event.id} className="rounded-lg border border-[var(--border-faint)] p-4">
+                <div className="flex gap-3">
+                  <ProductThumb src={event.products?.image} alt={event.products?.title ?? ""} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="truncate text-label-small text-foreground">
+                        {event.products?.title ?? String(event.payload.title ?? "Product")}
+                      </p>
+                      <StatusBadge value={event.status} accent="neutral" />
+                    </div>
+                    <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                      {event.email}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                  Queued {new Date(event.created_at).toLocaleString("en-IN")}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void updateStockEvent(event.id, "sent")}
+                    className="button button-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-label-small"
+                  >
+                    <Send className="size-4" />
+                    Mark sent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateStockEvent(event.id, "failed")}
+                    className="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground hover:border-[var(--heat-40)]"
+                  >
+                    Failed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateStockEvent(event.id, "cancelled")}
+                    className="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground hover:border-[var(--heat-40)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 function OrdersManager({ accessToken }: { accessToken: string }) {
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1141,6 +1966,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<OrderEditorState>(emptyOrderEditor());
+  const [workflowAction, setWorkflowAction] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -1171,6 +1997,10 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       { table: "payments" as const },
       { table: "shipments" as const },
       { table: "order_items" as const },
+      { table: "order_cancellation_requests" as const },
+      { table: "return_requests" as const },
+      { table: "refunds" as const },
+      { table: "order_invoices" as const },
     ],
     debounceMs: 240,
   });
@@ -1222,6 +2052,27 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     }
   };
 
+  const runWorkflowAction = async (
+    key: string,
+    path: string,
+    body: Record<string, unknown>,
+    successMessage: string,
+  ) => {
+    try {
+      setWorkflowAction(key);
+      await requestAdminApi<unknown>(accessToken, path, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      toast.success(successMessage);
+      await loadOrders();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "Workflow action failed");
+    } finally {
+      setWorkflowAction(null);
+    }
+  };
+
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
       <Panel title="Recent orders">
@@ -1259,6 +2110,21 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                     <div className="mt-1 flex flex-wrap gap-2">
                       <StatusBadge value={order.status} />
                       <StatusBadge value={order.paymentStatus} accent="neutral" />
+                      {order.cancellationRequest && (
+                        <StatusBadge
+                          value={`cancel ${order.cancellationRequest.status}`}
+                          accent="warning"
+                        />
+                      )}
+                      {order.returnRequest && (
+                        <StatusBadge
+                          value={`return ${order.returnRequest.status}`}
+                          accent="warning"
+                        />
+                      )}
+                      {order.refund && (
+                        <StatusBadge value={`refund ${order.refund.status}`} accent="neutral" />
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-4">
@@ -1418,7 +2284,174 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 value={selectedOrder.shipment?.status || "Shipment not created"}
               />
               <InfoTile label="Total" value={formatINR(selectedOrder.total)} />
+              <InfoTile
+                label="Invoice"
+                value={selectedOrder.invoice?.invoice_number || "Not generated"}
+              />
+              <InfoTile
+                label="Refund"
+                value={
+                  selectedOrder.refund
+                    ? `${selectedOrder.refund.status} / ${formatINR(Number(selectedOrder.refund.amount ?? 0))}`
+                    : "No refund"
+                }
+              />
             </div>
+
+            {(selectedOrder.cancellationRequest || selectedOrder.returnRequest) && (
+              <div className="mt-5 rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-4">
+                <p className="text-label-small text-foreground">Self-service workflow</p>
+                {selectedOrder.cancellationRequest && (
+                  <div className="mt-4 rounded-md border border-[var(--border-faint)] bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Cancellation
+                        </p>
+                        <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+                          {selectedOrder.cancellationRequest.reason}
+                        </p>
+                        <StatusBadge value={selectedOrder.cancellationRequest.status} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedOrder.cancellationRequest.status === "pending" && (
+                          <>
+                            <WorkflowButton
+                              label="Approve"
+                              loading={workflowAction === "cancel-approve"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "cancel-approve",
+                                  `/admin/cancellation-requests/${selectedOrder.cancellationRequest?.id}`,
+                                  { action: "approve", note: "Approved from admin order panel" },
+                                  "Cancellation approved",
+                                )
+                              }
+                            />
+                            <WorkflowButton
+                              label="Reject"
+                              loading={workflowAction === "cancel-reject"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "cancel-reject",
+                                  `/admin/cancellation-requests/${selectedOrder.cancellationRequest?.id}`,
+                                  { action: "reject", note: "Rejected from admin order panel" },
+                                  "Cancellation rejected",
+                                )
+                              }
+                            />
+                          </>
+                        )}
+                        {["approved", "refund_pending"].includes(
+                          selectedOrder.cancellationRequest.status,
+                        ) &&
+                          !selectedOrder.cancellationRequest.refund_id && (
+                            <WorkflowButton
+                              label="Refund"
+                              loading={workflowAction === "cancel-refund"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "cancel-refund",
+                                  "/admin/refunds",
+                                  {
+                                    orderId: selectedOrder.id,
+                                    cancellationRequestId: selectedOrder.cancellationRequest?.id,
+                                    amount: selectedOrder.total,
+                                    reason: "Approved cancellation",
+                                  },
+                                  "Refund created",
+                                )
+                              }
+                            />
+                          )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedOrder.returnRequest && (
+                  <div className="mt-4 rounded-md border border-[var(--border-faint)] bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Return
+                        </p>
+                        <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
+                          {selectedOrder.returnRequest.reason}
+                        </p>
+                        <StatusBadge value={selectedOrder.returnRequest.status} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedOrder.returnRequest.status === "pending" && (
+                          <>
+                            <WorkflowButton
+                              label="Approve"
+                              loading={workflowAction === "return-approve"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "return-approve",
+                                  `/admin/return-requests/${selectedOrder.returnRequest?.id}`,
+                                  { action: "approve", note: "Approved from admin order panel" },
+                                  "Return approved",
+                                )
+                              }
+                            />
+                            <WorkflowButton
+                              label="Reject"
+                              loading={workflowAction === "return-reject"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "return-reject",
+                                  `/admin/return-requests/${selectedOrder.returnRequest?.id}`,
+                                  { action: "reject", note: "Rejected from admin order panel" },
+                                  "Return rejected",
+                                )
+                              }
+                            />
+                          </>
+                        )}
+                        {selectedOrder.returnRequest.status === "approved" && (
+                          <WorkflowButton
+                            label="Mark received"
+                            loading={workflowAction === "return-receive"}
+                            onClick={() =>
+                              void runWorkflowAction(
+                                "return-receive",
+                                `/admin/return-requests/${selectedOrder.returnRequest?.id}`,
+                                { action: "receive", note: "Returned item received" },
+                                "Return marked received",
+                              )
+                            }
+                          />
+                        )}
+                        {["received", "refund_pending"].includes(
+                          selectedOrder.returnRequest.status,
+                        ) &&
+                          !selectedOrder.returnRequest.refund_id && (
+                            <WorkflowButton
+                              label="Refund"
+                              loading={workflowAction === "return-refund"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "return-refund",
+                                  "/admin/refunds",
+                                  {
+                                    orderId: selectedOrder.id,
+                                    returnRequestId: selectedOrder.returnRequest?.id,
+                                    amount: selectedOrder.total,
+                                    reason: "Approved return",
+                                  },
+                                  "Refund created",
+                                )
+                              }
+                            />
+                          )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {selectedOrder.shipment?.trackingUrl && (
               <a
@@ -2309,6 +3342,28 @@ function ActionButton({
   );
 }
 
+function WorkflowButton({
+  label,
+  loading,
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--heat-100)] px-3 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:opacity-60"
+    >
+      {loading && <Loader2 className="size-4 animate-spin" />}
+      {label}
+    </button>
+  );
+}
+
 function SearchField({
   value,
   onChange,
@@ -2355,13 +3410,16 @@ function TextInput({
   value,
   onChange,
   inputMode,
+  type = "text",
 }: {
   value: string;
   onChange: (value: string) => void;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  type?: React.HTMLInputTypeAttribute;
 }) {
   return (
     <input
+      type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       inputMode={inputMode}
@@ -2451,6 +3509,27 @@ function EmptyState({ message }: { message: string }) {
   return (
     <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-body-small text-[var(--black-alpha-56)]">
       {message}
+    </div>
+  );
+}
+
+function LoadingInline({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-6 text-body-small text-[var(--black-alpha-56)]">
+      <Loader2 className="size-4 animate-spin text-[var(--heat-100)]" />
+      {label}
+    </div>
+  );
+}
+
+function ProductThumb({ src, alt }: { src?: string | null; alt: string }) {
+  return (
+    <div className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)]">
+      {src ? (
+        <img src={src} alt={alt} className="size-full object-contain p-1" loading="lazy" />
+      ) : (
+        <Package className="size-5 text-[var(--black-alpha-32)]" />
+      )}
     </div>
   );
 }

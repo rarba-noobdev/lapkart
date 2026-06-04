@@ -36,7 +36,7 @@ export function Footer() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-5">
             <FootCol
               title={isAdmin ? "Operations" : "Shop"}
               items={
@@ -84,10 +84,27 @@ export function Footer() {
                       { label: "Tracking refresh" },
                     ]
                   : [
-                      { label: "Fast dispatch across India" },
-                      { label: "7-day returns" },
+                      { label: "Contact us", to: "/contact" },
+                      { label: "Shipping policy", to: "/shipping-policy" },
+                      { label: "7-day returns", to: "/returns-policy" },
+                      { label: "Cancellation and refunds", to: "/cancellation-refunds" },
+                    ]
+              }
+            />
+            <FootCol
+              title="Company"
+              items={
+                isAdmin
+                  ? [
+                      { label: "About LapKart", to: "/about" },
+                      { label: "Policies", to: "/terms" },
+                      { label: "Privacy", to: "/privacy" },
+                    ]
+                  : [
+                      { label: "About", to: "/about" },
+                      { label: "Terms", to: "/terms" },
+                      { label: "Privacy", to: "/privacy" },
                       { label: "Warranty-backed parts" },
-                      { label: "Secure Razorpay checkout" },
                     ]
               }
             />

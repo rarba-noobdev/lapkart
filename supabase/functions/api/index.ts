@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 import { z } from "npm:zod@3.24.2";
 import { config } from "./config.ts";
 import { autocompleteOlaPlaces, getOlaDeliveryRoute, reverseGeocodeOlaPlace } from "./ola-maps.ts";
-import { createRazorpayOrder, verifyRazorpaySignature } from "./payments.ts";
+import { createRazorpayOrder, createRazorpayRefund, verifyRazorpaySignature } from "./payments.ts";
 import {
   assignShiprocketAwb,
   createShiprocketOrder,
@@ -49,6 +49,8 @@ type CheckoutProductRow = {
   stock: number | null;
   status: string | null;
   weight_kg: number | string | null;
+  local_delivery_eligible?: boolean | null;
+  cod_eligible?: boolean | null;
 };
 
 type CheckoutOrderItem = {
@@ -60,6 +62,15 @@ type CheckoutOrderItem = {
   qty: number;
 };
 
+type AppliedCoupon = {
+  id: string;
+  code: string;
+  description: string | null;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  discountAmount: number;
+};
+
 type CourierQuote = Awaited<ReturnType<typeof getShiprocketDeliveryQuotes>>[number];
 
 type CheckoutAddress = z.infer<typeof checkoutAddressSchema>;
@@ -68,8 +79,20 @@ type CheckoutSummary = {
   items: CheckoutOrderItem[];
   subtotal: number;
   shipping: number;
+  discountTotal: number;
   total: number;
   amountPaise: number;
+  coupon: AppliedCoupon | null;
+  cod: {
+    eligible: boolean;
+    reason: string | null;
+    cap: number;
+  };
+  deliveryPromise: {
+    label: string;
+    detail: string;
+    serviceType: "quick" | "standard";
+  };
   deliveryEstimate: {
     dispatch: {
       pickupLocation: string;
@@ -204,6 +227,16 @@ const productUpsertSchema = z.object({
   lengthCm: z.coerce.number().positive().max(500).nullable().optional(),
   breadthCm: z.coerce.number().positive().max(500).nullable().optional(),
   heightCm: z.coerce.number().positive().max(500).nullable().optional(),
+  authenticityGrade: z
+    .enum(["oem", "compatible", "refurbished", "open_box"])
+    .optional()
+    .default("compatible"),
+  conditionGrade: z.enum(["new", "open_box", "refurbished", "used"]).optional().default("new"),
+  hsnCode: nullableTrimmedString(30),
+  gstRate: z.coerce.number().min(0).max(28).optional().default(18),
+  doaPolicyDays: z.coerce.number().int().min(0).max(30).optional().default(7),
+  localDeliveryEligible: z.boolean().optional().default(true),
+  codEligible: z.boolean().optional().default(true),
 });
 
 const productUpdateSchema = productUpsertSchema
@@ -301,6 +334,7 @@ const checkoutCreatePaymentOrderSchema = z.object({
   address: checkoutAddressSchema,
   selectedQuoteId: z.string().trim().min(1).max(120).nullable().optional(),
   saveAddress: z.boolean().optional().default(true),
+  couponCode: z.string().trim().max(40).optional().default(""),
 });
 
 const checkoutCompletePaymentSchema = z.object({
@@ -308,6 +342,104 @@ const checkoutCompletePaymentSchema = z.object({
   razorpay_payment_id: z.string().trim().min(1),
   razorpay_signature: z.string().trim().min(1),
 });
+
+const businessAccountSchema = z.object({
+  shopName: z.string().trim().min(2).max(160),
+  gstin: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i, "GSTIN format is invalid")
+    .nullable()
+    .optional(),
+  businessPhone: nullableTrimmedString(30),
+  billingEmail: z.string().trim().email().max(160).nullable().optional(),
+  billingAddress: nullableTrimmedString(500),
+  city: nullableTrimmedString(80),
+  state: nullableTrimmedString(80),
+  pincode: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{6}$/)
+    .nullable()
+    .optional(),
+});
+
+const productQuestionSchema = z.object({
+  productId: z.string().uuid(),
+  question: z.string().trim().min(3).max(800),
+});
+
+const adminQuestionUpdateSchema = z.object({
+  answer: z.string().trim().max(2000).optional(),
+  status: z.enum(["pending", "published", "rejected"]).optional(),
+});
+
+const cancellationRequestSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+const returnRequestSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+  conditionNotes: z.string().trim().max(1000).optional().default(""),
+  photos: z.array(z.string().trim().url()).max(6).optional().default([]),
+  items: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        qty: z.number().int().positive().max(20),
+        reason: z.string().trim().max(500).optional().default(""),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+const adminWorkflowActionSchema = z.object({
+  action: z.enum(["approve", "reject", "receive", "close"]),
+  note: z.string().trim().max(1000).optional().default(""),
+});
+
+const adminRefundSchema = z.object({
+  orderId: z.string().uuid(),
+  cancellationRequestId: z.string().uuid().optional(),
+  returnRequestId: z.string().uuid().optional(),
+  amount: z.coerce.number().positive().max(10_000_000).optional(),
+  reason: z.string().trim().max(500).optional().default(""),
+  speed: z.enum(["normal", "optimum"]).optional().default("normal"),
+});
+
+const wishlistRequestSchema = z.object({
+  productId: z.string().uuid(),
+});
+
+const productReviewSchema = z.object({
+  productId: z.string().uuid(),
+  orderId: z.string().uuid().nullable().optional(),
+  rating: z.number().int().min(1).max(5),
+  title: z.string().trim().max(160).optional().default(""),
+  body: z.string().trim().min(3).max(2000),
+});
+
+const stockNotificationSchema = z.object({
+  productId: z.string().uuid(),
+  email: z.string().trim().email().max(160),
+});
+
+const couponWriteSchema = z.object({
+  code: z.string().trim().min(3).max(40).transform((value) => value.toUpperCase()),
+  description: z.string().trim().max(300).optional().default(""),
+  discountType: z.enum(["percent", "fixed"]),
+  discountValue: z.coerce.number().positive().max(100_000),
+  minimumSubtotal: z.coerce.number().min(0).max(10_000_000).optional().default(0),
+  maxDiscount: z.coerce.number().positive().max(10_000_000).nullable().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  usageLimit: z.coerce.number().int().positive().max(1_000_000).nullable().optional(),
+  perUserLimit: z.coerce.number().int().positive().max(100).optional().default(1),
+  active: z.boolean().optional().default(true),
+});
+
+const couponPatchSchema = couponWriteSchema.partial();
 
 function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -364,6 +496,93 @@ function text(req: Request, status: number, body: string, headers?: Record<strin
       ...headers,
     },
   });
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInvoiceHtml({
+  order,
+  items,
+  invoiceNumber,
+}: {
+  order: Record<string, unknown>;
+  items: Array<Record<string, unknown>>;
+  invoiceNumber: string;
+}) {
+  const rows = items
+    .map((item) => {
+      const qty = Number(item.qty ?? 0);
+      const unit = Number(item.price ?? item.unit_price ?? 0);
+      const lineTotal = roundMoney(qty * unit);
+      return `<tr>
+        <td>${escapeHtml(item.title)}</td>
+        <td>${escapeHtml(item.brand)}</td>
+        <td class="num">${qty}</td>
+        <td class="num">INR ${unit.toFixed(2)}</td>
+        <td class="num">INR ${lineTotal.toFixed(2)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(invoiceNumber)} - LapKart invoice</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111; margin: 32px; }
+    header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #111; padding-bottom: 16px; }
+    h1 { font-size: 28px; margin: 0; }
+    h2 { font-size: 16px; margin: 24px 0 8px; }
+    p { margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
+    th { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #666; }
+    .num { text-align: right; }
+    .totals { margin-left: auto; margin-top: 20px; width: 320px; }
+    .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
+    .grand { border-top: 2px solid #111; font-weight: 700; font-size: 18px; }
+    @media print { body { margin: 18mm; } button { display: none; } }
+  </style>
+</head>
+<body>
+  <button onclick="window.print()">Print or save PDF</button>
+  <header>
+    <div>
+      <h1>LapKart</h1>
+      <p>Genuine laptop parts marketplace</p>
+    </div>
+    <div>
+      <p><strong>Invoice:</strong> ${escapeHtml(invoiceNumber)}</p>
+      <p><strong>Order:</strong> #${escapeHtml(String(order.id ?? "").slice(0, 8))}</p>
+      <p><strong>Date:</strong> ${escapeHtml(new Date(String(order.created_at)).toLocaleDateString("en-IN"))}</p>
+    </div>
+  </header>
+  <h2>Bill To / Ship To</h2>
+  <p>${escapeHtml(order.shipping_name)}</p>
+  <p>${escapeHtml(order.shipping_address)}</p>
+  <p>${escapeHtml(order.shipping_phone)}</p>
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Brand</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <section class="totals">
+    <div><span>Subtotal</span><span>INR ${Number(order.subtotal ?? 0).toFixed(2)}</span></div>
+    <div><span>Shipping</span><span>INR ${Number(order.shipping ?? 0).toFixed(2)}</span></div>
+    <div><span>Discount${order.coupon_code ? ` (${escapeHtml(order.coupon_code)})` : ""}</span><span>- INR ${Number(order.discount_total ?? 0).toFixed(2)}</span></div>
+    <div class="grand"><span>Total paid</span><span>INR ${Number(order.total ?? 0).toFixed(2)}</span></div>
+  </section>
+</body>
+</html>`;
 }
 
 function getSupabaseAdmin() {
@@ -683,7 +902,11 @@ async function storeCheckoutSession(razorpayOrderId: string, checkout: PendingCh
     currency: "INR",
     subtotal: checkout.subtotal,
     shipping: checkout.shipping,
+    discount_total: checkout.discountTotal,
     total: checkout.total,
+    coupon_id: checkout.coupon?.id ?? null,
+    coupon_code: checkout.coupon?.code ?? null,
+    coupon_snapshot: checkout.coupon,
     items: checkout.items,
     address: checkout.address,
     delivery_estimate: checkout.deliveryEstimate,
@@ -726,8 +949,10 @@ async function loadCheckoutSession(razorpayOrderId: string): Promise<LoadedCheck
       items: data.items as CheckoutOrderItem[],
       subtotal: Number(data.subtotal),
       shipping: Number(data.shipping),
+      discountTotal: Number(data.discount_total ?? 0),
       total: Number(data.total),
       amountPaise: Number(data.amount_paise),
+      coupon: data.coupon_snapshot as AppliedCoupon | null,
       deliveryEstimate: data.delivery_estimate as PendingCheckout["deliveryEstimate"],
       selectedCourier: data.selected_courier as CourierQuote,
       address: data.address as CheckoutAddress,
@@ -764,6 +989,51 @@ async function markCheckoutSessionPaid(razorpayOrderId: string, orderId: string)
   if (error) console.warn("Could not mark checkout session paid", error.message);
 }
 
+function isShipmentStarted(shipment: Record<string, unknown> | null | undefined) {
+  if (!shipment) return false;
+  const status = String(shipment.status ?? "").toLowerCase();
+  return [
+    "awb_assigned",
+    "pickup_scheduled",
+    "label_generated",
+    "manifest_generated",
+    "shipped",
+    "in_transit",
+    "out_for_delivery",
+    "delivered",
+    "returned",
+    "rto_initiated",
+    "rto_delivered",
+  ].includes(status);
+}
+
+function canRequestCancellation(order: Record<string, unknown>, shipment?: Record<string, unknown> | null) {
+  const orderStatus = String(order.status ?? "").toLowerCase();
+  const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+  if (!["paid", "cod_pending"].includes(paymentStatus)) return false;
+  if (["cancelled", "delivered", "refunded"].includes(orderStatus)) return false;
+  return !isShipmentStarted(shipment);
+}
+
+function canRequestReturn(order: Record<string, unknown>, shipment?: Record<string, unknown> | null) {
+  const orderStatus = String(order.status ?? "").toLowerCase();
+  const shipmentStatus = String(shipment?.status ?? "").toLowerCase();
+  if (orderStatus !== "delivered" && shipmentStatus !== "delivered") return false;
+  const deliveredAt = new Date(
+    String(shipment?.actual_delivery_at ?? shipment?.updated_at ?? order.updated_at ?? order.created_at ?? ""),
+  ).getTime();
+  if (!Number.isFinite(deliveredAt)) return true;
+  return Date.now() - deliveredAt <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function toPaise(amount: number) {
+  return Math.round(amount * 100);
+}
+
+function invoiceNumberForOrder(orderId: string) {
+  return `LK-${new Date().getFullYear()}-${orderId.slice(0, 8).toUpperCase()}`;
+}
+
 function assertUploadIsSafeImage(file: File) {
   if (!allowedImageMimeTypes.has(file.type)) {
     throw new HttpError(400, "Only JPEG, PNG, WebP, or AVIF images are allowed");
@@ -796,13 +1066,120 @@ function buildShippingAddress(address: CheckoutAddress) {
     .join("\n");
 }
 
-async function buildCheckoutSummary(input: z.infer<typeof checkoutCreatePaymentOrderSchema>) {
+function isChennaiAddress(address: CheckoutAddress) {
+  const city = address.city.trim().toLowerCase();
+  const state = address.state.trim().toLowerCase();
+  const pincode = address.pincode.trim();
+  return pincode.startsWith("600") || (city.includes("chennai") && state.includes("tamil"));
+}
+
+function getCodIneligibilityReason({
+  address,
+  total,
+  products,
+}: {
+  address: CheckoutAddress;
+  total: number;
+  products: CheckoutProductRow[];
+}) {
+  if (!isChennaiAddress(address)) return "COD is currently limited to Chennai delivery addresses";
+  if (total > 4000) return "COD is available only up to INR 4000";
+  const codBlockedProduct = products.find((product) => product.cod_eligible === false);
+  if (codBlockedProduct) return `${codBlockedProduct.title} is not eligible for COD`;
+  return null;
+}
+
+async function validateCouponForCheckout({
+  userId,
+  code,
+  subtotal,
+}: {
+  userId: string;
+  code: string;
+  subtotal: number;
+}): Promise<AppliedCoupon | null> {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCode) return null;
+
+  const adminDb = getSupabaseAdmin();
+  const { data: coupon, error } = await adminDb
+    .from("coupons")
+    .select(
+      "id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active",
+    )
+    .ilike("code", normalizedCode)
+    .maybeSingle();
+  if (error) throw error;
+  if (!coupon || coupon.active !== true) {
+    throw new HttpError(400, "Coupon is not active");
+  }
+
+  const now = Date.now();
+  const startsAt = coupon.starts_at ? new Date(String(coupon.starts_at)).getTime() : null;
+  const endsAt = coupon.ends_at ? new Date(String(coupon.ends_at)).getTime() : null;
+  if (startsAt && Number.isFinite(startsAt) && startsAt > now) {
+    throw new HttpError(400, "Coupon is not active yet");
+  }
+  if (endsAt && Number.isFinite(endsAt) && endsAt < now) {
+    throw new HttpError(400, "Coupon has expired");
+  }
+
+  const minimumSubtotal = Number(coupon.minimum_subtotal ?? 0);
+  if (subtotal < minimumSubtotal) {
+    throw new HttpError(400, `Coupon requires a subtotal of at least INR ${minimumSubtotal}`);
+  }
+
+  if (coupon.usage_limit) {
+    const { count, error: usageError } = await adminDb
+      .from("coupon_redemptions")
+      .select("id", { count: "exact", head: true })
+      .eq("coupon_id", coupon.id);
+    if (usageError) throw usageError;
+    if ((count ?? 0) >= Number(coupon.usage_limit)) {
+      throw new HttpError(400, "Coupon usage limit has been reached");
+    }
+  }
+
+  const { count: userUsage, error: userUsageError } = await adminDb
+    .from("coupon_redemptions")
+    .select("id", { count: "exact", head: true })
+    .eq("coupon_id", coupon.id)
+    .eq("user_id", userId);
+  if (userUsageError) throw userUsageError;
+  if ((userUsage ?? 0) >= Number(coupon.per_user_limit ?? 1)) {
+    throw new HttpError(400, "You have already used this coupon");
+  }
+
+  const discountType = coupon.discount_type === "percent" ? "percent" : "fixed";
+  const discountValue = Number(coupon.discount_value);
+  const rawDiscount =
+    discountType === "percent" ? (subtotal * discountValue) / 100 : discountValue;
+  const maxDiscount = coupon.max_discount === null ? null : Number(coupon.max_discount);
+  const discountAmount = roundMoney(Math.min(subtotal, maxDiscount ? Math.min(rawDiscount, maxDiscount) : rawDiscount));
+  if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+    throw new HttpError(400, "Coupon does not apply to this cart");
+  }
+
+  return {
+    id: String(coupon.id),
+    code: String(coupon.code).toUpperCase(),
+    description: coupon.description ? String(coupon.description) : null,
+    discountType,
+    discountValue,
+    discountAmount,
+  };
+}
+
+async function buildCheckoutSummary(
+  userId: string,
+  input: z.infer<typeof checkoutCreatePaymentOrderSchema>,
+) {
   const adminDb = getSupabaseAdmin();
   const items = normalizeCheckoutItems(input.items);
   const productIds = items.map((item) => item.id);
   const { data: products, error } = await adminDb
     .from("products")
-    .select("id,title,brand,image,images,price,stock,status,weight_kg")
+    .select("id,title,brand,image,images,price,stock,status,weight_kg,local_delivery_eligible,cod_eligible")
     .in("id", productIds);
   if (error) throw error;
 
@@ -873,16 +1250,39 @@ async function buildCheckoutSummary(input: z.infer<typeof checkoutCreatePaymentO
     throw new HttpError(400, "Selected courier returned an invalid shipping rate");
   }
 
+  const coupon = await validateCouponForCheckout({
+    userId,
+    code: input.couponCode,
+    subtotal,
+  });
+  const discountTotal = coupon?.discountAmount ?? 0;
   const shipping = subtotal > 999 ? 0 : roundMoney(selectedRate);
-  const total = roundMoney(subtotal + shipping);
+  const total = roundMoney(Math.max(0, subtotal + shipping - discountTotal));
   const amountPaise = Math.round(total * 100);
+  const codReason = getCodIneligibilityReason({ address: input.address, total, products: productRows });
+  const hasQuickCourier = selectedCourier.serviceType === "quick";
+  const deliveryPromise = {
+    label: hasQuickCourier ? "ASAP delivery" : "Standard delivery",
+    detail: hasQuickCourier
+      ? `Expected within ${Math.max(1, Math.ceil(selectedCourier.etdHours || 3))} hour(s)`
+      : selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`,
+    serviceType: selectedCourier.serviceType,
+  } satisfies CheckoutSummary["deliveryPromise"];
 
   return {
     items: orderItems,
     subtotal,
     shipping,
+    discountTotal,
     total,
     amountPaise,
+    coupon,
+    cod: {
+      eligible: codReason === null,
+      reason: codReason,
+      cap: 4000,
+    },
+    deliveryPromise,
     deliveryEstimate: {
       dispatch: {
         pickupLocation: config.shiprocketPickupLocation,
@@ -921,6 +1321,41 @@ function productPayloadFromInput(input: z.infer<typeof productUpsertSchema> | z.
   if ("lengthCm" in input) payload.length_cm = input.lengthCm ?? null;
   if ("breadthCm" in input) payload.breadth_cm = input.breadthCm ?? null;
   if ("heightCm" in input) payload.height_cm = input.heightCm ?? null;
+  if ("authenticityGrade" in input && input.authenticityGrade !== undefined) {
+    payload.authenticity_grade = input.authenticityGrade;
+  }
+  if ("conditionGrade" in input && input.conditionGrade !== undefined) {
+    payload.condition_grade = input.conditionGrade;
+  }
+  if ("hsnCode" in input) payload.hsn_code = input.hsnCode ?? null;
+  if ("gstRate" in input && input.gstRate !== undefined) payload.gst_rate = input.gstRate;
+  if ("doaPolicyDays" in input && input.doaPolicyDays !== undefined) {
+    payload.doa_policy_days = input.doaPolicyDays;
+  }
+  if ("localDeliveryEligible" in input && input.localDeliveryEligible !== undefined) {
+    payload.local_delivery_eligible = input.localDeliveryEligible;
+  }
+  if ("codEligible" in input && input.codEligible !== undefined) {
+    payload.cod_eligible = input.codEligible;
+  }
+  return payload;
+}
+
+function couponPayloadFromInput(input: z.infer<typeof couponWriteSchema> | z.infer<typeof couponPatchSchema>) {
+  const payload: Record<string, unknown> = {};
+  if ("code" in input && input.code !== undefined) payload.code = input.code;
+  if ("description" in input) payload.description = input.description || null;
+  if ("discountType" in input && input.discountType !== undefined) payload.discount_type = input.discountType;
+  if ("discountValue" in input && input.discountValue !== undefined) payload.discount_value = input.discountValue;
+  if ("minimumSubtotal" in input && input.minimumSubtotal !== undefined) {
+    payload.minimum_subtotal = input.minimumSubtotal;
+  }
+  if ("maxDiscount" in input) payload.max_discount = input.maxDiscount ?? null;
+  if ("startsAt" in input) payload.starts_at = input.startsAt || null;
+  if ("endsAt" in input) payload.ends_at = input.endsAt || null;
+  if ("usageLimit" in input) payload.usage_limit = input.usageLimit ?? null;
+  if ("perUserLimit" in input && input.perUserLimit !== undefined) payload.per_user_limit = input.perUserLimit;
+  if ("active" in input && input.active !== undefined) payload.active = input.active;
   return payload;
 }
 
@@ -971,11 +1406,167 @@ async function handle(req: Request) {
     });
   }
 
+  if (req.method === "POST" && path === "/checkout/preview") {
+    enforceRateLimit(req, "payment", paymentRateLimit);
+    const user = await requireUser(req);
+    const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
+    const summary = await buildCheckoutSummary(user.id, input);
+    return json(req, 200, { summary });
+  }
+
+  if (req.method === "POST" && path === "/checkout/create-cod-order") {
+    enforceRateLimit(req, "payment", paymentRateLimit);
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
+    const summary = await buildCheckoutSummary(user.id, input);
+    if (!summary.cod.eligible) {
+      throw new HttpError(400, summary.cod.reason ?? "COD is not available for this order");
+    }
+    const { count: codOrderCount, error: codCountError } = await adminDb
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("payment_method", "cod");
+    if (codCountError) throw codCountError;
+    if ((codOrderCount ?? 0) >= 3) {
+      throw new HttpError(400, "COD is available only for the first three COD orders");
+    }
+
+    const codReference = `cod_${crypto.randomUUID()}`;
+    await storeCheckoutSession(codReference, {
+      ...summary,
+      userId: user.id,
+      userEmail: user.email,
+      address: input.address,
+      saveAddress: input.saveAddress,
+      createdAt: Date.now(),
+    });
+
+    const orderId = crypto.randomUUID();
+    const address = input.address;
+    const phone = phoneDigits(address.phone);
+    const shippingAddress = buildShippingAddress(address);
+    const tracking = [
+      {
+        label: "COD order placed",
+        at: new Date().toISOString(),
+        cod_reference: codReference,
+        verified_by: "server",
+      },
+    ];
+
+    const { data: completedOrderId, error: completeError } = await adminDb.rpc(
+      "complete_checkout_payment",
+      {
+        p_order_id: orderId,
+        p_user_id: user.id,
+        p_order_payload: {
+          status: "confirmed",
+          payment_status: "cod_pending",
+          payment_method: "cod",
+          subtotal: summary.subtotal,
+          shipping: summary.shipping,
+          discount_total: summary.discountTotal,
+          total: summary.total,
+          coupon_id: summary.coupon?.id ?? null,
+          coupon_code: summary.coupon?.code ?? null,
+          shipping_name: address.fullName,
+          shipping_phone: phone,
+          shipping_email: address.email || user.email,
+          shipping_address: shippingAddress,
+          shipping_line1: address.line1,
+          shipping_line2: address.line2 || null,
+          shipping_city: address.city,
+          shipping_state: address.state,
+          shipping_pincode: address.pincode,
+          shipping_country: "India",
+          shipping_latitude: address.latitude,
+          shipping_longitude: address.longitude,
+          shipping_location_source: address.locationSource ?? null,
+          shipping_place_id: address.olaPlaceId ?? null,
+          shipping_formatted_address: address.formattedAddress || null,
+          shipping_route_distance_meters: summary.deliveryEstimate.route.distanceMeters,
+          shipping_route_duration_seconds: summary.deliveryEstimate.route.durationSeconds,
+          shipping_estimate: summary.deliveryEstimate,
+          shipping_courier_company_id: summary.selectedCourier.courierCompanyId,
+          shipping_courier_name: summary.selectedCourier.courierName,
+          shipping_service_type: summary.selectedCourier.serviceType,
+          shipping_expected_delivery_date: summary.selectedCourier.expectedDeliveryDate,
+          shipping_charge_estimate: summary.selectedCourier.rate,
+          tracking,
+        },
+        p_items: summary.items.map((item) => ({
+          product_id: item.productId,
+          title: item.title,
+          image: item.image,
+          brand: item.brand,
+          price: item.price,
+          unit_price: item.price,
+          qty: item.qty,
+        })),
+        p_payment_payload: {
+          provider: "cod",
+          method: "cod",
+          amount: summary.total,
+          status: "pending",
+          provider_order_id: codReference,
+          provider_payment_id: null,
+          provider_signature: null,
+          raw_payload: {
+            cod_reference: codReference,
+            amount: summary.amountPaise,
+            coupon: summary.coupon,
+          },
+        },
+        p_address_payload: {
+          full_name: address.fullName,
+          phone,
+          line1: address.line1,
+          line2: address.line2 || null,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode,
+          latitude: address.latitude,
+          longitude: address.longitude,
+          location_source: address.locationSource ?? null,
+          ola_place_id: address.olaPlaceId ?? null,
+          formatted_address: address.formattedAddress || null,
+        },
+        p_save_address: input.saveAddress,
+        p_checkout_session_razorpay_order_id: codReference,
+      },
+    );
+    if (completeError) throw completeError;
+
+    const finalOrderId = String(completedOrderId ?? orderId);
+    await markCheckoutSessionPaid(codReference, finalOrderId);
+    if (summary.coupon) {
+      const { error: redemptionError } = await adminDb.from("coupon_redemptions").insert({
+        coupon_id: summary.coupon.id,
+        order_id: finalOrderId,
+        user_id: user.id,
+        discount_amount: summary.discountTotal,
+      });
+      if (redemptionError && redemptionError.code !== "23505") throw redemptionError;
+    }
+    await adminDb.from("order_invoices").upsert(
+      {
+        order_id: finalOrderId,
+        invoice_number: invoiceNumberForOrder(finalOrderId),
+        status: "generated",
+      },
+      { onConflict: "order_id" },
+    );
+
+    return json(req, 201, { orderId: finalOrderId, summary, codReference });
+  }
+
   if (req.method === "POST" && path === "/checkout/create-payment-order") {
     enforceRateLimit(req, "payment", paymentRateLimit);
     const user = await requireUser(req);
     const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
-    const summary = await buildCheckoutSummary(input);
+    const summary = await buildCheckoutSummary(user.id, input);
     const razorpayOrder = await createRazorpayOrder(
       summary.amountPaise,
       `lk_${Date.now()}_${user.id.slice(0, 8)}`,
@@ -1058,7 +1649,10 @@ async function handle(req: Request) {
           payment_method: "razorpay",
           subtotal: checkout.subtotal,
           shipping: checkout.shipping,
+          discount_total: checkout.discountTotal,
           total: checkout.total,
+          coupon_id: checkout.coupon?.id ?? null,
+          coupon_code: checkout.coupon?.code ?? null,
           shipping_name: address.fullName,
           shipping_phone: phone,
           shipping_email: address.email || checkout.userEmail,
@@ -1105,6 +1699,7 @@ async function handle(req: Request) {
             razorpay_order_id: input.razorpay_order_id,
             razorpay_payment_id: input.razorpay_payment_id,
             amount: checkout.amountPaise,
+            coupon: checkout.coupon,
           },
         },
         p_address_payload: {
@@ -1128,7 +1723,25 @@ async function handle(req: Request) {
     if (completeError) throw completeError;
 
     await markCheckoutSessionPaid(input.razorpay_order_id, String(completedOrderId ?? orderId));
-    return json(req, 200, { verified: true, orderId: String(completedOrderId ?? orderId) });
+    const finalOrderId = String(completedOrderId ?? orderId);
+    if (checkout.coupon) {
+      const { error: redemptionError } = await adminDb.from("coupon_redemptions").insert({
+        coupon_id: checkout.coupon.id,
+        order_id: finalOrderId,
+        user_id: user.id,
+        discount_amount: checkout.discountTotal,
+      });
+      if (redemptionError && redemptionError.code !== "23505") throw redemptionError;
+    }
+    await adminDb.from("order_invoices").upsert(
+      {
+        order_id: finalOrderId,
+        invoice_number: invoiceNumberForOrder(finalOrderId),
+        status: "generated",
+      },
+      { onConflict: "order_id" },
+    );
+    return json(req, 200, { verified: true, orderId: finalOrderId });
   }
 
   if (req.method === "GET" && path === "/maps/autocomplete") {
@@ -1295,7 +1908,7 @@ async function handle(req: Request) {
     const { data: order, error: orderError } = await adminDb
       .from("orders")
       .select(
-        "id,user_id,total,subtotal,shipping,status,payment_status,shipping_name,shipping_address,shipping_courier_name,shipping_expected_delivery_date,shipping_route_distance_meters,shipping_route_duration_seconds,shipping_service_type,created_at",
+        "id,user_id,total,subtotal,shipping,discount_total,coupon_code,status,payment_status,shipping_name,shipping_address,shipping_courier_name,shipping_expected_delivery_date,shipping_route_distance_meters,shipping_route_duration_seconds,shipping_service_type,created_at,updated_at",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -1303,12 +1916,43 @@ async function handle(req: Request) {
     if (!order || String(order.user_id) !== user.id) {
       throw new HttpError(404, "Order not found");
     }
-    const [{ data: items, error: itemsError }, { data: shipment, error: shipmentError }] = await Promise.all([
+    const [
+      { data: items, error: itemsError },
+      { data: shipment, error: shipmentError },
+      cancellationsResult,
+      returnsResult,
+      refundsResult,
+      invoiceResult,
+    ] = await Promise.all([
       adminDb.from("order_items").select("id,title,image,brand,price,qty").eq("order_id", orderId),
       adminDb.from("shipments").select("*").eq("order_id", orderId).eq("provider", "shiprocket").maybeSingle(),
+      adminDb
+        .from("order_cancellation_requests")
+        .select("id,status,reason,admin_note,requested_at,resolved_at,refund_id")
+        .eq("order_id", orderId)
+        .order("requested_at", { ascending: false }),
+      adminDb
+        .from("return_requests")
+        .select("id,status,reason,condition_notes,photos,admin_note,requested_at,resolved_at,received_at,refund_id")
+        .eq("order_id", orderId)
+        .order("requested_at", { ascending: false }),
+      adminDb
+        .from("refunds")
+        .select("id,amount,status,provider_refund_id,reason,created_at,processed_at,cancellation_request_id,return_request_id")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: false }),
+      adminDb
+        .from("order_invoices")
+        .select("id,invoice_number,invoice_url,status,generated_at")
+        .eq("order_id", orderId)
+        .maybeSingle(),
     ]);
     if (itemsError) throw itemsError;
     if (shipmentError) throw shipmentError;
+    if (cancellationsResult.error) throw cancellationsResult.error;
+    if (returnsResult.error) throw returnsResult.error;
+    if (refundsResult.error) throw refundsResult.error;
+    if (invoiceResult.error) throw invoiceResult.error;
     const { data: events, error: eventsError } = shipment?.id
       ? await adminDb
           .from("shipment_events")
@@ -1324,6 +1968,8 @@ async function handle(req: Request) {
         total: Number(order.total ?? 0),
         subtotal: Number(order.subtotal ?? 0),
         shipping: Number(order.shipping ?? 0),
+        discount_total: Number(order.discount_total ?? 0),
+        coupon_code: firstString(order.coupon_code),
         status: String(order.status ?? ""),
         payment_status: String(order.payment_status ?? ""),
         shipping_name: String(order.shipping_name ?? ""),
@@ -1353,7 +1999,554 @@ async function handle(req: Request) {
         shipment as Record<string, unknown> | undefined,
         groupedEvents.get(String(shipment?.id ?? "")),
       ),
+      cancellationRequests: cancellationsResult.data ?? [],
+      returnRequests: returnsResult.data ?? [],
+      refunds: refundsResult.data ?? [],
+      invoice: invoiceResult.data ?? null,
+      capabilities: {
+        canCancel: canRequestCancellation(order, shipment as Record<string, unknown> | null),
+        canReturn: canRequestReturn(order, shipment as Record<string, unknown> | null),
+      },
     });
+  }
+
+  const invoiceMatch = matchRoute(path, /^\/orders\/([^/]+)\/invoice$/);
+  if (req.method === "GET" && invoiceMatch) {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { orderId } = orderIdParamSchema.parse({ orderId: invoiceMatch[1] });
+    const [{ data: order, error: orderError }, { data: items, error: itemsError }, invoiceResult] =
+      await Promise.all([
+        adminDb
+          .from("orders")
+          .select(
+            "id,user_id,created_at,subtotal,shipping,discount_total,total,coupon_code,shipping_name,shipping_phone,shipping_address",
+          )
+          .eq("id", orderId)
+          .maybeSingle(),
+        adminDb.from("order_items").select("title,brand,price,unit_price,qty").eq("order_id", orderId),
+        adminDb
+          .from("order_invoices")
+          .select("invoice_number")
+          .eq("order_id", orderId)
+          .maybeSingle(),
+      ]);
+    if (orderError) throw orderError;
+    if (itemsError) throw itemsError;
+    if (invoiceResult.error) throw invoiceResult.error;
+    if (!order || String(order.user_id) !== user.id) {
+      throw new HttpError(404, "Invoice not found");
+    }
+    const invoiceNumber =
+      typeof invoiceResult.data?.invoice_number === "string"
+        ? invoiceResult.data.invoice_number
+        : invoiceNumberForOrder(orderId);
+    const html = renderInvoiceHtml({
+      order: order as Record<string, unknown>,
+      items: (items ?? []) as Array<Record<string, unknown>>,
+      invoiceNumber,
+    });
+    return text(req, 200, html, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Disposition": `inline; filename="${invoiceNumber}.html"`,
+    });
+  }
+
+  const cancellationRequestMatch = matchRoute(path, /^\/orders\/([^/]+)\/cancellation-requests$/);
+  if (req.method === "POST" && cancellationRequestMatch) {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { orderId } = orderIdParamSchema.parse({ orderId: cancellationRequestMatch[1] });
+    const input = cancellationRequestSchema.parse(await req.json());
+    const [{ data: order, error: orderError }, { data: shipment, error: shipmentError }] =
+      await Promise.all([
+        adminDb.from("orders").select("*").eq("id", orderId).maybeSingle(),
+        adminDb.from("shipments").select("*").eq("order_id", orderId).maybeSingle(),
+      ]);
+    if (orderError) throw orderError;
+    if (shipmentError) throw shipmentError;
+    if (!order || order.user_id !== user.id) throw new HttpError(404, "Order not found");
+    if (!canRequestCancellation(order, shipment)) {
+      throw new HttpError(409, "This order can no longer be cancelled from self-service");
+    }
+    const { data, error } = await adminDb
+      .from("order_cancellation_requests")
+      .insert({ order_id: orderId, user_id: user.id, reason: input.reason })
+      .select("*")
+      .single();
+    if (error) throw error;
+    await adminDb.from("orders").update({ status: "cancellation_requested" }).eq("id", orderId);
+    return json(req, 201, { cancellationRequest: data });
+  }
+
+  const returnRequestMatch = matchRoute(path, /^\/orders\/([^/]+)\/return-requests$/);
+  if (req.method === "POST" && returnRequestMatch) {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { orderId } = orderIdParamSchema.parse({ orderId: returnRequestMatch[1] });
+    const input = returnRequestSchema.parse(await req.json());
+    const [{ data: order, error: orderError }, { data: shipment, error: shipmentError }] =
+      await Promise.all([
+        adminDb.from("orders").select("*").eq("id", orderId).maybeSingle(),
+        adminDb.from("shipments").select("*").eq("order_id", orderId).maybeSingle(),
+      ]);
+    if (orderError) throw orderError;
+    if (shipmentError) throw shipmentError;
+    if (!order || order.user_id !== user.id) throw new HttpError(404, "Order not found");
+    if (!canRequestReturn(order, shipment)) {
+      throw new HttpError(409, "This order is not currently eligible for return self-service");
+    }
+    const { data: orderItems, error: itemsError } = await adminDb
+      .from("order_items")
+      .select("id,qty")
+      .eq("order_id", orderId);
+    if (itemsError) throw itemsError;
+    const qtyByItem = new Map((orderItems ?? []).map((item) => [item.id, Number(item.qty ?? 0)]));
+    for (const item of input.items) {
+      const purchasedQty = qtyByItem.get(item.orderItemId) ?? 0;
+      if (item.qty > purchasedQty) throw new HttpError(400, "Return quantity exceeds purchased quantity");
+    }
+    const { data: returnRequest, error: returnError } = await adminDb
+      .from("return_requests")
+      .insert({
+        order_id: orderId,
+        user_id: user.id,
+        reason: input.reason,
+        condition_notes: input.conditionNotes || null,
+        photos: input.photos,
+      })
+      .select("*")
+      .single();
+    if (returnError) throw returnError;
+    const { error: returnItemsError } = await adminDb.from("return_request_items").insert(
+      input.items.map((item) => ({
+        return_request_id: returnRequest.id,
+        order_item_id: item.orderItemId,
+        qty: item.qty,
+        reason: item.reason || null,
+      })),
+    );
+    if (returnItemsError) throw returnItemsError;
+    await adminDb.from("orders").update({ status: "return_requested" }).eq("id", orderId);
+    return json(req, 201, { returnRequest });
+  }
+
+  if (req.method === "GET" && path === "/wishlist") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { data, error } = await adminDb
+      .from("wishlist_items")
+      .select("id,product_id,created_at,products(id,title,brand,category,image,price,mrp,rating,reviews,stock)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return json(req, 200, { items: data ?? [] });
+  }
+
+  if (req.method === "POST" && path === "/wishlist") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = wishlistRequestSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("wishlist_items")
+      .upsert({ user_id: user.id, product_id: input.productId }, { onConflict: "user_id,product_id" })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { item: data });
+  }
+
+  const wishlistDeleteMatch = matchRoute(path, /^\/wishlist\/([^/]+)$/);
+  if (req.method === "DELETE" && wishlistDeleteMatch) {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { productId } = productIdParamSchema.parse({ productId: wishlistDeleteMatch[1] });
+    const { error } = await adminDb
+      .from("wishlist_items")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("product_id", productId);
+    if (error) throw error;
+    return json(req, 200, { deleted: true });
+  }
+
+  if (req.method === "POST" && path === "/product-reviews") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = productReviewSchema.parse(await req.json());
+    let verifiedPurchase = false;
+    if (input.orderId) {
+      const [{ data: order }, { data: item }] = await Promise.all([
+        adminDb.from("orders").select("id,user_id").eq("id", input.orderId).maybeSingle(),
+        adminDb
+          .from("order_items")
+          .select("id")
+          .eq("product_id", input.productId)
+          .eq("order_id", input.orderId)
+          .maybeSingle(),
+      ]);
+      verifiedPurchase = Boolean(order?.user_id === user.id && item);
+    }
+    const { data, error } = await adminDb
+      .from("product_reviews")
+      .insert({
+        user_id: user.id,
+        product_id: input.productId,
+        order_id: input.orderId ?? null,
+        rating: input.rating,
+        title: input.title || null,
+        body: input.body,
+        verified_purchase: verifiedPurchase,
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 201, { review: data });
+  }
+
+  if (req.method === "POST" && path === "/stock-notifications") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = stockNotificationSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("stock_notifications")
+      .upsert(
+        { user_id: user.id, product_id: input.productId, email: input.email, status: "active" },
+        { onConflict: "product_id,email" },
+      )
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { notification: data });
+  }
+
+  if (req.method === "GET" && path === "/account/business") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const { data, error } = await adminDb
+      .from("business_accounts")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error) throw error;
+    return json(req, 200, { businessAccount: data ?? null });
+  }
+
+  if (req.method === "PATCH" && path === "/account/business") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = businessAccountSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("business_accounts")
+      .upsert(
+        {
+          user_id: user.id,
+          shop_name: input.shopName,
+          gstin: input.gstin ? input.gstin.toUpperCase() : null,
+          business_phone: input.businessPhone ?? null,
+          billing_email: input.billingEmail ?? user.email,
+          billing_address: input.billingAddress ?? null,
+          city: input.city ?? null,
+          state: input.state ?? null,
+          pincode: input.pincode ?? null,
+          verification_status: "pending",
+        },
+        { onConflict: "user_id" },
+      )
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { businessAccount: data });
+  }
+
+  const productQuestionsMatch = matchRoute(path, /^\/products\/([^/]+)\/questions$/);
+  if (req.method === "GET" && productQuestionsMatch) {
+    const adminDb = getSupabaseAdmin();
+    const { productId } = productIdParamSchema.parse({ productId: productQuestionsMatch[1] });
+    const { data, error } = await adminDb
+      .from("product_questions")
+      .select("id,question,answer,status,created_at,answered_at")
+      .eq("product_id", productId)
+      .eq("status", "published")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    return json(req, 200, { questions: data ?? [] });
+  }
+
+  if (req.method === "POST" && path === "/product-questions") {
+    const adminDb = getSupabaseAdmin();
+    const user = await requireUser(req);
+    const input = productQuestionSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("product_questions")
+      .insert({
+        product_id: input.productId,
+        user_id: user.id,
+        question: input.question,
+        status: "pending",
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 201, { question: data });
+  }
+
+  if (req.method === "GET" && path === "/admin/product-questions") {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { data, error } = await adminDb
+      .from("product_questions")
+      .select("*,products(id,title,image,brand)")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return json(req, 200, { questions: data ?? [] });
+  }
+
+  const adminQuestionMatch = matchRoute(path, /^\/admin\/product-questions\/([^/]+)$/);
+  if (req.method === "PATCH" && adminQuestionMatch) {
+    const adminDb = getSupabaseAdmin();
+    const adminUser = await requireAdmin(req);
+    const { orderId: questionId } = orderIdParamSchema.parse({ orderId: adminQuestionMatch[1] });
+    const input = adminQuestionUpdateSchema.parse(await req.json());
+    const payload: Record<string, unknown> = {};
+    if ("answer" in input) {
+      payload.answer = input.answer || null;
+      payload.answered_by = adminUser.id;
+      payload.answered_at = input.answer ? new Date().toISOString() : null;
+    }
+    if (input.status) payload.status = input.status;
+    if (Object.keys(payload).length === 0) throw new HttpError(400, "No question update supplied");
+    const { data, error } = await adminDb
+      .from("product_questions")
+      .update(payload)
+      .eq("id", questionId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { question: data });
+  }
+
+  if (req.method === "GET" && path === "/admin/stock-notification-events") {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { data, error } = await adminDb
+      .from("stock_notification_events")
+      .select("*,products(id,title,image,brand,stock)")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return json(req, 200, { events: data ?? [] });
+  }
+
+  const adminStockEventMatch = matchRoute(path, /^\/admin\/stock-notification-events\/([^/]+)$/);
+  if (req.method === "PATCH" && adminStockEventMatch) {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { orderId: eventId } = orderIdParamSchema.parse({ orderId: adminStockEventMatch[1] });
+    const input = z.object({ status: z.enum(["pending", "sent", "failed", "cancelled"]) }).parse(await req.json());
+    const { data, error } = await adminDb
+      .from("stock_notification_events")
+      .update({
+        status: input.status,
+        processed_at: input.status === "pending" ? null : new Date().toISOString(),
+      })
+      .eq("id", eventId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { event: data });
+  }
+
+  const adminCancellationMatch = matchRoute(path, /^\/admin\/cancellation-requests\/([^/]+)$/);
+  if (req.method === "POST" && adminCancellationMatch) {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { orderId: cancellationId } = orderIdParamSchema.parse({
+      orderId: adminCancellationMatch[1],
+    });
+    const input = adminWorkflowActionSchema.parse(await req.json());
+    const status =
+      input.action === "approve"
+        ? "refund_pending"
+        : input.action === "reject"
+          ? "rejected"
+          : "closed";
+    const { data: requestRow, error: requestError } = await adminDb
+      .from("order_cancellation_requests")
+      .update({
+        status,
+        admin_note: input.note || null,
+        resolved_at: input.action === "reject" || input.action === "close" ? new Date().toISOString() : null,
+      })
+      .eq("id", cancellationId)
+      .select("*")
+      .single();
+    if (requestError) throw requestError;
+    if (input.action === "approve") {
+      await adminDb
+        .from("orders")
+        .update({ status: "cancelled" })
+        .eq("id", requestRow.order_id);
+    }
+    return json(req, 200, { cancellationRequest: requestRow });
+  }
+
+  const adminReturnMatch = matchRoute(path, /^\/admin\/return-requests\/([^/]+)$/);
+  if (req.method === "POST" && adminReturnMatch) {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { orderId: returnRequestId } = orderIdParamSchema.parse({ orderId: adminReturnMatch[1] });
+    const input = adminWorkflowActionSchema.parse(await req.json());
+    const status =
+      input.action === "approve"
+        ? "approved"
+        : input.action === "reject"
+          ? "rejected"
+          : input.action === "receive"
+            ? "refund_pending"
+            : "closed";
+    const { data: requestRow, error: requestError } = await adminDb
+      .from("return_requests")
+      .update({
+        status,
+        admin_note: input.note || null,
+        received_at: input.action === "receive" ? new Date().toISOString() : undefined,
+        resolved_at: input.action === "reject" || input.action === "close" ? new Date().toISOString() : undefined,
+      })
+      .eq("id", returnRequestId)
+      .select("*")
+      .single();
+    if (requestError) throw requestError;
+    if (input.action === "approve") {
+      await adminDb.from("orders").update({ status: "return_approved" }).eq("id", requestRow.order_id);
+    }
+    if (input.action === "receive") {
+      await adminDb.from("orders").update({ status: "return_received" }).eq("id", requestRow.order_id);
+    }
+    return json(req, 200, { returnRequest: requestRow });
+  }
+
+  if (req.method === "POST" && path === "/admin/refunds") {
+    const adminDb = getSupabaseAdmin();
+    const adminUser = await requireAdmin(req);
+    const input = adminRefundSchema.parse(await req.json());
+    const [{ data: order, error: orderError }, { data: payment, error: paymentError }] =
+      await Promise.all([
+        adminDb.from("orders").select("*").eq("id", input.orderId).maybeSingle(),
+        adminDb
+          .from("payments")
+          .select("*")
+          .eq("order_id", input.orderId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+    if (orderError) throw orderError;
+    if (paymentError) throw paymentError;
+    if (!order) throw new HttpError(404, "Order not found");
+    if (String(payment?.provider ?? "").toLowerCase() === "cod") {
+      const amount = roundMoney(input.amount ?? Number(order.total ?? payment.amount ?? 0));
+      const { data: refundRow, error: refundInsertError } = await adminDb
+        .from("refunds")
+        .insert({
+          order_id: input.orderId,
+          payment_id: payment.id,
+          cancellation_request_id: input.cancellationRequestId ?? null,
+          return_request_id: input.returnRequestId ?? null,
+          provider: "razorpay",
+          amount,
+          status: "processed",
+          reason: input.reason || "COD order closed without online refund",
+          speed: input.speed,
+          requested_by: adminUser.id,
+          raw_payload: { provider: "cod", note: "No online payment was captured" },
+          processed_at: new Date().toISOString(),
+        })
+        .select("*")
+        .single();
+      if (refundInsertError) throw refundInsertError;
+      if (input.cancellationRequestId) {
+        await adminDb
+          .from("order_cancellation_requests")
+          .update({
+            status: "closed",
+            refund_id: refundRow.id,
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("id", input.cancellationRequestId);
+      }
+      await adminDb.from("orders").update({ payment_status: "cod_cancelled" }).eq("id", input.orderId);
+      return json(req, 200, { refund: refundRow, cod: true });
+    }
+    if (!payment?.provider_payment_id) throw new HttpError(409, "Order does not have a Razorpay payment id");
+    const amount = roundMoney(input.amount ?? Number(order.total ?? payment.amount ?? 0));
+    if (amount <= 0) throw new HttpError(400, "Refund amount must be positive");
+    if (amount > Number(payment.amount ?? order.total ?? 0)) {
+      throw new HttpError(400, "Refund amount cannot exceed paid amount");
+    }
+    const { data: refundRow, error: refundInsertError } = await adminDb
+      .from("refunds")
+      .insert({
+        order_id: input.orderId,
+        payment_id: payment.id,
+        cancellation_request_id: input.cancellationRequestId ?? null,
+        return_request_id: input.returnRequestId ?? null,
+        amount,
+        status: "pending",
+        reason: input.reason || null,
+        speed: input.speed,
+        requested_by: adminUser.id,
+      })
+      .select("*")
+      .single();
+    if (refundInsertError) throw refundInsertError;
+    const providerRefund = await createRazorpayRefund({
+      paymentId: String(payment.provider_payment_id),
+      amountPaise: toPaise(amount),
+      speed: input.speed,
+      notes: {
+        lapkart_order_id: input.orderId,
+        lapkart_refund_id: refundRow.id,
+      },
+    });
+    const providerStatus = String(providerRefund.status ?? "created").toLowerCase();
+    const { data: updatedRefund, error: refundUpdateError } = await adminDb
+      .from("refunds")
+      .update({
+        provider_refund_id: firstString(providerRefund.id),
+        status: providerStatus === "processed" ? "processed" : "created",
+        raw_payload: providerRefund,
+        processed_at: providerStatus === "processed" ? new Date().toISOString() : null,
+      })
+      .eq("id", refundRow.id)
+      .select("*")
+      .single();
+    if (refundUpdateError) throw refundUpdateError;
+    if (input.cancellationRequestId) {
+      await adminDb
+        .from("order_cancellation_requests")
+        .update({
+          status: "refunded",
+          refund_id: refundRow.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", input.cancellationRequestId);
+      await adminDb.from("orders").update({ payment_status: "refunded" }).eq("id", input.orderId);
+    }
+    if (input.returnRequestId) {
+      await adminDb
+        .from("return_requests")
+        .update({
+          status: "refunded",
+          refund_id: refundRow.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", input.returnRequestId);
+      await adminDb.from("orders").update({ payment_status: "refunded" }).eq("id", input.orderId);
+    }
+    return json(req, 200, { refund: updatedRefund, razorpay: providerRefund });
   }
 
   if (req.method === "POST" && path === "/shipments/shiprocket/create") {
@@ -1364,6 +2557,13 @@ async function handle(req: Request) {
     const { data: order, error: orderError } = await adminDb.from("orders").select("*").eq("id", input.orderId).maybeSingle();
     if (orderError) throw orderError;
     if (!order) throw new HttpError(404, "Order not found");
+    if (
+      ["cancelled", "cancellation_requested", "return_requested", "refunded"].includes(
+        String(order.status ?? "").toLowerCase(),
+      )
+    ) {
+      throw new HttpError(409, "This order is not eligible for shipment creation");
+    }
     const items = await getOrderItemsWithSku([input.orderId]);
     if (!items.length) throw new HttpError(400, "Order has no items");
     const { data: existingShipment, error: existingShipmentError } = await adminDb
@@ -1767,6 +2967,98 @@ async function handle(req: Request) {
     return json(req, 200, { deleted: true, productId });
   }
 
+  if (req.method === "GET" && path === "/admin/coupons") {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const [{ data: coupons, error: couponsError }, { data: redemptions, error: redemptionsError }] =
+      await Promise.all([
+        adminDb.from("coupons").select("*").order("created_at", { ascending: false }),
+        adminDb.from("coupon_redemptions").select("coupon_id,discount_amount"),
+      ]);
+    if (couponsError) throw couponsError;
+    if (redemptionsError) throw redemptionsError;
+    const usage = new Map<string, { count: number; discount: number }>();
+    for (const redemption of redemptions ?? []) {
+      const current = usage.get(redemption.coupon_id) ?? { count: 0, discount: 0 };
+      current.count += 1;
+      current.discount += Number(redemption.discount_amount ?? 0);
+      usage.set(redemption.coupon_id, current);
+    }
+    return json(req, 200, {
+      coupons: (coupons ?? []).map((coupon) => ({
+        id: coupon.id,
+        code: coupon.code,
+        description: coupon.description,
+        discountType: coupon.discount_type,
+        discountValue: Number(coupon.discount_value ?? 0),
+        minimumSubtotal: Number(coupon.minimum_subtotal ?? 0),
+        maxDiscount: coupon.max_discount === null ? null : Number(coupon.max_discount),
+        startsAt: coupon.starts_at,
+        endsAt: coupon.ends_at,
+        usageLimit: coupon.usage_limit,
+        perUserLimit: coupon.per_user_limit,
+        active: coupon.active,
+        createdAt: coupon.created_at,
+        updatedAt: coupon.updated_at,
+        usedCount: usage.get(coupon.id)?.count ?? 0,
+        discountGiven: roundMoney(usage.get(coupon.id)?.discount ?? 0),
+      })),
+    });
+  }
+
+  if (req.method === "POST" && path === "/admin/coupons") {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const input = couponWriteSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("coupons")
+      .insert(couponPayloadFromInput(input))
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 201, { coupon: data });
+  }
+
+  const couponMatch = matchRoute(path, /^\/admin\/coupons\/([^/]+)$/);
+  if (req.method === "PATCH" && couponMatch) {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { couponId } = z.object({ couponId: z.string().uuid() }).parse({ couponId: couponMatch[1] });
+    const input = couponPatchSchema.parse(await req.json());
+    const { data, error } = await adminDb
+      .from("coupons")
+      .update(couponPayloadFromInput(input))
+      .eq("id", couponId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return json(req, 200, { coupon: data });
+  }
+
+  if (req.method === "DELETE" && couponMatch) {
+    const adminDb = getSupabaseAdmin();
+    await requireAdmin(req);
+    const { couponId } = z.object({ couponId: z.string().uuid() }).parse({ couponId: couponMatch[1] });
+    const { count, error: usageError } = await adminDb
+      .from("coupon_redemptions")
+      .select("id", { count: "exact", head: true })
+      .eq("coupon_id", couponId);
+    if (usageError) throw usageError;
+    if ((count ?? 0) > 0) {
+      const { data, error } = await adminDb
+        .from("coupons")
+        .update({ active: false })
+        .eq("id", couponId)
+        .select("id,active")
+        .single();
+      if (error) throw error;
+      return json(req, 200, { deactivated: true, coupon: data });
+    }
+    const { error } = await adminDb.from("coupons").delete().eq("id", couponId);
+    if (error) throw error;
+    return json(req, 200, { deleted: true, couponId });
+  }
+
   if (req.method === "GET" && path === "/admin/users") {
     const adminDb = getSupabaseAdmin();
     await requireAdmin(req);
@@ -1881,7 +3173,7 @@ async function handle(req: Request) {
     if (authUsersResult.error) throw authUsersResult.error;
     const orderIds = (orders ?? []).map((order) => order.id);
     const userEmailById = new Map((authUsersResult.data.users ?? []).map((user) => [user.id, user.email ?? null]));
-    const [itemsResult, shipmentsResult, paymentsResult] = orderIds.length
+    const [itemsResult, shipmentsResult, paymentsResult, cancellationsResult, returnsResult, refundsResult, invoicesResult] = orderIds.length
       ? await Promise.all([
           adminDb.from("order_items").select("order_id,title,qty").in("order_id", orderIds),
           adminDb
@@ -1892,11 +3184,42 @@ async function handle(req: Request) {
             .from("payments")
             .select("order_id,status,provider_payment_id,provider_order_id,created_at")
             .in("order_id", orderIds),
+          adminDb
+            .from("order_cancellation_requests")
+            .select("id,order_id,status,reason,admin_note,requested_at,refund_id")
+            .in("order_id", orderIds)
+            .order("requested_at", { ascending: false }),
+          adminDb
+            .from("return_requests")
+            .select("id,order_id,status,reason,admin_note,requested_at,refund_id")
+            .in("order_id", orderIds)
+            .order("requested_at", { ascending: false }),
+          adminDb
+            .from("refunds")
+            .select("id,order_id,amount,status,provider_refund_id,created_at,cancellation_request_id,return_request_id")
+            .in("order_id", orderIds)
+            .order("created_at", { ascending: false }),
+          adminDb
+            .from("order_invoices")
+            .select("order_id,invoice_number,invoice_url,status,generated_at")
+            .in("order_id", orderIds),
         ])
-      : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
     if (itemsResult.error) throw itemsResult.error;
     if (shipmentsResult.error) throw shipmentsResult.error;
     if (paymentsResult.error) throw paymentsResult.error;
+    if (cancellationsResult.error) throw cancellationsResult.error;
+    if (returnsResult.error) throw returnsResult.error;
+    if (refundsResult.error) throw refundsResult.error;
+    if (invoicesResult.error) throw invoicesResult.error;
     const itemSummaryByOrder = new Map<string, string>();
     for (const item of itemsResult.data ?? []) {
       const existing = itemSummaryByOrder.get(item.order_id) ?? "";
@@ -1904,6 +3227,17 @@ async function handle(req: Request) {
       itemSummaryByOrder.set(item.order_id, existing ? `${existing}, ${nextItem}` : nextItem);
     }
     const shipmentByOrder = new Map((shipmentsResult.data ?? []).map((shipment) => [shipment.order_id, shipment]));
+    const latestByOrder = <T extends { order_id: string }>(rows: T[]) => {
+      const map = new Map<string, T>();
+      for (const row of rows) {
+        if (!map.has(row.order_id)) map.set(row.order_id, row);
+      }
+      return map;
+    };
+    const cancellationByOrder = latestByOrder((cancellationsResult.data ?? []) as Array<{ order_id: string }>);
+    const returnByOrder = latestByOrder((returnsResult.data ?? []) as Array<{ order_id: string }>);
+    const refundByOrder = latestByOrder((refundsResult.data ?? []) as Array<{ order_id: string }>);
+    const invoiceByOrder = new Map((invoicesResult.data ?? []).map((invoice) => [invoice.order_id, invoice]));
     const paymentByOrder = new Map(
       (paymentsResult.data ?? [])
         .slice()
@@ -1953,6 +3287,10 @@ async function handle(req: Request) {
                 providerOrderId: payment.provider_order_id,
               }
             : null,
+          cancellationRequest: cancellationByOrder.get(order.id) ?? null,
+          returnRequest: returnByOrder.get(order.id) ?? null,
+          refund: refundByOrder.get(order.id) ?? null,
+          invoice: invoiceByOrder.get(order.id) ?? null,
         };
       }),
     });
