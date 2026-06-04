@@ -54,7 +54,7 @@ const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? "";
 const olaMapsStyleUrl = import.meta.env.VITE_OLA_MAPS_STYLE_URL ?? "";
 const defaultOlaMapsStyleUrl =
   "https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json";
-const defaultCenter = { latitude: 12.9716, longitude: 77.5946 };
+const defaultCenter = { latitude: 13.0827, longitude: 80.2707 };
 const fallbackRasterStyle = {
   version: 8,
   sources: {
@@ -369,6 +369,7 @@ export function DeliveryMapPicker({
           type="button"
           onClick={useBrowserLocation}
           disabled={locating}
+          aria-label="Use browser GPS for delivery pin"
           className="mt-4 inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] px-4 text-label-medium disabled:opacity-60"
         >
           <LocateFixed className="size-4" />
@@ -390,18 +391,30 @@ export function DeliveryMapPicker({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            name="delivery-search"
+            autoComplete="off"
+            role="combobox"
+            aria-label="Search delivery address"
+            aria-controls="delivery-address-suggestions"
+            aria-expanded={suggestions.length > 0}
             placeholder="Enter area, landmark, or pincode"
-            className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white pl-9 pr-10 text-body-small outline-none focus:border-[var(--heat-100)]"
+            className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white pl-9 pr-10 text-body-small focus-visible:border-[var(--heat-100)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--heat-12)]"
           />
           {searching && (
             <Loader2 className="absolute right-3 top-3 size-4 animate-spin text-[var(--heat-100)]" />
           )}
           {suggestions.length > 0 && (
-            <div className="absolute inset-x-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-md border border-[var(--border-muted)] bg-white shadow-[0_16px_32px_rgba(0,0,0,0.12)]">
+            <div
+              id="delivery-address-suggestions"
+              role="listbox"
+              className="absolute inset-x-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-md border border-[var(--border-muted)] bg-white shadow-[0_16px_32px_rgba(0,0,0,0.12)]"
+            >
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.placeId}
                   type="button"
+                  role="option"
+                  aria-selected="false"
                   onClick={() => selectSuggestion(suggestion)}
                   className="flex w-full items-start gap-3 border-b border-[var(--border-faint)] px-3 py-3 text-left last:border-b-0 hover:bg-[var(--background-lighter)]"
                 >
@@ -429,7 +442,7 @@ export function DeliveryMapPicker({
         />
         <div
           ref={containerRef}
-          className="absolute inset-0 z-[1] size-full touch-none"
+          className="absolute inset-0 z-[1] size-full touch-auto"
           style={{ position: "absolute" }}
         />
         <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center">
@@ -469,6 +482,7 @@ export function DeliveryMapPicker({
             type="button"
             onClick={useBrowserLocation}
             disabled={locating}
+            aria-label="Use browser GPS for delivery pin"
             className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] px-4 text-label-medium disabled:opacity-60"
           >
             <LocateFixed className="size-4" />
@@ -478,6 +492,7 @@ export function DeliveryMapPicker({
             type="button"
             onClick={useMapCenter}
             disabled={resolving}
+            aria-label="Confirm current map center as delivery pin"
             className="button button-primary relative inline-flex h-10 items-center gap-2 rounded-md px-4 text-label-medium disabled:opacity-60"
           >
             {resolving ? (

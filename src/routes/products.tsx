@@ -1,10 +1,10 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { ProductGridSkeleton } from "@/components/LoadingSkeletons";
 import { ProductCard } from "@/components/ProductCard";
-import { categories, discountPct } from "@/lib/catalog";
+import { categories, discountPct, formatINR } from "@/lib/catalog";
 import { useProducts } from "@/lib/products-db";
 import { SlidersHorizontal, X } from "lucide-react";
 
@@ -145,7 +145,10 @@ function ProductsPage() {
                     : "All components"}
               </h1>
               <p className="mt-1 text-body-medium text-[var(--black-alpha-56)]">
-                <span className="font-medium text-foreground">{sorted.length}</span> products
+                <span className="font-medium text-foreground" suppressHydrationWarning>
+                  {sorted.length}
+                </span>{" "}
+                products
                 {category && ` in ${currentCategory?.name.toLowerCase()}`}
               </p>
             </div>
@@ -173,6 +176,7 @@ function ProductsPage() {
                   key={filter.key}
                   type="button"
                   onClick={() => updateSearch({ [filter.key]: undefined })}
+                  aria-label={`Remove ${filter.label} filter`}
                   className="inline-flex h-8 items-center gap-2 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-3 text-label-small text-[var(--heat-100)]"
                 >
                   {filter.label}
@@ -182,6 +186,7 @@ function ProductsPage() {
               <button
                 type="button"
                 onClick={() => void navigate({ to: "/products", search: {} })}
+                aria-label="Clear all product filters"
                 className="inline-flex h-8 items-center rounded-full border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
               >
                 Clear all
@@ -197,6 +202,7 @@ function ProductsPage() {
             <Link
               to="/products"
               search={q ? { q } : undefined}
+              aria-current={!category ? "page" : undefined}
               className={`shrink-0 rounded-full border px-4 py-2 text-label-small transition-colors ${
                 !category
                   ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
@@ -212,6 +218,7 @@ function ProductsPage() {
                   key={item.slug}
                   to="/products"
                   search={q ? { category: item.slug, q } : { category: item.slug }}
+                  aria-current={active ? "page" : undefined}
                   className={`shrink-0 rounded-full border px-4 py-2 text-label-small transition-colors ${
                     active
                       ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
@@ -222,6 +229,83 @@ function ProductsPage() {
                 </Link>
               );
             })}
+          </div>
+          <div className="mt-4 grid gap-4 rounded-lg border border-[var(--border-faint)] bg-white p-4 lg:hidden">
+            <div className="flex items-center gap-2 text-mono-x-small uppercase tracking-[0.18em] text-[var(--black-alpha-48)]">
+              <SlidersHorizontal className="size-3" /> Refine Results
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="mb-1.5 block text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+                  Brand
+                </span>
+                <select
+                  value={brand ?? ""}
+                  onChange={(event) => updateSearch({ brand: event.target.value || undefined })}
+                  className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small text-foreground"
+                >
+                  <option value="">Any brand</option>
+                  {brandOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1.5 block text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+                  Rating
+                </span>
+                <select
+                  value={minRating ?? ""}
+                  onChange={(event) => updateSearch({ minRating: event.target.value || undefined })}
+                  className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small text-foreground"
+                >
+                  <option value="">Any rating</option>
+                  <option value="4.5">4.5 and above</option>
+                  <option value="4">4.0 and above</option>
+                  <option value="3.5">3.5 and above</option>
+                </select>
+              </label>
+              <div>
+                <span className="mb-1.5 block text-mono-x-small uppercase tracking-[0.14em] text-[var(--black-alpha-48)]">
+                  Price
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={minPrice ?? ""}
+                    onChange={(event) => updateSearch({ minPrice: event.target.value })}
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    aria-label="Minimum price"
+                    placeholder="Min"
+                    className="h-10 rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small"
+                  />
+                  <input
+                    value={maxPrice ?? ""}
+                    onChange={(event) => updateSearch({ maxPrice: event.target.value })}
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    aria-label="Maximum price"
+                    placeholder="Max"
+                    className="h-10 rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small"
+                  />
+                </div>
+              </div>
+              <label className="flex h-10 cursor-pointer items-center gap-3 rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground">
+                <input
+                  type="checkbox"
+                  checked={inStock === "true"}
+                  onChange={(event) =>
+                    updateSearch({ inStock: event.target.checked ? "true" : undefined })
+                  }
+                  className="size-4 accent-[var(--heat-100)]"
+                />
+                In stock only
+              </label>
+            </div>
           </div>
         </div>
 
@@ -235,6 +319,7 @@ function ProductsPage() {
                 <button
                   type="button"
                   onClick={() => updateSearch({ category: undefined, brand: undefined })}
+                  aria-pressed={!category}
                   className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-label-small transition-colors ${
                     !category
                       ? "bg-[var(--heat-8)] text-[var(--heat-100)]"
@@ -255,6 +340,7 @@ function ProductsPage() {
                     <button
                       type="button"
                       onClick={() => updateSearch({ category: item.slug, brand: undefined })}
+                      aria-pressed={active}
                       className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-label-small transition-colors ${
                         active
                           ? "bg-[var(--heat-8)] text-[var(--heat-100)]"
@@ -292,14 +378,20 @@ function ProductsPage() {
               <input
                 value={minPrice ?? ""}
                 onChange={(event) => updateSearch({ minPrice: event.target.value })}
+                type="number"
+                min={0}
                 inputMode="numeric"
+                aria-label="Minimum price"
                 placeholder="Min"
                 className="h-10 rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small"
               />
               <input
                 value={maxPrice ?? ""}
                 onChange={(event) => updateSearch({ maxPrice: event.target.value })}
+                type="number"
+                min={0}
                 inputMode="numeric"
+                aria-label="Maximum price"
                 placeholder="Max"
                 className="h-10 rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small"
               />
@@ -341,6 +433,9 @@ function ProductsPage() {
             <div className="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center">
               <p className="text-label-small text-[var(--heat-100)]">No matching parts</p>
               <p className="mt-3 text-body-large text-foreground">No products found.</p>
+              <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                Try removing a filter, widening the price range, or checking another category.
+              </p>
               <Link
                 to="/products"
                 className="button button-primary mt-6 inline-flex h-10 items-center gap-2 rounded-md px-5 text-label-medium"
@@ -381,5 +476,5 @@ function FilterGroup({ title, children }: { title: string; children: React.React
 
 function formatPrice(value: number) {
   if (!Number.isFinite(value)) return "";
-  return `₹${value.toLocaleString("en-IN")}`;
+  return formatINR(value);
 }

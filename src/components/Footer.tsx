@@ -15,7 +15,7 @@ export function Footer() {
     : isAdmin
       ? "Admin-only session"
       : "Fast dispatch, secure checkout, verified sourcing";
-  const footerLine = `${new Date().getFullYear()} LapKart. ${isAdmin ? "Operations console." : "Genuine parts marketplace."}`;
+  const footerLine = `2026 LapKart. ${isAdmin ? "Operations console." : "Genuine parts marketplace."}`;
 
   return (
     <footer className="relative mt-24 overflow-hidden bg-[var(--accent-black)] text-white/70">
@@ -86,7 +86,7 @@ export function Footer() {
                   : [
                       { label: "Contact us", to: "/contact" },
                       { label: "Shipping policy", to: "/shipping-policy" },
-                      { label: "7-day returns", to: "/returns-policy" },
+                      { label: "Returns policy", to: "/returns-policy" },
                       { label: "Cancellation and refunds", to: "/cancellation-refunds" },
                     ]
               }
@@ -132,7 +132,7 @@ export function Footer() {
             {footerLine}
           </p>
           <div className="text-mono-x-small uppercase tracking-wider text-white/40">
-            Bengaluru service desk | Monday to Saturday
+            Chennai service desk | Monday to Saturday
           </div>
         </div>
       </div>
@@ -156,7 +156,7 @@ function FootCol({
             {to ? (
               <Link
                 to={to}
-                className="group inline-flex items-center gap-1 text-body-small text-white/75 transition-colors hover:text-[var(--heat-100)]"
+                className="group inline-flex items-center gap-1 text-body-small text-white/75 transition-colors hover:text-[var(--heat-100)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--heat-100)]"
               >
                 {label}
                 <ArrowUpRight className="size-3 -translate-x-1 opacity-0 transition-[transform,opacity] group-hover:translate-x-0 group-hover:opacity-100" />

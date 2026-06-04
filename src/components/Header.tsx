@@ -28,14 +28,22 @@ export function Header() {
     const onClick = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
 
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    navigate({ to: "/products", search: query ? { q: query } : undefined });
+    const trimmedQuery = query.trim();
+    navigate({ to: "/products", search: trimmedQuery ? { q: trimmedQuery } : undefined });
   };
 
   return (
@@ -62,7 +70,11 @@ export function Header() {
       </div>
 
       <div className="container mx-auto flex items-center gap-4 px-4 py-3 sm:gap-8">
-        <Link to={isAdmin ? "/admin" : "/"} className="group flex items-baseline gap-2">
+        <Link
+          to={isAdmin ? "/admin" : "/"}
+          aria-label={isAdmin ? "Open LapKart admin home" : "Open LapKart home"}
+          className="group flex items-baseline gap-2"
+        >
           <Flame
             className="size-5 -translate-y-px text-[var(--heat-100)] transition-transform group-hover:rotate-6"
             strokeWidth={2.4}
@@ -83,6 +95,8 @@ export function Header() {
             <Search className="ml-3 size-[15px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--heat-100)]" />
             <input
               type="search"
+              name="q"
+              autoComplete="off"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               aria-label="Search laptop parts"
@@ -103,9 +117,11 @@ export function Header() {
           {user ? (
             <div ref={ref} className="relative">
               <button
+                type="button"
                 onClick={() => setOpen((current) => !current)}
                 aria-expanded={open}
                 aria-haspopup="menu"
+                aria-label={open ? "Close account menu" : "Open account menu"}
                 className="flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 text-label-small text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
               >
                 <div className="grid size-7 place-items-center rounded-full bg-[var(--heat-100)] text-mono-small font-medium text-white">
@@ -120,6 +136,7 @@ export function Header() {
               <AnimatePresence>
                 {open && (
                   <motion.div
+                    role="menu"
                     initial={{ opacity: 0, y: -6, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.97 }}
@@ -166,6 +183,8 @@ export function Header() {
                       </>
                     )}
                     <button
+                      type="button"
+                      role="menuitem"
                       onClick={async () => {
                         setOpen(false);
                         await signOut();
@@ -182,6 +201,7 @@ export function Header() {
           ) : (
             <Link
               to="/login"
+              aria-label="Sign in to LapKart"
               className="flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 py-1.5 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
             >
               <User className="size-4" />
@@ -192,6 +212,7 @@ export function Header() {
           {!isAdmin && (
             <Link
               to="/cart"
+              aria-label={count > 0 ? `Open cart with ${count} items` : "Open cart"}
               className="relative flex min-h-11 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-label-small text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
             >
               <ShoppingCart className="size-[18px]" />
@@ -219,6 +240,8 @@ export function Header() {
             <Search className="ml-3 size-[15px] text-[var(--black-alpha-40)]" />
             <input
               type="search"
+              name="q"
+              autoComplete="off"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               aria-label="Search laptop parts"
@@ -246,6 +269,7 @@ function MenuItem({
   return (
     <Link
       to={to}
+      role="menuitem"
       onClick={onClick}
       className="flex items-center gap-3 px-4 py-2.5 text-label-small text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
     >

@@ -27,24 +27,24 @@ Sources:
 
 ## Current Priority Queue
 
-| Priority | Feature | Customer Value | Admin Value | Status |
-| --- | --- | --- | --- | --- |
-| P0 | Product filters and sort | Finds the right part faster | Fewer support questions | Shipped |
-| P0 | Order cancellation request flow | Self-service cancellation before shipment | Admin approve/reject and stop fulfillment | Shipped |
-| P0 | Return request flow | Clear post-delivery return path | Admin decision, reverse pickup, refund/restock | Shipped, reverse pickup automation pending |
-| P0 | Refund records and Razorpay refund action | Transparent refund status | Safer refund audit trail | Shipped |
-| P1 | Public policy pages | Trust and Razorpay review readiness | Lower compliance friction | Shipped |
-| P1 | Product structured data | Better SEO/merchant eligibility | Cleaner catalog metadata | Shipped |
-| P1 | Wishlist/save for later | Easier repeat shopping | Intent signal | Shipped |
-| P1 | Product reviews/questions | Trust and compatibility validation | User feedback loop | Shipped |
-| P1 | Low stock/back-in-stock notifications | Prevents dead ends | Demand capture | Capture + admin outbox shipped, external email/WhatsApp delivery pending |
-| P1 | Authenticity, condition, GST, and DOA metadata | Shows trust and invoice readiness before checkout | Keeps SKU data consistent | Shipped |
-| P1 | Guardrailed COD | Reduces first-buyer friction | Controls RTO risk | Shipped for Chennai/capped eligible products |
-| P1 | Pro buyer account lite | GST/shop details for repeat buyers | Business buyer visibility | Shipped |
-| P2 | Delivery promise without hubs | Clear checkout ETA using current single-origin flow | Avoids impossible hub promises | Shipped |
-| P2 | Coupons/promotions | Conversion and retention | Campaign control | Shipped |
-| P2 | Bulk admin fulfillment actions | Faster packing and dispatch | Less repeated clicking | Partially present |
-| P2 | Invoice download | Buyer trust/accounting | Support reduction | Shipped |
+| Priority | Feature                                        | Customer Value                                      | Admin Value                                    | Status                                                           |
+| -------- | ---------------------------------------------- | --------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| P0       | Product filters and sort                       | Finds the right part faster                         | Fewer support questions                        | Shipped                                                          |
+| P0       | Order cancellation request flow                | Self-service cancellation before shipment           | Admin approve/reject and stop fulfillment      | Shipped                                                          |
+| P0       | Return request flow                            | Clear post-delivery return path                     | Admin decision, reverse pickup, refund/restock | Shipped with Shiprocket reverse pickup creation                  |
+| P0       | Refund records and Razorpay refund action      | Transparent refund status                           | Safer refund audit trail                       | Shipped                                                          |
+| P1       | Public policy pages                            | Trust and Razorpay review readiness                 | Lower compliance friction                      | Shipped                                                          |
+| P1       | Product structured data                        | Better SEO/merchant eligibility                     | Cleaner catalog metadata                       | Shipped                                                          |
+| P1       | Wishlist/save for later                        | Easier repeat shopping                              | Intent signal                                  | Shipped                                                          |
+| P1       | Product reviews/questions                      | Trust and compatibility validation                  | User feedback loop                             | Shipped                                                          |
+| P1       | Low stock/back-in-stock notifications          | Prevents dead ends                                  | Demand capture                                 | Shipped with admin send action and email/WhatsApp provider hooks |
+| P1       | Authenticity, condition, GST, and DOA metadata | Shows trust and invoice readiness before checkout   | Keeps SKU data consistent                      | Shipped                                                          |
+| P1       | Guardrailed COD                                | Reduces first-buyer friction                        | Controls RTO risk                              | Shipped for Chennai/capped eligible products                     |
+| P1       | Pro buyer account lite                         | GST/shop details for repeat buyers                  | Business buyer visibility                      | Shipped                                                          |
+| P2       | Delivery promise without hubs                  | Clear checkout ETA using current single-origin flow | Avoids impossible hub promises                 | Shipped with order-level promise snapshot                        |
+| P2       | Coupons/promotions                             | Conversion and retention                            | Campaign control                               | Shipped                                                          |
+| P2       | Bulk admin fulfillment actions                 | Faster packing and dispatch                         | Less repeated clicking                         | Shipped for AWB, pickup, labels, and tracking refresh            |
+| P2       | Invoice download                               | Buyer trust/accounting                              | Support reduction                              | Shipped                                                          |
 
 ## Implementation Notes
 
@@ -103,7 +103,8 @@ Shipped:
 - Supabase `return_requests` and `return_request_items` with RLS and Realtime.
 - Customer order detail can request returns for delivered orders inside the policy window.
 - Admin order workflow can approve/reject/mark received and trigger refund.
-- Reverse Shiprocket pickup creation is still pending because it needs final Shiprocket return-order API mapping and pickup policy confirmation.
+- Admin order workflow can create a Shiprocket reverse pickup for approved returns using Shiprocket's return-order API.
+- Reverse shipments are stored separately from outbound shipments so customer delivery tracking does not get overwritten by return logistics.
 
 ### Refunds
 
@@ -183,21 +184,33 @@ Shipped:
 
 - Stock changes from zero to positive queue `stock_notification_events`.
 - Admin Support tab lists queued events and lets operations mark them sent, failed, or cancelled.
+- Admin Support tab can send queued events through backend provider hooks.
+- Email delivery uses Resend when `RESEND_API_KEY` and `NOTIFICATION_EMAIL_FROM` are configured.
+- WhatsApp delivery uses WhatsApp Cloud API templates when `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_BACK_IN_STOCK_TEMPLATE` are configured.
 
 Pending:
 
-- External email/WhatsApp sending provider is not connected yet, so the outbox is operational but not automatically delivered.
+- Production sender credentials and approved WhatsApp template content must be added before real customer delivery.
 
 ### Delivery Promise Without Hubs
 
 Shipped:
 
 - Checkout summary receives a backend delivery promise based on the selected Shiprocket Quick or standard courier estimate.
+- Paid and COD orders store `delivery_promise_snapshot` with source, selected courier, route estimate, single-origin dispatch queue, stock status, and customer-facing promise text.
 - The app does not show hub-level promises because no delivery hubs exist yet.
 
 Deferred:
 
 - Zone/hub stock visibility, nearest-hub filtering, and SLA dashboards should wait until physical hubs or bin/location inventory actually exist.
+
+### Bulk Fulfillment And Live Tracking
+
+Shipped:
+
+- Admin fulfillment queue supports selecting multiple outbound shipments.
+- Bulk AWB assignment, pickup scheduling, label generation, and tracking refresh are handled by the backend and logged in `shipping_batches` / `shipping_batch_items`.
+- Shiprocket live tracking refresh can be run per shipment or in bulk, and webhook tracking events continue to update `shipment_events` in realtime.
 
 ## Rerun Inputs
 
@@ -205,3 +218,11 @@ workflow: firecrawl-deep-research
 topic: ecommerce missing features for LapKart, a laptop-parts ecommerce app with Supabase, Razorpay, Shiprocket, and Ola Maps
 depth: quick due Firecrawl hosted search credit error, with browser search fallback
 output: markdown tracker plus incremental implementation
+
+                                                                                                   
+  For real back-in-stock sending, configure these Edge Function secrets:                              
+                                                                                                      
+  - RESEND_API_KEY                                                                                    
+  - NOTIFICATION_EMAIL_FROM                                                                           
+  - Optional WhatsApp: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID,                               
+    WHATSAPP_BACK_IN_STOCK_TEMPLATE              

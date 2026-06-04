@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Product } from "@/lib/catalog";
@@ -58,15 +57,8 @@ function normalize(r: Row): Product {
 const SELECT =
   "id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible";
 
-function useHydrated() {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-  return hydrated;
-}
-
 export function useProducts() {
-  const hydrated = useHydrated();
-  const query = useQuery({
+  return useQuery({
     queryKey: ["products", "all"],
     queryFn: async (): Promise<Product[]> => {
       const { data, error } = await supabase
@@ -78,16 +70,9 @@ export function useProducts() {
     },
     staleTime: 60_000,
   });
-  return {
-    ...query,
-    data: hydrated ? query.data : undefined,
-    isLoading: !hydrated || query.isLoading,
-  };
 }
-
 export function useProduct(id: string | undefined) {
-  const hydrated = useHydrated();
-  const query = useQuery({
+  return useQuery({
     queryKey: ["products", "by-id", id],
     enabled: !!id,
     queryFn: async (): Promise<Product | null> => {
@@ -101,17 +86,11 @@ export function useProduct(id: string | undefined) {
     },
     staleTime: 60_000,
   });
-  return {
-    ...query,
-    data: hydrated ? query.data : undefined,
-    isLoading: !hydrated || query.isLoading,
-  };
 }
 
 export function useProductsByIds(ids: string[]) {
-  const hydrated = useHydrated();
   const key = [...new Set(ids)].sort();
-  const query = useQuery({
+  return useQuery({
     queryKey: ["products", "by-ids", key],
     enabled: key.length > 0,
     queryFn: async (): Promise<Product[]> => {
@@ -121,9 +100,5 @@ export function useProductsByIds(ids: string[]) {
     },
     staleTime: 60_000,
   });
-  return {
-    ...query,
-    data: hydrated ? query.data : undefined,
-    isLoading: !hydrated || query.isLoading,
-  };
 }
+

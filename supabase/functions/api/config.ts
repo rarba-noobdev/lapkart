@@ -40,4 +40,9 @@ export const config = {
   olaMapsApiKey: Deno.env.get("OLA_MAPS_API_KEY") ?? "",
   olaMapsClientId: Deno.env.get("OLA_MAPS_CLIENT_ID") ?? "",
   olaMapsClientSecret: Deno.env.get("OLA_MAPS_CLIENT_SECRET") ?? "",
+  notificationEmailFrom: Deno.env.get("NOTIFICATION_EMAIL_FROM") ?? "",
+  resendApiKey: Deno.env.get("RESEND_API_KEY") ?? "",
+  whatsappAccessToken: Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "",
+  whatsappPhoneNumberId: Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "",
+  whatsappBackInStockTemplate: Deno.env.get("WHATSAPP_BACK_IN_STOCK_TEMPLATE") ?? "",
 };

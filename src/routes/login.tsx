@@ -34,15 +34,16 @@ function LoginPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
+    const normalizedEmail = email.trim().toLowerCase();
 
     try {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
-          email,
+          email: normalizedEmail,
           password,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { full_name: name || email.split("@")[0] },
+            data: { full_name: name.trim() || normalizedEmail.split("@")[0] },
           },
         });
 
@@ -50,7 +51,10 @@ function LoginPage() {
         toast.success("Account created. Check your email, then sign in.");
         setMode("login");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
         if (error) throw error;
         toast.success("Welcome back");
         navigate({ to: redirectPath });
@@ -141,6 +145,7 @@ function LoginPage() {
           </p>
 
           <button
+            type="button"
             onClick={google}
             disabled={busy}
             className="mt-8 flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-medium text-foreground transition-[border-color,background-color,color] hover:border-[var(--heat-20)] hover:bg-[var(--heat-4)] disabled:opacity-50"
@@ -177,6 +182,7 @@ function LoginPage() {
               <FormField icon={User} label="Full name">
                 <input
                   type="text"
+                  name="name"
                   autoComplete="name"
                   placeholder="Your name"
                   value={name}
@@ -190,7 +196,10 @@ function LoginPage() {
               <input
                 type="email"
                 required
+                name="email"
                 autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="you@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -202,6 +211,7 @@ function LoginPage() {
               <input
                 type="password"
                 required
+                name="password"
                 minLength={6}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 placeholder="Minimum 6 characters"

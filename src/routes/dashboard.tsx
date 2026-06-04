@@ -1,6 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+﻿import { createFileRoute, Link } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type HTMLAttributes,
+  type HTMLInputTypeAttribute,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
 import { useAuth } from "@/lib/auth";
@@ -9,6 +16,7 @@ import { apiBase } from "@/lib/api-base";
 import { formatINR } from "@/lib/catalog";
 import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
+import { SmartTime } from "@/components/SmartTime";
 import {
   Building2,
   CreditCard,
@@ -295,11 +303,7 @@ function CustomerDashboard() {
                           #{order.id.slice(0, 8).toUpperCase()}
                         </p>
                         <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
-                          {new Date(order.created_at).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          <SmartTime date={order.created_at} />
                         </p>
                       </div>
                       <div className="text-right">
@@ -372,11 +376,15 @@ function CustomerDashboard() {
             <div className="grid gap-4 md:grid-cols-2">
               <BusinessInput
                 label="Shop name"
+                name="shopName"
+                autoComplete="organization"
                 value={businessForm.shopName}
                 onChange={(shopName) => setBusinessForm((current) => ({ ...current, shopName }))}
               />
               <BusinessInput
                 label="GSTIN"
+                name="gstin"
+                autoComplete="off"
                 value={businessForm.gstin}
                 onChange={(gstin) =>
                   setBusinessForm((current) => ({ ...current, gstin: gstin.toUpperCase() }))
@@ -384,6 +392,10 @@ function CustomerDashboard() {
               />
               <BusinessInput
                 label="Business phone"
+                name="businessPhone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
                 value={businessForm.businessPhone}
                 onChange={(businessPhone) =>
                   setBusinessForm((current) => ({ ...current, businessPhone }))
@@ -391,6 +403,9 @@ function CustomerDashboard() {
               />
               <BusinessInput
                 label="Billing email"
+                name="billingEmail"
+                type="email"
+                autoComplete="email"
                 value={businessForm.billingEmail}
                 onChange={(billingEmail) =>
                   setBusinessForm((current) => ({ ...current, billingEmail }))
@@ -398,6 +413,8 @@ function CustomerDashboard() {
               />
               <BusinessInput
                 label="Billing address"
+                name="billingAddress"
+                autoComplete="street-address"
                 value={businessForm.billingAddress}
                 onChange={(billingAddress) =>
                   setBusinessForm((current) => ({ ...current, billingAddress }))
@@ -406,16 +423,23 @@ function CustomerDashboard() {
               />
               <BusinessInput
                 label="City"
+                name="city"
+                autoComplete="address-level2"
                 value={businessForm.city}
                 onChange={(city) => setBusinessForm((current) => ({ ...current, city }))}
               />
               <BusinessInput
                 label="State"
+                name="state"
+                autoComplete="address-level1"
                 value={businessForm.state}
                 onChange={(state) => setBusinessForm((current) => ({ ...current, state }))}
               />
               <BusinessInput
                 label="Pincode"
+                name="pincode"
+                autoComplete="postal-code"
+                inputMode="numeric"
                 value={businessForm.pincode}
                 onChange={(pincode) =>
                   setBusinessForm((current) => ({
@@ -447,13 +471,21 @@ function CustomerDashboard() {
 
 function BusinessInput({
   label,
+  name,
   value,
   onChange,
+  type = "text",
+  autoComplete,
+  inputMode,
   className = "",
 }: {
   label: string;
+  name: string;
   value: string;
   onChange: (value: string) => void;
+  type?: HTMLInputTypeAttribute;
+  autoComplete?: string;
+  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   className?: string;
 }) {
   return (
@@ -462,9 +494,13 @@ function BusinessInput({
         {label}
       </span>
       <input
+        type={type}
+        name={name}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground outline-none focus:border-[var(--heat-100)]"
+        className="h-11 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-medium text-foreground focus-visible:border-[var(--heat-100)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--heat-12)]"
       />
     </label>
   );

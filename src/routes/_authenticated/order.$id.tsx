@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, ExternalLink, Loader2, Package, Truck } from "lucide-react";
@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { formatINR } from "@/lib/catalog";
 import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
+import { SmartTime } from "@/components/SmartTime";
 
 export const Route = createFileRoute("/_authenticated/order/$id")({
   head: () => ({ meta: [{ title: "Order confirmed - lapkart" }] }),
@@ -367,7 +368,7 @@ function OrderPage() {
             {
               icon: CheckCircle2,
               label: "Confirmed",
-              note: "Just now",
+              note: <SmartTime date={order.created_at} />,
               active: true,
               current: true,
             },
@@ -508,13 +509,16 @@ function OrderPage() {
               <p className="text-label-small text-foreground">Cancel order</p>
               {latestCancellation ? (
                 <p className="mt-2 text-body-small text-[var(--black-alpha-64)]">
-                  Latest request: {latestCancellation.status.replaceAll("_", " ")}
+                  Latest request: {latestCancellation.status.replaceAll("_", " ")} /{" "}
+                  <SmartTime date={latestCancellation.requested_at} />
                 </p>
               ) : capabilities.canCancel ? (
                 <div className="mt-3 space-y-3">
                   <textarea
                     value={cancelReason}
                     onChange={(event) => setCancelReason(event.target.value)}
+                    name="cancellationReason"
+                    aria-label="Cancellation reason"
                     rows={3}
                     placeholder="Why do you want to cancel?"
                     className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
@@ -539,13 +543,16 @@ function OrderPage() {
               <p className="text-label-small text-foreground">Return items</p>
               {latestReturn ? (
                 <p className="mt-2 text-body-small text-[var(--black-alpha-64)]">
-                  Latest request: {latestReturn.status.replaceAll("_", " ")}
+                  Latest request: {latestReturn.status.replaceAll("_", " ")} /{" "}
+                  <SmartTime date={latestReturn.requested_at} />
                 </p>
               ) : capabilities.canReturn ? (
                 <div className="mt-3 space-y-3">
                   <textarea
                     value={returnReason}
                     onChange={(event) => setReturnReason(event.target.value)}
+                    name="returnReason"
+                    aria-label="Return reason and condition"
                     rows={3}
                     placeholder="Describe the return reason and condition"
                     className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
@@ -576,9 +583,21 @@ function OrderPage() {
                     key={refund.id}
                     className="flex flex-wrap items-center justify-between gap-3 text-body-small"
                   >
-                    <span>{formatINR(Number(refund.amount ?? 0))}</span>
-                    <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
-                      {refund.status}
+                    <div>
+                      <p className="text-label-small text-foreground">
+                        {formatINR(Number(refund.amount ?? 0))}
+                      </p>
+                      <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                        Requested <SmartTime date={refund.created_at} />
+                      </p>
+                      {refund.processed_at && (
+                        <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Processed <SmartTime date={refund.processed_at} />
+                        </p>
+                      )}
+                    </div>
+                    <span className="rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
+                      {refund.status.replaceAll("_", " ")}
                     </span>
                   </div>
                 ))}

@@ -45,6 +45,55 @@ type ShiprocketCreateOrderPayload = {
   shipping_method?: "HL";
 };
 
+type ShiprocketReturnOrderItem = {
+  name: string;
+  sku: string;
+  units: number;
+  selling_price: number;
+  discount: number;
+  hsn: string;
+  return_reason: string;
+  qc_enable: boolean;
+  qc_product_name?: string;
+  qc_product_image?: string;
+  qc_brand?: string;
+};
+
+type ShiprocketCreateReturnOrderPayload = {
+  order_id: string;
+  order_date: string;
+  pickup_customer_name: string;
+  pickup_last_name: string;
+  pickup_address: string;
+  pickup_address_2: string;
+  pickup_city: string;
+  pickup_state: string;
+  pickup_country: string;
+  pickup_pincode: number;
+  pickup_email: string;
+  pickup_phone: string;
+  pickup_isd_code: string;
+  shipping_customer_name: string;
+  shipping_last_name: string;
+  shipping_address: string;
+  shipping_address_2: string;
+  shipping_city: string;
+  shipping_country: string;
+  shipping_pincode: number;
+  shipping_state: string;
+  shipping_email: string;
+  shipping_isd_code: string;
+  shipping_phone: string;
+  order_items: ShiprocketReturnOrderItem[];
+  payment_method: "PREPAID";
+  total_discount: string;
+  sub_total: number;
+  length: number;
+  breadth: number;
+  height: number;
+  weight: number;
+};
+
 type ShiprocketAwbPayload = {
   shipment_id: number;
   courier_id?: number;
@@ -132,6 +181,13 @@ export async function shiprocketRequest<T>(path: string, init: RequestInit = {})
 
 export async function createShiprocketOrder(payload: ShiprocketCreateOrderPayload) {
   return shiprocketRequest<Record<string, unknown>>("/orders/create/adhoc", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createShiprocketReturnOrder(payload: ShiprocketCreateReturnOrderPayload) {
+  return shiprocketRequest<Record<string, unknown>>("/orders/create/return", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -411,5 +467,110 @@ export function toShiprocketOrderPayload(input: {
     height: Number(packageInput.heightCm ?? config.shiprocketDefaultHeightCm),
     weight: Number(packageInput.weightKg ?? config.shiprocketDefaultWeightKg),
     ...(isQuick ? { latitude, longitude, shipping_method: "HL" as const } : {}),
+  };
+}
+
+export function toShiprocketReturnOrderPayload(input: {
+  order: Record<string, unknown>;
+  returnRequest: Record<string, unknown>;
+  items: Array<
+    Record<string, unknown> & {
+      return_qty?: number;
+      return_reason?: string | null;
+      sku?: string | null;
+      hsn_code?: string | null;
+      product_image?: string | null;
+    }
+  >;
+  pickupLocation: Record<string, unknown>;
+  package?: {
+    weightKg?: number;
+    lengthCm?: number;
+    breadthCm?: number;
+    heightCm?: number;
+  };
+}): ShiprocketCreateReturnOrderPayload {
+  const order = input.order;
+  const packageInput = input.package ?? {};
+  const customerPincode = String(order.shipping_pincode ?? "").trim();
+  if (!/^[0-9]{6}$/.test(customerPincode)) {
+    throw new Error("Return order needs a valid 6-digit customer pickup pincode");
+  }
+  const customerPhone = String(order.shipping_phone ?? "").replace(/\D/g, "");
+  if (customerPhone.length < 10) {
+    throw new Error("Return order needs a valid customer pickup phone");
+  }
+
+  const sellerPincode = String(
+    input.pickupLocation.pincode ?? input.pickupLocation.pin_code ?? config.lapkartDispatchPincode,
+  ).trim();
+  if (!/^[0-9]{6}$/.test(sellerPincode)) {
+    throw new Error("LapKart return destination pincode is not configured");
+  }
+  const sellerPhone = String(input.pickupLocation.phone ?? "9999999999").replace(/\D/g, "");
+  if (sellerPhone.length < 10) {
+    throw new Error("LapKart return destination phone is not configured");
+  }
+
+  const customerName = String(order.shipping_name ?? "LapKart Customer").trim();
+  const [customerFirstName, ...customerLastNameParts] = customerName.split(/\s+/);
+  const sellerName = String(input.pickupLocation.contact_name ?? "LapKart Returns").trim();
+  const [sellerFirstName, ...sellerLastNameParts] = sellerName.split(/\s+/);
+  const returnReason = String(input.returnRequest.reason ?? "Item defective or doesn't work").slice(
+    0,
+    190,
+  );
+  const orderDate = new Date().toISOString().slice(0, 10);
+
+  const returnItems = input.items.map((item, index) => {
+    const name = String(item.title ?? `LapKart return item ${index + 1}`).slice(0, 190);
+    return {
+      name,
+      sku: String(item.sku ?? item.product_id ?? item.id ?? `LK-RET-${index + 1}`).slice(0, 50),
+      units: Number(item.return_qty ?? item.qty ?? 1),
+      selling_price: Number(item.price ?? item.unit_price ?? 0),
+      discount: 0,
+      hsn: String(item.hsn_code ?? ""),
+      return_reason: String(item.return_reason ?? returnReason).slice(0, 190),
+      qc_enable: Boolean(item.product_image ?? item.image),
+      qc_product_name: name,
+      qc_product_image: String(item.product_image ?? item.image ?? ""),
+      qc_brand: String(item.brand ?? "").slice(0, 180),
+    };
+  });
+
+  return {
+    order_id: `RET-${String(input.returnRequest.id ?? crypto.randomUUID()).slice(0, 32)}`,
+    order_date: orderDate,
+    pickup_customer_name: customerFirstName || "LapKart",
+    pickup_last_name: customerLastNameParts.join(" "),
+    pickup_address: String(order.shipping_line1 ?? order.shipping_address ?? "").slice(0, 190),
+    pickup_address_2: String(order.shipping_line2 ?? "").slice(0, 190),
+    pickup_city: String(order.shipping_city ?? "").trim(),
+    pickup_state: String(order.shipping_state ?? "").trim(),
+    pickup_country: String(order.shipping_country ?? "India").trim(),
+    pickup_pincode: Number(customerPincode),
+    pickup_email: String(order.shipping_email ?? "orders@lapkart.local").trim(),
+    pickup_phone: customerPhone.slice(-10),
+    pickup_isd_code: "91",
+    shipping_customer_name: sellerFirstName || "LapKart",
+    shipping_last_name: sellerLastNameParts.join(" ") || "Returns",
+    shipping_address: String(input.pickupLocation.address_line1 ?? "").slice(0, 190),
+    shipping_address_2: String(input.pickupLocation.address_line2 ?? "").slice(0, 190),
+    shipping_city: String(input.pickupLocation.city ?? "").trim(),
+    shipping_country: String(input.pickupLocation.country ?? "India").trim(),
+    shipping_pincode: Number(sellerPincode),
+    shipping_state: String(input.pickupLocation.state ?? "").trim(),
+    shipping_email: String(input.pickupLocation.email ?? "orders@lapkart.local").trim(),
+    shipping_isd_code: "91",
+    shipping_phone: sellerPhone.slice(-10),
+    order_items: returnItems,
+    payment_method: "PREPAID",
+    total_discount: "0",
+    sub_total: returnItems.reduce((sum, item) => sum + item.selling_price * item.units, 0),
+    length: Number(packageInput.lengthCm ?? config.shiprocketDefaultLengthCm),
+    breadth: Number(packageInput.breadthCm ?? config.shiprocketDefaultBreadthCm),
+    height: Number(packageInput.heightCm ?? config.shiprocketDefaultHeightCm),
+    weight: Number(packageInput.weightKg ?? config.shiprocketDefaultWeightKg),
   };
 }

@@ -221,7 +221,7 @@ function CheckoutPage() {
     line1: "",
     line2: "",
     city: "",
-    state: "Karnataka",
+    state: "Tamil Nadu",
     pincode: "",
     latitude: null as number | null,
     longitude: null as number | null,
@@ -684,14 +684,19 @@ function CheckoutPage() {
                     <input
                       value={address.fullName}
                       onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
+                      name="fullName"
+                      autoComplete="name"
                       className="input-field"
-                      placeholder="John Doe"
+                      placeholder="Full name"
                     />
                   </InputField>
                   <InputField label="Phone" icon={null}>
                     <input
                       value={address.phone}
                       onChange={(e) => setAddress({ ...address, phone: e.target.value })}
+                      type="tel"
+                      name="phone"
+                      autoComplete="tel"
                       inputMode="tel"
                       className="input-field"
                       placeholder="+91 98765 43210"
@@ -702,6 +707,9 @@ function CheckoutPage() {
                       value={address.email}
                       onChange={(e) => setAddress({ ...address, email: e.target.value })}
                       type="email"
+                      name="email"
+                      autoComplete="email"
+                      spellCheck={false}
                       className="input-field"
                       placeholder="john@example.com"
                     />
@@ -715,16 +723,20 @@ function CheckoutPage() {
                           pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
                         })
                       }
+                      name="postalCode"
+                      autoComplete="postal-code"
                       inputMode="numeric"
                       maxLength={6}
                       className="input-field"
-                      placeholder="560001"
+                      placeholder="600002"
                     />
                   </InputField>
                   <InputField label="Address line 1" wide icon={null}>
                     <input
                       value={address.line1}
                       onChange={(e) => setAddress({ ...address, line1: e.target.value })}
+                      name="addressLine1"
+                      autoComplete="address-line1"
                       className="input-field"
                       placeholder="Street address, apartment, building"
                     />
@@ -733,6 +745,8 @@ function CheckoutPage() {
                     <input
                       value={address.line2}
                       onChange={(e) => setAddress({ ...address, line2: e.target.value })}
+                      name="addressLine2"
+                      autoComplete="address-line2"
                       className="input-field"
                       placeholder="Landmark, floor, suite (optional)"
                     />
@@ -741,14 +755,18 @@ function CheckoutPage() {
                     <input
                       value={address.city}
                       onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                      name="city"
+                      autoComplete="address-level2"
                       className="input-field"
-                      placeholder="Bangalore"
+                      placeholder="Chennai"
                     />
                   </InputField>
                   <InputField label="State" icon={null}>
                     <select
                       value={address.state}
                       onChange={(e) => setAddress({ ...address, state: e.target.value })}
+                      name="state"
+                      autoComplete="address-level1"
                       className="input-field appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23999%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10"
                     >
                       {indianStates.map((state) => (
@@ -850,6 +868,7 @@ function CheckoutPage() {
                   <button
                     type="button"
                     onClick={() => setPaymentMode("razorpay")}
+                    aria-pressed={paymentMode === "razorpay"}
                     className={`rounded-xl border p-4 text-left transition-colors ${
                       paymentMode === "razorpay"
                         ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
@@ -868,6 +887,8 @@ function CheckoutPage() {
                     type="button"
                     onClick={() => codEligibility.eligible && setPaymentMode("cod")}
                     disabled={!codEligibility.eligible}
+                    aria-pressed={paymentMode === "cod"}
+                    title={codEligibility.eligible ? undefined : codEligibility.reason}
                     className={`rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       paymentMode === "cod"
                         ? "border-[var(--heat-100)] bg-[var(--heat-4)]"
@@ -959,7 +980,7 @@ function CheckoutPage() {
                                 <img
                                   src={product.images?.[0] ?? product.image}
                                   alt={product.title}
-                                  className="h-full w-full object-cover"
+                                  className="h-full w-full object-contain p-1"
                                   loading="lazy"
                                 />
                               ) : (
@@ -1040,8 +1061,11 @@ function CheckoutPage() {
                           <input
                             value={couponCode}
                             onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                            name="coupon"
+                            autoComplete="off"
+                            aria-label="Coupon code"
                             placeholder="SAVE10"
-                            className="h-11 w-full rounded-lg border border-[var(--border-muted)] pl-9 pr-3 text-label-small uppercase outline-none focus:border-[var(--heat-100)]"
+                            className="h-11 w-full rounded-lg border border-[var(--border-muted)] pl-9 pr-3 text-label-small uppercase focus-visible:border-[var(--heat-100)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--heat-12)]"
                             maxLength={40}
                           />
                         </div>
@@ -1208,6 +1232,7 @@ function StepIndicator({
           return (
             <motion.div
               key={step.label}
+              aria-current={isCurrent ? "step" : undefined}
               className="relative flex flex-col items-center"
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}

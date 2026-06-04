@@ -13,7 +13,7 @@ export function ProductCard({ p }: { p: Product }) {
       {/* Heat ribbon for sale */}
       {discountPct(p) >= 30 && (
         <span className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2 py-0.5 text-mono-x-small font-medium text-white shadow-[0_2px_8px_0_var(--heat-40)] tracking-wide">
-          −{discountPct(p)}%
+          -{discountPct(p)}%
         </span>
       )}
 
@@ -28,7 +28,10 @@ export function ProductCard({ p }: { p: Product }) {
         />
         {/* Inside border overlay */}
         <span className="pointer-events-none absolute inset-0 border-b border-[var(--border-faint)]" />
-        <ArrowUpRight className="absolute top-3 right-3 size-4 text-[var(--black-alpha-32)] transition-[transform,color] duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[var(--heat-100)]" />
+        <ArrowUpRight
+          aria-hidden="true"
+          className="absolute top-3 right-3 size-4 text-[var(--black-alpha-32)] transition-[transform,color] duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[var(--heat-100)]"
+        />
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 px-4 py-4">

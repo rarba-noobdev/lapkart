@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell, KpiGrid, Panel } from "@/components/DashboardShell";
 import { useAuth } from "@/lib/auth";
@@ -7,6 +7,8 @@ import { apiBase } from "@/lib/api-base";
 import { categories, formatINR } from "@/lib/catalog";
 import { getAuthorizationHeaders } from "@/lib/supabase-auth";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
+import { SmartTime } from "@/components/SmartTime";
+
 import {
   Area,
   AreaChart,
@@ -316,6 +318,7 @@ type AdminOrderRecord = {
     reason: string;
     admin_note: string | null;
     requested_at: string;
+    resolved_at: string | null;
     refund_id: string | null;
   } | null;
   returnRequest: {
@@ -324,6 +327,9 @@ type AdminOrderRecord = {
     reason: string;
     admin_note: string | null;
     requested_at: string;
+    resolved_at: string | null;
+    received_at: string | null;
+    reverse_shipment_id: string | null;
     refund_id: string | null;
   } | null;
   refund: {
@@ -1838,6 +1844,24 @@ function SupportManager({ accessToken }: { accessToken: string }) {
     }
   };
 
+  const sendStockEvent = async (eventId: string) => {
+    try {
+      await requestAdminApi<{ event: AdminStockNotificationEvent }>(
+        accessToken,
+        `/admin/stock-notification-events/${eventId}/send`,
+        { method: "POST" },
+      );
+      toast.success("Back-in-stock notification sent");
+      await loadSupport();
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not send back-in-stock notification",
+      );
+    }
+  };
+
   return (
     <div className="mt-6 grid gap-6 xl:grid-cols-2">
       <Panel title="Product questions">
@@ -1873,8 +1897,9 @@ function SupportManager({ accessToken }: { accessToken: string }) {
                     setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
                   }
                   rows={3}
+                  aria-label="Product question answer"
                   placeholder="Answer with exact compatibility, condition, or packing details"
-                  className="mt-3 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small outline-none focus:border-[var(--heat-100)]"
+                  className="mt-3 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small focus-visible:border-[var(--heat-100)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--heat-12)]"
                 />
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
@@ -1923,15 +1948,23 @@ function SupportManager({ accessToken }: { accessToken: string }) {
                   </div>
                 </div>
                 <p className="mt-3 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
-                  Queued {new Date(event.created_at).toLocaleString("en-IN")}
+                  Queued {<SmartTime date={event.created_at} />}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void updateStockEvent(event.id, "sent")}
+                    onClick={() => void sendStockEvent(event.id)}
+                    disabled={!["pending", "failed"].includes(event.status)}
                     className="button button-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-label-small"
                   >
                     <Send className="size-4" />
+                    Send now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateStockEvent(event.id, "sent")}
+                    className="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground hover:border-[var(--heat-40)]"
+                  >
                     Mark sent
                   </button>
                   <button
@@ -2107,6 +2140,9 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                     <p className="text-label-small text-foreground">
                       #{order.id.slice(0, 8).toUpperCase()}
                     </p>
+                    <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                      Placed <SmartTime date={order.createdAt} />
+                    </p>
                     <div className="mt-1 flex flex-wrap gap-2">
                       <StatusBadge value={order.status} />
                       <StatusBadge value={order.paymentStatus} accent="neutral" />
@@ -2181,17 +2217,41 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Order status">
-                <TextInput
+                <SelectInput
                   value={editor.status}
                   onChange={(value) => setEditor((current) => ({ ...current, status: value }))}
+                  options={[
+                    { value: "pending", label: "Pending" },
+                    { value: "processing", label: "Processing" },
+                    { value: "confirmed", label: "Confirmed" },
+                    { value: "packed", label: "Packed" },
+                    { value: "shipped", label: "Shipped" },
+                    { value: "out_for_delivery", label: "Out for delivery" },
+                    { value: "delivered", label: "Delivered" },
+                    { value: "cancellation_requested", label: "Cancellation requested" },
+                    { value: "cancelled", label: "Cancelled" },
+                    { value: "return_requested", label: "Return requested" },
+                    { value: "return_approved", label: "Return approved" },
+                    { value: "return_received", label: "Return received" },
+                    { value: "returned", label: "Returned" },
+                    { value: "refunded", label: "Refunded" },
+                  ]}
                 />
               </Field>
               <Field label="Payment status">
-                <TextInput
+                <SelectInput
                   value={editor.paymentStatus}
                   onChange={(value) =>
                     setEditor((current) => ({ ...current, paymentStatus: value }))
                   }
+                  options={[
+                    { value: "paid", label: "Paid" },
+                    { value: "cod_pending", label: "COD Pending" },
+                    { value: "cod_cancelled", label: "COD Cancelled" },
+                    { value: "refunded", label: "Refunded" },
+                    { value: "failed", label: "Failed" },
+                    { value: "pending", label: "Pending" },
+                  ]}
                 />
               </Field>
               <Field label="Shipping service type">
@@ -2277,6 +2337,14 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <InfoTile
+                label="Placed"
+                value={<SmartTime date={selectedOrder.createdAt} showFull />}
+              />
+              <InfoTile
+                label="Last updated"
+                value={<SmartTime date={selectedOrder.updatedAt} showFull />}
+              />
               <InfoTile label="Payment method" value={selectedOrder.paymentMethod} />
               <InfoTile label="Items" value={selectedOrder.itemSummary || "No item summary"} />
               <InfoTile
@@ -2311,6 +2379,16 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                         <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
                           {selectedOrder.cancellationRequest.reason}
                         </p>
+                        <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Requested{" "}
+                          <SmartTime date={selectedOrder.cancellationRequest.requested_at} />
+                        </p>
+                        {selectedOrder.cancellationRequest.resolved_at && (
+                          <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                            Resolved{" "}
+                            <SmartTime date={selectedOrder.cancellationRequest.resolved_at} />
+                          </p>
+                        )}
                         <StatusBadge value={selectedOrder.cancellationRequest.status} />
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -2379,6 +2457,25 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                         <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
                           {selectedOrder.returnRequest.reason}
                         </p>
+                        <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                          Requested <SmartTime date={selectedOrder.returnRequest.requested_at} />
+                        </p>
+                        {selectedOrder.returnRequest.received_at && (
+                          <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                            Received <SmartTime date={selectedOrder.returnRequest.received_at} />
+                          </p>
+                        )}
+                        {selectedOrder.returnRequest.reverse_shipment_id && (
+                          <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                            Reverse pickup #
+                            {selectedOrder.returnRequest.reverse_shipment_id.slice(0, 8)}
+                          </p>
+                        )}
+                        {selectedOrder.returnRequest.resolved_at && (
+                          <p className="mt-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                            Resolved <SmartTime date={selectedOrder.returnRequest.resolved_at} />
+                          </p>
+                        )}
                         <StatusBadge value={selectedOrder.returnRequest.status} />
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -2410,7 +2507,24 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                             />
                           </>
                         )}
-                        {selectedOrder.returnRequest.status === "approved" && (
+                        {selectedOrder.returnRequest.status === "approved" &&
+                          !selectedOrder.returnRequest.reverse_shipment_id && (
+                            <WorkflowButton
+                              label="Create reverse pickup"
+                              loading={workflowAction === "return-pickup"}
+                              onClick={() =>
+                                void runWorkflowAction(
+                                  "return-pickup",
+                                  "/shipments/shiprocket/return",
+                                  { returnRequestId: selectedOrder.returnRequest?.id },
+                                  "Reverse pickup created",
+                                )
+                              }
+                            />
+                          )}
+                        {["approved", "reverse_pickup_scheduled"].includes(
+                          selectedOrder.returnRequest.status,
+                        ) && (
                           <WorkflowButton
                             label="Mark received"
                             loading={workflowAction === "return-receive"}
@@ -2671,9 +2785,11 @@ function UsersManager({ accessToken }: { accessToken: string }) {
               <InfoTile
                 label="Joined"
                 value={
-                  selectedUser.createdAt
-                    ? new Date(selectedUser.createdAt).toLocaleDateString("en-IN")
-                    : "Unknown"
+                  selectedUser.createdAt ? (
+                    <SmartTime date={selectedUser.createdAt} showFull />
+                  ) : (
+                    "Unknown"
+                  )
                 }
               />
               <InfoTile label="Orders" value={String(selectedUser.orderCount)} />
@@ -2708,6 +2824,7 @@ function FulfillmentQueue() {
   const [error, setError] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [selectedShipmentIds, setSelectedShipmentIds] = useState<string[]>([]);
 
   const request = useCallback(
     async <T,>(path: string, init?: RequestInit) => {
@@ -2777,6 +2894,37 @@ function FulfillmentQueue() {
   };
 
   const detailOrder = orders.find((order) => order.id === detailOrderId) ?? null;
+  const selectedShipmentSet = new Set(selectedShipmentIds);
+  const selectableShipmentIds = orders
+    .map((order) => order.shipment?.id)
+    .filter((id): id is string => Boolean(id));
+  const allVisibleShipmentsSelected =
+    selectableShipmentIds.length > 0 &&
+    selectableShipmentIds.every((shipmentId) => selectedShipmentSet.has(shipmentId));
+  const toggleShipmentSelection = (shipmentId: string) => {
+    setSelectedShipmentIds((current) =>
+      current.includes(shipmentId)
+        ? current.filter((id) => id !== shipmentId)
+        : [...current, shipmentId],
+    );
+  };
+  const toggleAllVisibleShipments = () => {
+    setSelectedShipmentIds(allVisibleShipmentsSelected ? [] : selectableShipmentIds);
+  };
+  const runBulkAction = async (
+    action: "assign_awb" | "schedule_pickup" | "generate_labels" | "refresh_tracking",
+  ) => {
+    if (!selectedShipmentIds.length) {
+      toast.error("Select shipments first");
+      return;
+    }
+    await runAction(
+      `bulk:${action}`,
+      "/shipments/shiprocket/bulk",
+      postJson({ action, shipmentIds: selectedShipmentIds }),
+    );
+    setSelectedShipmentIds([]);
+  };
 
   return (
     <>
@@ -2812,6 +2960,40 @@ function FulfillmentQueue() {
           </button>
         </div>
 
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+          <span className="mr-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+            {selectedShipmentIds.length} selected
+          </span>
+          <ActionButton
+            icon={Send}
+            label="Bulk AWB"
+            loading={activeAction === "bulk:assign_awb"}
+            disabled={!selectedShipmentIds.length || Boolean(activeAction)}
+            onClick={() => void runBulkAction("assign_awb")}
+          />
+          <ActionButton
+            icon={Truck}
+            label="Bulk pickup"
+            loading={activeAction === "bulk:schedule_pickup"}
+            disabled={!selectedShipmentIds.length || Boolean(activeAction)}
+            onClick={() => void runBulkAction("schedule_pickup")}
+          />
+          <ActionButton
+            icon={CheckCircle2}
+            label="Bulk labels"
+            loading={activeAction === "bulk:generate_labels"}
+            disabled={!selectedShipmentIds.length || Boolean(activeAction)}
+            onClick={() => void runBulkAction("generate_labels")}
+          />
+          <ActionButton
+            icon={RefreshCw}
+            label="Bulk tracking"
+            loading={activeAction === "bulk:refresh_tracking"}
+            disabled={!selectedShipmentIds.length || Boolean(activeAction)}
+            onClick={() => void runBulkAction("refresh_tracking")}
+          />
+        </div>
+
         {error && (
           <p className="mt-4 rounded-md border border-red-500/20 bg-red-50 p-3 text-body-small text-red-700">
             {error}
@@ -2822,6 +3004,15 @@ function FulfillmentQueue() {
           <table className="min-w-[980px] w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-[var(--border-faint)] text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
+                <th className="w-10 px-3 py-3 font-normal">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleShipmentsSelected}
+                    onChange={toggleAllVisibleShipments}
+                    aria-label="Select all visible shipments"
+                    className="size-4 accent-[var(--heat-100)]"
+                  />
+                </th>
                 <th className="px-3 py-3 font-normal">Order</th>
                 <th className="px-3 py-3 font-normal">Delivery</th>
                 <th className="px-3 py-3 font-normal">Shipment</th>
@@ -2837,6 +3028,14 @@ function FulfillmentQueue() {
                   onOpenDetails={() => setDetailOrderId(order.id)}
                   activeAction={activeAction}
                   runAction={runAction}
+                  selected={Boolean(
+                    order.shipment?.id && selectedShipmentSet.has(order.shipment.id),
+                  )}
+                  onToggleSelected={
+                    order.shipment?.id
+                      ? () => toggleShipmentSelection(order.shipment!.id)
+                      : undefined
+                  }
                 />
               ))}
             </tbody>
@@ -2871,11 +3070,15 @@ function FulfillmentRow({
   onOpenDetails,
   activeAction,
   runAction,
+  selected,
+  onToggleSelected,
 }: {
   order: FulfillmentOrder;
   onOpenDetails: () => void;
   activeAction: string | null;
   runAction: (key: string, path: string, options?: RequestInit) => Promise<void>;
+  selected: boolean;
+  onToggleSelected?: () => void;
 }) {
   const shipment = order.shipment;
   const serviceType = shipment?.shippingServiceType ?? order.shippingServiceType ?? "standard";
@@ -2892,6 +3095,23 @@ function FulfillmentRow({
       className="cursor-pointer border-b border-[var(--border-faint)] align-top transition-colors last:border-b-0 hover:bg-[var(--background-lighter)]"
     >
       <td className="px-3 py-4">
+        {order.shipment ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(event) => {
+              event.stopPropagation();
+              onToggleSelected?.();
+            }}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Select shipment for order ${order.id.slice(0, 8)}`}
+            className="size-4 accent-[var(--heat-100)]"
+          />
+        ) : (
+          <span className="block size-4" aria-hidden="true" />
+        )}
+      </td>
+      <td className="px-3 py-4">
         <div className="group text-left">
           <div className="flex items-center gap-2">
             <p className="text-label-small text-foreground">#{order.id.slice(0, 8)}</p>
@@ -2902,6 +3122,9 @@ function FulfillmentRow({
           </p>
           <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
             {formatINR(Number(order.total ?? 0))}
+          </p>
+          <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+            Placed <SmartTime date={order.createdAt} />
           </p>
           <p className="mt-2 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">
             {order.items.length} item{order.items.length === 1 ? "" : "s"}
@@ -3378,6 +3601,9 @@ function SearchField({
       <Search className="size-4 text-[var(--black-alpha-40)]" />
       <input
         type="search"
+        name="adminSearch"
+        autoComplete="off"
+        aria-label={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -3480,7 +3706,7 @@ function StatusBadge({
 }) {
   const classes =
     accent === "warning"
-      ? "border border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]"
+      ? "border border-[var(--accent-honey)]/30 bg-amber-50 text-[var(--accent-honey)]"
       : accent === "neutral"
         ? "border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-64)]"
         : "border border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]";
@@ -3494,7 +3720,7 @@ function StatusBadge({
   );
 }
 
-function InfoTile({ label, value }: { label: string; value: string }) {
+function InfoTile({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
       <p className="text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-48)]">

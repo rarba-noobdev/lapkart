@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, ChevronRight, Loader2, Package } from "lucide-react";
@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { formatINR } from "@/lib/catalog";
 import { useRealtimeRefresh } from "@/lib/use-realtime-refresh";
+import { SmartTime } from "@/components/SmartTime";
 
 export const Route = createFileRoute("/_authenticated/orders")({
   head: () => ({ meta: [{ title: "My orders - lapkart" }] }),
@@ -98,6 +99,7 @@ function OrdersPage() {
         {loading ? (
           <div className="grid place-items-center py-24">
             <Loader2 className="size-7 animate-spin text-[var(--heat-100)]" />
+            <span className="sr-only">Loading orders</span>
           </div>
         ) : orders.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center">
@@ -130,6 +132,7 @@ function OrdersPage() {
                 <Link
                   to="/order/$id"
                   params={{ id: order.id }}
+                  aria-label={`View order ${order.id.slice(0, 8).toUpperCase()}`}
                   className="group flex items-center gap-5 rounded-lg border border-[var(--border-muted)] bg-white p-5 transition-[transform,border-color,box-shadow] duration-300 hover:-translate-y-0.5 hover:border-[var(--heat-20)] hover:shadow-[0_12px_24px_-12px_var(--heat-20)]"
                 >
                   <div className="grid size-11 place-items-center rounded-md border border-[var(--border-faint)] bg-[var(--heat-4)] text-[var(--heat-100)]">
@@ -144,11 +147,7 @@ function OrdersPage() {
                     </p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-mono-x-small uppercase tracking-wider">
                       <span className="text-[var(--black-alpha-48)]">
-                        {new Date(order.created_at).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                        <SmartTime date={order.created_at} />
                       </span>
                       <span className="size-1 rounded-full bg-[var(--black-alpha-24)]" />
                       <span style={{ color: statusColor(order.status) }}>{order.status}</span>

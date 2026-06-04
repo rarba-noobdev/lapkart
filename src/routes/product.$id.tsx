@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Bell,
@@ -341,8 +341,11 @@ function ProductPage() {
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {product.images.map((imageUrl, index) => (
                   <button
+                    type="button"
                     key={imageUrl}
                     onClick={() => setImageIndex(index)}
+                    aria-label={`Show product image ${index + 1}`}
+                    aria-pressed={index === imageIndex}
                     className={`size-16 shrink-0 overflow-hidden rounded-md border bg-[var(--background-lighter)] transition-[border-color,opacity,box-shadow] ${
                       index === imageIndex
                         ? "border-[var(--heat-100)] ring-2 ring-[var(--heat-12)]"
@@ -383,19 +386,25 @@ function ProductPage() {
               <div className="grid gap-3">
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={addToCart}
                     disabled={product.stock <= 0}
+                    aria-label={
+                      product.stock <= 0 ? "Product is out of stock" : "Add product to cart"
+                    }
                     className="flex h-12 flex-1 items-center justify-center gap-2 rounded-md border border-[var(--heat-100)] bg-white text-label-medium font-medium text-[var(--heat-100)] transition-[background-color,border-color,color] hover:bg-[var(--heat-4)]"
                   >
                     {added ? <Check className="size-4" /> : <ShoppingCart className="size-4" />}
                     {product.stock <= 0 ? "Out of stock" : added ? "Added" : "Add to cart"}
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       cart.add(product.id, 1);
                       navigate({ to: "/cart" });
                     }}
                     disabled={product.stock <= 0}
+                    aria-label={product.stock <= 0 ? "Product is out of stock" : "Buy now"}
                     className="button button-primary flex h-12 flex-1 items-center justify-center gap-2 rounded-md text-label-medium"
                   >
                     <Zap className="size-4 fill-current" /> Buy now
@@ -419,6 +428,11 @@ function ProductPage() {
                       <input
                         value={stockEmail}
                         onChange={(event) => setStockEmail(event.target.value)}
+                        type="email"
+                        name="stockAlertEmail"
+                        autoComplete="email"
+                        spellCheck={false}
+                        aria-label="Email for stock alert"
                         placeholder="Email"
                         className="h-10 min-w-0 flex-1 rounded-md border border-[var(--border-muted)] px-3 text-body-small"
                       />
@@ -457,8 +471,15 @@ function ProductPage() {
                 {product.reviews.toLocaleString("en-IN")} ratings
               </span>
               <span className="size-1 rounded-full bg-[var(--accent-forest)]" />
-              <span className="text-mono-x-small uppercase tracking-wider text-[var(--accent-forest)]">
-                in stock
+              {product.stock > 0 && product.stock <= 5 && (
+                <span className="text-mono-x-small uppercase tracking-wider text-[var(--heat-100)]">
+                  only {product.stock} left
+                </span>
+              )}
+              <span
+                className={`text-mono-x-small uppercase tracking-wider ${product.stock > 0 ? "text-[var(--accent-forest)]" : "text-[var(--accent-crimson)]"}`}
+              >
+                {product.stock > 0 ? "in stock" : "out of stock"}
               </span>
             </div>
 
@@ -568,6 +589,7 @@ function ProductPage() {
                 <select
                   value={reviewRating}
                   onChange={(event) => setReviewRating(Number(event.target.value))}
+                  aria-label="Review rating"
                   className="h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-body-small"
                 >
                   {[5, 4, 3, 2, 1].map((rating) => (
@@ -580,6 +602,7 @@ function ProductPage() {
                   value={reviewBody}
                   onChange={(event) => setReviewBody(event.target.value)}
                   rows={4}
+                  aria-label="Review text"
                   placeholder="How was this part?"
                   className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
                 />
@@ -641,6 +664,7 @@ function ProductPage() {
                   onChange={(event) => setQuestionBody(event.target.value)}
                   rows={4}
                   maxLength={800}
+                  aria-label="Product question"
                   placeholder="Will this fit my laptop model?"
                   className="w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-body-small"
                 />

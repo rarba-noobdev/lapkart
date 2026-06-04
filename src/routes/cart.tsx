@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+﻿import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { useEffect } from "react";
 import { Footer } from "@/components/Footer";
@@ -69,9 +69,8 @@ function CartPage() {
           <div className="grid size-20 place-items-center rounded-full border border-[var(--border-muted)] bg-white text-[var(--heat-100)]">
             <ShoppingBag className="size-9" strokeWidth={1.8} />
           </div>
-          <p className="mt-6 text-label-small text-[var(--heat-100)]">Cart is empty</p>
           <h1 className="mt-2 font-display text-title-h3 text-foreground">Your cart is empty</h1>
-          <p className="mt-2 text-body-medium text-[var(--black-alpha-56)]">
+          <p className="mt-4 text-body-medium text-[var(--black-alpha-56)]">
             Add laptop parts to get started.
           </p>
           <Link
@@ -108,6 +107,7 @@ function CartPage() {
                   <Link
                     to="/product/$id"
                     params={{ id: product.id }}
+                    aria-label={`View ${product.title}`}
                     className="size-24 shrink-0 overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)]"
                   >
                     <img
@@ -130,9 +130,10 @@ function CartPage() {
                     <div className="mt-3 flex items-center justify-between gap-4">
                       <div className="flex items-center rounded-md border border-[var(--border-muted)] bg-white">
                         <button
+                          type="button"
                           onClick={() => cart.setQty(product.id, qty - 1)}
                           className="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
-                          aria-label="Decrease"
+                          aria-label={`Decrease quantity for ${product.title}`}
                         >
                           <Minus className="size-3.5" />
                         </button>
@@ -140,9 +141,10 @@ function CartPage() {
                           {qty}
                         </span>
                         <button
+                          type="button"
                           onClick={() => cart.setQty(product.id, qty + 1)}
                           className="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
-                          aria-label="Increase"
+                          aria-label={`Increase quantity for ${product.title}`}
                         >
                           <Plus className="size-3.5" />
                         </button>
@@ -157,7 +159,9 @@ function CartPage() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => cart.remove(product.id)}
+                      aria-label={`Remove ${product.title} from cart`}
                       className="mt-3 inline-flex items-center gap-1.5 text-mono-x-small uppercase tracking-wider text-[var(--accent-crimson)] hover:underline"
                     >
                       <Trash2 className="size-3" /> Remove
@@ -200,7 +204,7 @@ function CartPage() {
                 Proceed to checkout <ArrowRight className="size-4" />
               </Link>
               <p className="mt-3 text-center text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-40)]">
-                Safe payments · Easy returns
+                Safe payments / Clear returns
               </p>
             </div>
           </aside>
