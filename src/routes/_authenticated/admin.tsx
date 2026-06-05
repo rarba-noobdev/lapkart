@@ -164,7 +164,7 @@ type AdminAnalytics = {
   }>;
 };
 
-type AdminView = "overview" | "catalog" | "orders" | "users" | "promos" | "support";
+type AdminView = "overview" | "fulfillment" | "catalog" | "orders" | "users" | "promos" | "support";
 
 type AdminProduct = {
   id: string;
@@ -891,6 +891,7 @@ function AdminPage() {
           analytics={analytics}
           kpis={kpis}
           onOpenOrders={() => setView("orders")}
+          onOpenFulfillment={() => setView("fulfillment")}
         />
       ) : null}
 
@@ -961,10 +962,10 @@ function AdminPage() {
               </Panel>
             </div>
           )}
-          <FulfillmentQueue />
         </>
       )}
 
+      {view === "fulfillment" && session?.access_token && <FulfillmentQueue />}
       {view === "catalog" && session?.access_token && (
         <CatalogManager accessToken={session.access_token} />
       )}
@@ -988,10 +989,12 @@ function AdminCommandCenter({
   analytics,
   kpis,
   onOpenOrders,
+  onOpenFulfillment,
 }: {
   analytics: AdminAnalytics;
   kpis: ComponentProps<typeof KpiGrid>["items"];
   onOpenOrders: () => void;
+  onOpenFulfillment: () => void;
 }) {
   return (
     <section className="space-y-5">
@@ -1006,9 +1009,19 @@ function AdminCommandCenter({
                 Daily, weekly, and monthly order health from the current database.
               </p>
             </div>
-            <span className="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-56)]">
-              live
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-1 text-mono-x-small uppercase tracking-wider text-[var(--black-alpha-56)]">
+                live
+              </span>
+              <button
+                type="button"
+                onClick={onOpenFulfillment}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-3 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+              >
+                <Truck className="size-4" />
+                Open fulfillment
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -1124,6 +1137,7 @@ function AdminTabs({
 }) {
   const items: Array<{ id: AdminView; label: string }> = [
     { id: "overview", label: "Dashboard" },
+    { id: "fulfillment", label: "Fulfillment" },
     { id: "catalog", label: "Catalog" },
     { id: "orders", label: "Orders" },
     { id: "users", label: "Users" },
