@@ -1,17 +1,6 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "env": {
-    "VITE_API_BASE_URL": "https://lapkart-api.onrender.com"
-  },
-  "routes": [
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/index"
-    }
-  ]
+	"framework": "sveltekit",
+	"env": {
+		"VITE_API_BASE_URL": "https://jcktbslbbidjqwpgvsid.supabase.co/functions/v1/api"
+	}
 }

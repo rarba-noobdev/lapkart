@@ -1,0 +1,421 @@
+<script lang="ts">
+	import { resolve } from '$app/paths';
+	import {
+		ArrowUpRight,
+		Check,
+		ChevronRight,
+		Minus,
+		Plus,
+		RotateCcw,
+		ShieldCheck,
+		ShoppingCart,
+		Star,
+		Truck
+	} from '@lucide/svelte';
+	import ProductCard from '$lib/components/ProductCard.svelte';
+	import { addToCart } from '$lib/cart';
+	import { discountPct, formatINR, type Product } from '$lib/catalog';
+
+	let {
+		data
+	}: {
+		data: {
+			product: Product;
+			related: Product[];
+		};
+	} = $props();
+
+	let product = $derived(data.product);
+	let related = $derived(data.related);
+	let qty = $state(1);
+	let added = $state(false);
+	let selectedImage = $state<string | null>(null);
+
+	const galleryImages = $derived(
+		Array.from(new Set([product.image, ...(product.images ?? [])].filter(Boolean)))
+	);
+	const activeImage = $derived(
+		selectedImage && galleryImages.includes(selectedImage)
+			? selectedImage
+			: (galleryImages[0] ?? product.image)
+	);
+	const discount = $derived(discountPct(product));
+	const highlights = $derived(
+		product.highlights.length > 0
+			? product.highlights
+			: [
+					'Compatibility guidance available before dispatch.',
+					'Fast-moving inventory with stock visibility.',
+					'Returns and warranty support remain visible after checkout.'
+				]
+	);
+	const compatibility = $derived(
+		product.compatibility || 'Compatibility guidance is available before dispatch.'
+	);
+	const warranty = $derived(product.warranty || 'Standard support applies.');
+	const quantity = $derived(Math.max(1, Number(qty) || 1));
+
+	const specs = $derived([
+		{ label: 'Compatibility', value: compatibility },
+		{ label: 'Warranty', value: warranty },
+		{ label: 'Authenticity', value: gradeLabel(product.authenticity_grade) },
+		{ label: 'Condition', value: gradeLabel(product.condition_grade ?? 'new') },
+		{ label: 'DOA policy', value: `${product.doa_policy_days ?? 7}-day DOA support` },
+		{
+			label: 'COD',
+			value: product.cod_eligible ? 'Eligible under checkout policy' : 'Prepaid only'
+		},
+		{
+			label: 'Stock',
+			value: `${product.stock > 0 ? product.stock + ' units available' : 'Out of stock'}`
+		}
+	]);
+
+	function handleAddToCart() {
+		if (product.stock <= 0) return;
+		addToCart(product.id, quantity);
+		added = true;
+		window.setTimeout(() => {
+			added = false;
+		}, 1800);
+	}
+
+	function increment() {
+		qty = qty + 1;
+	}
+	function decrement() {
+		if (qty > 1) qty = qty - 1;
+	}
+
+	function gradeLabel(value: string | undefined) {
+		return (value ?? 'compatible')
+			.split('_')
+			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+			.join(' ');
+	}
+</script>
+
+<svelte:head>
+	<title>{product.title} - lapkart</title>
+	<meta
+		name="description"
+		content="{product.title} by {product.brand}. {formatINR(
+			product.price
+		)} — genuine laptop parts at lapkart."
+	/>
+</svelte:head>
+
+<!-- ─── Breadcrumb ─── -->
+<nav class="container mx-auto px-4 pt-4 pb-1 md:pt-5">
+	<ol
+		class="text-mono-x-small flex flex-wrap items-center gap-1 tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+	>
+		<li><a href={resolve('/')} class="transition-colors hover:text-[var(--heat-100)]">home</a></li>
+		<li><ChevronRight class="size-3 text-[var(--black-alpha-20)]" /></li>
+		<li>
+			<a href={resolve('/products')} class="transition-colors hover:text-[var(--heat-100)]"
+				>catalog</a
+			>
+		</li>
+		<li><ChevronRight class="size-3 text-[var(--black-alpha-20)]" /></li>
+		<li class="line-clamp-1 max-w-[200px] text-[var(--black-alpha-64)]">{product.title}</li>
+	</ol>
+</nav>
+
+<!-- ─── Product layout: two-panel card ─── -->
+<section class="container mx-auto px-4 pb-20 md:pb-14 lg:pb-14">
+	<div
+		class="mt-3 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] md:mt-4"
+	>
+		<div class="grid lg:grid-cols-2">
+			<!-- ── LEFT PANEL: Gallery ── -->
+			<div
+				class="relative border-b border-[var(--border-faint)] bg-[var(--background-lighter)] lg:border-r lg:border-b-0"
+			>
+				<div class="sticky top-20 p-4 sm:p-6 md:p-8">
+					<!-- Discount badge -->
+					{#if discount >= 10}
+						<span
+							class="text-mono-x-small absolute top-4 left-4 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2.5 py-1 font-medium tracking-wide text-white shadow-[0_2px_8px_0_var(--heat-40)] sm:top-6 sm:left-6"
+						>
+							-{discount}% off
+						</span>
+					{/if}
+
+					<!-- Main image -->
+					<div class="flex aspect-square items-center justify-center sm:aspect-[5/4]">
+						<img
+							src={activeImage}
+							alt={product.title}
+							class="max-h-full max-w-full object-contain transition-opacity duration-300"
+							fetchpriority="high"
+						/>
+					</div>
+
+					<!-- Thumbnail row -->
+					{#if galleryImages.length > 1}
+						<div class="mt-4 flex justify-center gap-2">
+							{#each galleryImages as image, index (image)}
+								<button
+									type="button"
+									aria-label="Show product image {index + 1}"
+									aria-pressed={activeImage === image}
+									class="size-14 shrink-0 overflow-hidden rounded-lg border-2 bg-white p-1 transition-all duration-200
+										{activeImage === image
+										? 'border-[var(--heat-100)] shadow-[0_0_0_2px_var(--heat-8)]'
+										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
+									onclick={() => (selectedImage = image)}
+								>
+									<img src={image} alt="" class="size-full object-contain" />
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- ── RIGHT PANEL: Product info ── -->
+			<div class="p-5 sm:p-6 md:p-8 lg:p-8 xl:p-10">
+				<!-- Brand -->
+				<p class="text-mono-x-small tracking-[0.18em] text-[var(--heat-100)] uppercase">
+					{product.brand}
+				</p>
+
+				<!-- Title -->
+				<h1
+					class="mt-1.5 font-display text-[clamp(1.25rem,2.8vw,1.75rem)] leading-snug tracking-[-0.015em] text-foreground"
+				>
+					{product.title}
+				</h1>
+
+				<!-- Rating row -->
+				<div class="mt-3 flex flex-wrap items-center gap-2.5">
+					<span
+						class="inline-flex items-center gap-1 rounded-sm bg-[var(--accent-forest)] px-2 py-0.5 text-[11px] leading-none font-semibold text-white"
+					>
+						{product.rating.toFixed(1)}
+						<Star class="size-2.5 fill-white text-white" />
+					</span>
+					<span class="text-body-small text-[var(--black-alpha-48)]">
+						{product.reviews.toLocaleString('en-IN')} ratings
+					</span>
+					<span class="text-body-small text-[var(--black-alpha-24)]">•</span>
+					<span
+						class="text-mono-x-small font-medium tracking-wider uppercase
+							{product.stock > 0 ? 'text-[var(--accent-forest)]' : 'text-[var(--accent-crimson)]'}"
+					>
+						{product.stock > 0 ? 'in stock' : 'out of stock'}
+					</span>
+					{#if product.stock > 0 && product.stock <= 5}
+						<span
+							class="text-mono-x-small font-medium tracking-wider text-[var(--heat-100)] uppercase"
+						>
+							· only {product.stock} left
+						</span>
+					{/if}
+				</div>
+
+				<!-- ── Price ── -->
+				<div class="mt-4 border-t border-b border-[var(--border-faint)] py-4">
+					<div class="flex flex-wrap items-baseline gap-2.5">
+						<span
+							class="font-display text-[clamp(1.625rem,3.8vw,2.25rem)] tracking-[-0.02em] text-foreground"
+						>
+							{formatINR(product.price)}
+						</span>
+						<span class="text-body-medium text-[var(--black-alpha-32)] line-through">
+							{formatINR(product.mrp)}
+						</span>
+						{#if discount > 0}
+							<span class="text-mono-small font-semibold text-[var(--accent-forest)]">
+								{discount}% off
+							</span>
+						{/if}
+					</div>
+					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-40)] uppercase">
+						Inclusive of taxes / Free delivery on orders above {formatINR(999)}
+					</p>
+				</div>
+
+				<!-- ── Highlights ── -->
+				{#if highlights.length > 0}
+					<div class="mt-4">
+						<h2
+							class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+						>
+							Highlights
+						</h2>
+						<ul class="mt-2.5 space-y-1.5">
+							{#each highlights as highlight (highlight)}
+								<li class="text-body-small flex items-start gap-2 text-foreground">
+									<span class="mt-[7px] size-1 shrink-0 rounded-full bg-[var(--black-alpha-32)]"
+									></span>
+									{highlight}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				<!-- ── Trust promises (inline) ── -->
+				<div class="mt-5 flex flex-wrap gap-x-5 gap-y-2">
+					<span
+						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
+					>
+						<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
+						Free delivery
+					</span>
+					<span
+						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
+					>
+						<ShieldCheck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
+						Genuine product
+					</span>
+					<span
+						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
+					>
+						<RotateCcw class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
+						{product.doa_policy_days ?? 7}-day DOA
+					</span>
+				</div>
+
+				<!-- ── Add-to-cart action ── -->
+				<div class="mt-6 flex items-center gap-3">
+					<!-- Quantity stepper -->
+					<div class="inline-flex items-center rounded-md border border-[var(--border-muted)]">
+						<button
+							type="button"
+							aria-label="Decrease quantity"
+							class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground disabled:opacity-30"
+							disabled={qty <= 1}
+							onclick={decrement}
+						>
+							<Minus class="size-3.5" />
+						</button>
+						<input
+							bind:value={qty}
+							type="number"
+							min="1"
+							class="text-label-medium h-10 w-10 [appearance:textfield] border-x border-[var(--border-muted)] bg-transparent text-center outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+						/>
+						<button
+							type="button"
+							aria-label="Increase quantity"
+							class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground"
+							onclick={increment}
+						>
+							<Plus class="size-3.5" />
+						</button>
+					</div>
+
+					<!-- Primary CTA -->
+					<button
+						type="button"
+						disabled={product.stock <= 0}
+						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
+						class="button button-primary text-label-medium inline-flex h-10 items-center justify-center gap-2 rounded-md px-8 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:h-11"
+						onclick={handleAddToCart}
+					>
+						{#if added}
+							<Check class="size-4" />
+							Added
+						{:else}
+							<ShoppingCart class="size-4" />
+							Add to cart
+						{/if}
+					</button>
+				</div>
+
+				<!-- Review cart -->
+				<a
+					href={resolve('/cart')}
+					class="text-label-small mt-2.5 inline-flex h-10 items-center justify-center gap-1 rounded-md border border-[var(--border-muted)] px-8 text-foreground transition-[border-color,color] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:h-11"
+				>
+					Review cart
+					<ChevronRight class="size-3.5" />
+				</a>
+
+				{#if added}
+					<p class="text-body-small mt-2 text-[var(--accent-forest)]">
+						✓ {quantity} item{quantity === 1 ? '' : 's'} added to cart
+					</p>
+				{/if}
+			</div>
+		</div>
+	</div>
+
+	<!-- ─── Specifications table (below the card) ─── -->
+	<div
+		class="mt-4 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
+	>
+		<div class="border-b border-[var(--border-faint)] px-5 py-4 sm:px-6 md:px-8">
+			<h2 class="text-label-large text-foreground">Specifications</h2>
+		</div>
+		<div class="divide-y divide-[var(--border-faint)]">
+			{#each specs as spec (spec.label)}
+				<div
+					class="grid grid-cols-[110px_1fr] gap-4 px-5 py-3 sm:grid-cols-[140px_1fr] sm:px-6 md:px-8"
+				>
+					<span class="text-body-small text-[var(--black-alpha-48)]">{spec.label}</span>
+					<span class="text-body-small text-foreground">{spec.value}</span>
+				</div>
+			{/each}
+		</div>
+	</div>
+
+	<!-- ─── Related products ─── -->
+	{#if related.length > 0}
+		<section class="mt-10 md:mt-14">
+			<div class="mb-5 flex items-end justify-between gap-4">
+				<div>
+					<h2 class="text-title-h4 font-display text-foreground">Similar products</h2>
+					<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">
+						Other parts from the same shelf
+					</p>
+				</div>
+				<a
+					href={resolve('/products')}
+					class="text-label-small group inline-flex items-center gap-1 text-[var(--heat-100)] transition-colors hover:text-foreground"
+				>
+					View all
+					<ArrowUpRight
+						class="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+					/>
+				</a>
+			</div>
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+				{#each related as item (item.id)}
+					<ProductCard product={item} />
+				{/each}
+			</div>
+		</section>
+	{/if}
+</section>
+
+<!-- ─── Sticky mobile CTA ─── -->
+<div
+	class="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border-faint)] bg-white/95 backdrop-blur-md lg:hidden"
+>
+	<div class="container mx-auto flex items-center gap-3 px-4 py-2.5">
+		<div class="min-w-0 flex-1">
+			<p class="text-label-medium truncate text-foreground">{formatINR(product.price)}</p>
+			{#if discount > 0}
+				<p class="text-mono-x-small text-[var(--accent-forest)]">{discount}% off</p>
+			{/if}
+		</div>
+		<button
+			type="button"
+			disabled={product.stock <= 0}
+			class="button button-primary text-label-small inline-flex h-10 items-center gap-1.5 rounded-md px-6 text-white disabled:opacity-50"
+			onclick={handleAddToCart}
+		>
+			{#if added}
+				<Check class="size-3.5" />
+				Added
+			{:else}
+				<ShoppingCart class="size-3.5" />
+				Add to cart
+			{/if}
+		</button>
+	</div>
+</div>

@@ -219,10 +219,9 @@ topic: ecommerce missing features for LapKart, a laptop-parts ecommerce app with
 depth: quick due Firecrawl hosted search credit error, with browser search fallback
 output: markdown tracker plus incremental implementation
 
-                                                                                                   
-  For real back-in-stock sending, configure these Edge Function secrets:                              
-                                                                                                      
-  - RESEND_API_KEY                                                                                    
-  - NOTIFICATION_EMAIL_FROM                                                                           
-  - Optional WhatsApp: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID,                               
-    WHATSAPP_BACK_IN_STOCK_TEMPLATE              
+For real back-in-stock sending, configure these Edge Function secrets:
+
+- RESEND_API_KEY
+- NOTIFICATION_EMAIL_FROM
+- Optional WhatsApp: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID,  
+  WHATSAPP_BACK_IN_STOCK_TEMPLATE

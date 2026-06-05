@@ -169,7 +169,7 @@ For mobile performance, I could not verify reliable public mid-range Android Cor
 - use responsive images with aggressive compression
 - keep live ETA widgets server-driven, not hydration-heavy
 
-On your stack, that means **route-level code splitting in Vite**, **TanStack Query persistence**, skeleton states instead of spinners, and CDN-hosted transforms for all product images. A technician on a mid-range Android on noisy 4G should still be able to search, confirm stock, and pay in under a minute.
+On your stack, that means **route-level code splitting in Vite**, lightweight client-side state persistence where it materially improves return visits, skeleton states instead of spinners, and CDN-hosted transforms for all product images. A technician on a mid-range Android on noisy 4G should still be able to search, confirm stock, and pay in under a minute.
 
 Trust signals matter more in this category than in grocery quick commerce. Toxics Link’s repair research found that **lack of original spares**, **lack of warranties**, and **low trust in unauthorised repair quality** are major barriers in India’s repair ecosystem. That means your key badging stack should be:
 

@@ -30,13 +30,13 @@ services:
       - key: SHIPROCKET_BASE_URL
         value: https://apiv2.shiprocket.in/v1/external
       - key: SHIPROCKET_DEFAULT_WEIGHT_KG
-        value: "0.5"
+        value: '0.5'
       - key: SHIPROCKET_DEFAULT_LENGTH_CM
-        value: "20"
+        value: '20'
       - key: SHIPROCKET_DEFAULT_BREADTH_CM
-        value: "15"
+        value: '15'
       - key: SHIPROCKET_DEFAULT_HEIGHT_CM
-        value: "5"
+        value: '5'
       - key: LAPKART_DISPATCH_PINCODE
         sync: false
       - key: LAPKART_DISPATCH_LATITUDE

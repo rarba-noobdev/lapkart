@@ -1,8 +1,20 @@
-node_modules
-dist
-.output
-.vinxi
-pnpm-lock.yaml
+# Package Managers
 package-lock.json
+pnpm-lock.yaml
+yarn.lock
 bun.lock
-routeTree.gen.ts
+bun.lockb
+
+# Generated and local tooling
+.agents/
+.codex/
+.svelte-kit/
+.vercel/
+.wrangler/
+dist/
+node_modules/
+
+# Miscellaneous
+/static/
+*.log
+deep-research-report.md
