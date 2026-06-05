@@ -711,6 +711,47 @@ function statusTone(value: string): "heat" | "warning" | "neutral" | "danger" | 
   return "neutral";
 }
 
+function adminShipmentStarted(order: AdminOrderRecord) {
+  const shipmentStatus = String(order.shipment?.status ?? "").toLowerCase();
+  return [
+    "awb_assigned",
+    "pickup_scheduled",
+    "label_generated",
+    "manifest_generated",
+    "shipped",
+    "in_transit",
+    "out_for_delivery",
+    "delivered",
+    "returned",
+    "rto_initiated",
+    "rto_delivered",
+  ].includes(shipmentStatus);
+}
+
+function canTransitionManualOrderStatusClient(order: AdminOrderRecord, nextStatus: string) {
+  const currentStatus = order.status.toLowerCase();
+  if (currentStatus === nextStatus) return true;
+  const progressiveStates = [
+    "pending",
+    "processing",
+    "confirmed",
+    "packed",
+    "shipped",
+    "out_for_delivery",
+    "delivered",
+  ];
+  const currentIndex = progressiveStates.indexOf(currentStatus);
+  const nextIndex = progressiveStates.indexOf(nextStatus);
+  if (nextStatus === "cancelled") return !adminShipmentStarted(order);
+  if (nextStatus === "returned") return currentStatus === "delivered";
+  if (currentIndex === -1 || nextIndex === -1) return false;
+  return nextIndex > currentIndex;
+}
+
+function adminReasonRequired(nextStatus: string) {
+  return ["cancelled", "returned"].includes(nextStatus);
+}
+
 function orderCanCreateShipment(order: FulfillmentOrder) {
   return !order.shipment && !blockedFulfillmentStatuses.has(order.status.toLowerCase());
 }
@@ -2364,6 +2405,13 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   const selectedOrder = orders.find((order) => order.id === selectedId) ?? null;
   const selectedOrderLocked = selectedOrder ? isTerminalOrder(selectedOrder) : false;
   const refundableAmount = selectedOrder?.refundSummary.refundableAmount ?? 0;
+  const reasonRequiredForEdit = adminReasonRequired(editor.status);
+  const allowedOrderStatusOptions = selectedOrder
+    ? manualOrderStatusOptions.map((option) => ({
+        ...option,
+        disabled: !canTransitionManualOrderStatusClient(selectedOrder, option.value),
+      }))
+    : manualOrderStatusOptions;
 
   const saveOrder = async () => {
     if (!editor.id) return;
@@ -2371,11 +2419,15 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       toast.error("Terminal orders are locked. Change them manually in the database if needed.");
       return;
     }
-    if (editor.reason.trim().length < 12) {
-      toast.error("Add a clear admin reason before saving");
+    if (selectedOrder && !canTransitionManualOrderStatusClient(selectedOrder, editor.status)) {
+      toast.error("That order transition is not allowed anymore");
       return;
     }
-    const payload: Record<string, unknown> = { reason: editor.reason };
+    if (reasonRequiredForEdit && editor.reason.trim().length < 12) {
+      toast.error("Add a clear cancellation or return reason before saving");
+      return;
+    }
+    const payload: Record<string, unknown> = {};
     if (selectedOrder && editor.status !== selectedOrder.status) {
       if (!manualOrderStatusValues.has(editor.status)) {
         toast.error("This order status is controlled by a workflow action");
@@ -2386,6 +2438,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     if (selectedOrder && editor.paymentStatus !== selectedOrder.paymentStatus) {
       payload.paymentStatus = editor.paymentStatus;
     }
+    if (editor.reason.trim()) payload.reason = editor.reason;
     if (!("status" in payload) && !("paymentStatus" in payload)) {
       toast.error("Change order status or payment status before saving");
       return;
@@ -2409,6 +2462,10 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     if (!editor.id || !selectedOrder) return;
     if (selectedOrderLocked) {
       toast.error("This order is already locked");
+      return;
+    }
+    if (adminShipmentStarted(selectedOrder) || selectedOrder.status.toLowerCase() === "shipped") {
+      toast.error("Shipped orders cannot be cancelled from the admin editor");
       return;
     }
     if (editor.reason.trim().length < 12) {
@@ -2684,14 +2741,14 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   disabled={selectedOrderLocked}
                   options={
                     manualOrderStatusValues.has(editor.status)
-                      ? manualOrderStatusOptions
+                      ? allowedOrderStatusOptions
                       : [
                           {
                             value: editor.status,
                             label: `${editor.status.replaceAll("_", " ")} (workflow state)`,
                             disabled: true,
                           },
-                          ...manualOrderStatusOptions,
+                          ...allowedOrderStatusOptions,
                         ]
                   }
                 />
@@ -2709,15 +2766,22 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
             </div>
 
             <div className="mt-4 rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-4">
-              <Field label="Reason for change">
-                <TextAreaInput
-                  value={editor.reason}
-                  disabled={selectedOrderLocked}
-                  onChange={(value) => setEditor((current) => ({ ...current, reason: value }))}
-                  rows={3}
-                  placeholder="Required. Example: Customer called support and asked to cancel before packing."
-                />
-              </Field>
+              {reasonRequiredForEdit ? (
+                <Field label="Reason for change">
+                  <TextAreaInput
+                    value={editor.reason}
+                    disabled={selectedOrderLocked}
+                    onChange={(value) => setEditor((current) => ({ ...current, reason: value }))}
+                    rows={3}
+                    placeholder="Required. Example: Customer called support and asked to cancel before packing."
+                  />
+                </Field>
+              ) : (
+                <p className="text-body-small text-[var(--black-alpha-56)]">
+                  Routine order and payment state changes are saved directly. Cancellation and
+                  return transitions still require a reason.
+                </p>
+              )}
               <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
                 Manual edits are limited to order/payment state. Customer cancellation and return
                 request states are handled through the workflow cards below.
@@ -2726,7 +2790,11 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 <button
                   type="button"
                   onClick={() => void saveOrder()}
-                  disabled={saving || selectedOrderLocked || editor.reason.trim().length < 12}
+                  disabled={
+                    saving ||
+                    selectedOrderLocked ||
+                    (reasonRequiredForEdit && editor.reason.trim().length < 12)
+                  }
                   className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--heat-100)] px-4 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {saving ? (
@@ -2734,12 +2802,17 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   ) : (
                     <Save className="size-4" />
                   )}
-                  Save reasoned change
+                  {reasonRequiredForEdit ? "Save with reason" : "Save change"}
                 </button>
                 <button
                   type="button"
                   onClick={() => void manualCancelOrder()}
-                  disabled={saving || selectedOrderLocked || editor.reason.trim().length < 12}
+                  disabled={
+                    saving ||
+                    selectedOrderLocked ||
+                    adminShipmentStarted(selectedOrder) ||
+                    editor.reason.trim().length < 12
+                  }
                   className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-label-small text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   <Ban className="size-4" />
@@ -2973,6 +3046,13 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                           </p>
                         )}
                         <StatusBadge value={selectedOrder.cancellationRequest.status} />
+                        {adminShipmentStarted(selectedOrder) &&
+                          selectedOrder.cancellationRequest.status === "pending" && (
+                            <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
+                              Shipping has started, so this request can no longer be approved as a
+                              cancellation.
+                            </p>
+                          )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {selectedOrder.cancellationRequest.status === "pending" && (
@@ -2980,6 +3060,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                             <WorkflowButton
                               label="Approve"
                               loading={workflowAction === "cancel-approve"}
+                              disabled={adminShipmentStarted(selectedOrder)}
                               onClick={() =>
                                 void runWorkflowAction(
                                   "cancel-approve",

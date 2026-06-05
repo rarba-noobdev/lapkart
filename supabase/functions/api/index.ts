@@ -304,7 +304,7 @@ const adminOrderUpdateSchema = z
   .object({
     status: orderStatusSchema.optional(),
     paymentStatus: paymentStatusSchema.optional(),
-    reason: z.string().trim().min(12).max(500),
+    reason: z.string().trim().min(12).max(500).optional(),
   })
   .refine(
     (value) => value.status !== undefined || value.paymentStatus !== undefined,
@@ -1409,6 +1409,49 @@ function canRequestReturn(
   ).getTime();
   if (!Number.isFinite(deliveredAt)) return true;
   return Date.now() - deliveredAt <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function canTransitionManualOrderStatus(
+  currentStatus: string,
+  nextStatus: string,
+  shipmentStarted: boolean,
+) {
+  if (currentStatus === nextStatus) return true;
+  const progressiveStates = [
+    "pending",
+    "processing",
+    "confirmed",
+    "packed",
+    "shipped",
+    "out_for_delivery",
+    "delivered",
+  ];
+  const currentIndex = progressiveStates.indexOf(currentStatus);
+  const nextIndex = progressiveStates.indexOf(nextStatus);
+  if (nextStatus === "cancelled") return !shipmentStarted;
+  if (nextStatus === "returned") return currentStatus === "delivered";
+  if (currentIndex === -1 || nextIndex === -1) return false;
+  return nextIndex > currentIndex;
+}
+
+function manualAdminReason(
+  inputReason: string | undefined,
+  payload: Record<string, unknown>,
+  existingOrder: Record<string, unknown>,
+) {
+  const trimmed = inputReason?.trim();
+  if (trimmed) return trimmed;
+  if ("status" in payload) {
+    return `Admin changed order status from ${String(existingOrder.status ?? "unknown")} to ${String(
+      payload.status ?? "unknown",
+    )}.`;
+  }
+  if ("payment_status" in payload) {
+    return `Admin changed payment status from ${String(
+      existingOrder.payment_status ?? "unknown",
+    )} to ${String(payload.payment_status ?? "unknown")}.`;
+  }
+  return "Admin updated order state.";
 }
 
 function toPaise(amount: number) {
@@ -2848,6 +2891,26 @@ async function handle(req: Request) {
       orderId: adminCancellationMatch[1],
     });
     const input = adminWorkflowActionSchema.parse(await req.json());
+    const { data: currentRequest, error: currentRequestError } = await adminDb
+      .from("order_cancellation_requests")
+      .select("id,order_id,status")
+      .eq("id", cancellationId)
+      .single();
+    if (currentRequestError) throw currentRequestError;
+    if (input.action === "approve") {
+      const { data: shipment, error: shipmentError } = await adminDb
+        .from("shipments")
+        .select("status")
+        .eq("order_id", currentRequest.order_id)
+        .eq("shipping_direction", "outbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (shipmentError) throw shipmentError;
+      if (isShipmentStarted(shipment as Record<string, unknown> | null)) {
+        throw new HttpError(409, "This order has already started shipping and cannot be cancelled");
+      }
+    }
     const status =
       input.action === "approve"
         ? "refund_pending"
@@ -4392,12 +4455,22 @@ async function handle(req: Request) {
     const adminUser = await requireAdmin(req);
     const { orderId } = orderIdParamSchema.parse({ orderId: adminOrderMatch[1] });
     const input = adminOrderUpdateSchema.parse(await req.json());
-    const { data: existingOrder, error: existingOrderError } = await adminDb
-      .from("orders")
-      .select("id,user_id,status,payment_status")
-      .eq("id", orderId)
-      .single();
+    const [
+      { data: existingOrder, error: existingOrderError },
+      { data: shipment, error: shipmentError },
+    ] = await Promise.all([
+      adminDb.from("orders").select("id,user_id,status,payment_status").eq("id", orderId).single(),
+      adminDb
+        .from("shipments")
+        .select("status")
+        .eq("order_id", orderId)
+        .eq("shipping_direction", "outbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
     if (existingOrderError) throw existingOrderError;
+    if (shipmentError) throw shipmentError;
     const currentOrderStatus = String(existingOrder.status ?? "").toLowerCase();
     const currentPaymentStatus = String(existingOrder.payment_status ?? "").toLowerCase();
     const isTerminalOrder = ["cancelled", "refunded", "returned"].includes(currentOrderStatus);
@@ -4412,6 +4485,23 @@ async function handle(req: Request) {
     const payload: Record<string, unknown> = {};
     if ("status" in input) payload.status = input.status?.toLowerCase();
     if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
+    const nextOrderStatus = String(payload.status ?? currentOrderStatus);
+    const shipmentStarted = isShipmentStarted(shipment as Record<string, unknown> | null);
+    if (
+      "status" in payload &&
+      !canTransitionManualOrderStatus(currentOrderStatus, nextOrderStatus, shipmentStarted)
+    ) {
+      throw new HttpError(
+        409,
+        shipmentStarted && nextOrderStatus === "cancelled"
+          ? "Shipped orders cannot be cancelled from the admin editor"
+          : `Order cannot move from ${currentOrderStatus.replaceAll("_", " ")} to ${nextOrderStatus.replaceAll("_", " ")}`,
+      );
+    }
+    const reasonRequired = ["cancelled", "returned"].includes(nextOrderStatus);
+    if (reasonRequired && !input.reason?.trim()) {
+      throw new HttpError(400, "Add a clear reason for cancellation or return changes");
+    }
     const changedFields = Object.entries(payload).filter(([key, value]) => {
       const existingValue = (existingOrder as Record<string, unknown>)[key];
       return String(existingValue ?? "") !== String(value ?? "");
@@ -4425,6 +4515,11 @@ async function handle(req: Request) {
         ? "manual_cancel"
         : "manual_update"
       : "payment_update";
+    const reason = manualAdminReason(
+      input.reason,
+      payload,
+      existingOrder as Record<string, unknown>,
+    );
     const { data, error } = await adminDb
       .from("orders")
       .update(payload)
@@ -4436,7 +4531,7 @@ async function handle(req: Request) {
       order_id: orderId,
       admin_user_id: adminUser.id,
       event_type: eventType,
-      reason: input.reason,
+      reason,
       from_state: Object.fromEntries(
         changedFields.map(([key]) => [
           key,
@@ -4466,7 +4561,7 @@ async function handle(req: Request) {
             order_id: orderId,
             user_id: existingOrder.user_id,
             status: "approved",
-            reason: input.reason,
+            reason,
             admin_note: "Manual admin cancellation",
             resolved_at: new Date().toISOString(),
           });
