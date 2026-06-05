@@ -1434,6 +1434,20 @@ function canTransitionManualOrderStatus(
   return nextIndex > currentIndex;
 }
 
+function canTransitionManualPaymentStatus(currentStatus: string, nextStatus: string) {
+  if (currentStatus === nextStatus) return true;
+  if (["partially_refunded", "refunded"].includes(nextStatus)) return false;
+  if (["partially_refunded", "refunded"].includes(currentStatus)) return false;
+  if (currentStatus === "paid") return false;
+  if (currentStatus === "pending") return ["paid", "failed", "cod_pending"].includes(nextStatus);
+  if (currentStatus === "cod_pending") {
+    return ["paid", "cod_cancelled", "failed"].includes(nextStatus);
+  }
+  if (currentStatus === "failed") return nextStatus === "pending";
+  if (currentStatus === "cod_cancelled") return false;
+  return false;
+}
+
 function manualAdminReason(
   inputReason: string | undefined,
   payload: Record<string, unknown>,
@@ -4496,6 +4510,24 @@ async function handle(req: Request) {
         shipmentStarted && nextOrderStatus === "cancelled"
           ? "Shipped orders cannot be cancelled from the admin editor"
           : `Order cannot move from ${currentOrderStatus.replaceAll("_", " ")} to ${nextOrderStatus.replaceAll("_", " ")}`,
+      );
+    }
+    if (
+      "payment_status" in payload &&
+      !canTransitionManualPaymentStatus(
+        currentPaymentStatus,
+        String(payload.payment_status ?? currentPaymentStatus),
+      )
+    ) {
+      throw new HttpError(
+        409,
+        ["partially_refunded", "refunded"].includes(
+          String(payload.payment_status ?? "").toLowerCase(),
+        )
+          ? "Use the refund workflow instead of manually setting a refund payment state"
+          : `Payment cannot move from ${currentPaymentStatus.replaceAll("_", " ")} to ${String(
+              payload.payment_status ?? "",
+            ).replaceAll("_", " ")}`,
       );
     }
     const reasonRequired = ["cancelled", "returned"].includes(nextOrderStatus);

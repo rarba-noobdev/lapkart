@@ -174,8 +174,63 @@ const adminOrderUpdateSchema = z
       .regex(/^[0-9]{6}$/)
       .optional()
       .transform((value) => value ?? undefined),
+    reason: z.string().trim().min(12).max(500).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one order field must be provided");
+
+function canTransitionManualPaymentStatus(currentStatus: string, nextStatus: string) {
+  if (currentStatus === nextStatus) return true;
+  if (["partially_refunded", "refunded"].includes(nextStatus)) return false;
+  if (["partially_refunded", "refunded"].includes(currentStatus)) return false;
+  if (currentStatus === "paid") return false;
+  if (currentStatus === "pending") return ["paid", "failed", "cod_pending"].includes(nextStatus);
+  if (currentStatus === "cod_pending") {
+    return ["paid", "cod_cancelled", "failed"].includes(nextStatus);
+  }
+  if (currentStatus === "failed") return nextStatus === "pending";
+  if (currentStatus === "cod_cancelled") return false;
+  return false;
+}
+
+function isAdminShipmentStarted(shipment?: { status?: string | null } | null) {
+  const status = String(shipment?.status ?? "").toLowerCase();
+  return [
+    "awb_assigned",
+    "pickup_scheduled",
+    "label_generated",
+    "manifest_generated",
+    "shipped",
+    "in_transit",
+    "out_for_delivery",
+    "delivered",
+    "returned",
+    "rto_initiated",
+    "rto_delivered",
+  ].includes(status);
+}
+
+function canTransitionManualOrderStatus(
+  currentStatus: string,
+  nextStatus: string,
+  shipmentStarted: boolean,
+) {
+  if (currentStatus === nextStatus) return true;
+  const progressiveStates = [
+    "pending",
+    "processing",
+    "confirmed",
+    "packed",
+    "shipped",
+    "out_for_delivery",
+    "delivered",
+  ];
+  const currentIndex = progressiveStates.indexOf(currentStatus);
+  const nextIndex = progressiveStates.indexOf(nextStatus);
+  if (nextStatus === "cancelled") return !shipmentStarted;
+  if (nextStatus === "returned") return currentStatus === "delivered";
+  if (currentIndex === -1 || nextIndex === -1) return false;
+  return nextIndex > currentIndex;
+}
 
 const latitudeSchema = z.coerce.number().min(-90).max(90);
 const longitudeSchema = z.coerce.number().min(-180).max(180);
@@ -2313,10 +2368,11 @@ app.patch("/admin/orders/:orderId", requireAdmin, async (req, res, next) => {
     const { orderId } = orderIdParamSchema.parse(req.params);
     const input = adminOrderUpdateSchema.parse(req.body);
 
-    const { data: existingOrder, error: existingOrderError } = await adminDb
-      .from("orders")
-      .select(
-        `
+    const [existingOrderResult, shipmentResult] = await Promise.all([
+      adminDb
+        .from("orders")
+        .select(
+          `
         id,
         status,
         payment_status,
@@ -2331,46 +2387,79 @@ app.patch("/admin/orders/:orderId", requireAdmin, async (req, res, next) => {
         shipping_pincode,
         shipping_address
       `,
-      )
-      .eq("id", orderId)
-      .single();
+        )
+        .eq("id", orderId)
+        .single(),
+      adminDb
+        .from("shipments")
+        .select("status")
+        .eq("order_id", orderId)
+        .eq("shipping_direction", "outbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const { data: existingOrder, error: existingOrderError } = existingOrderResult;
+    const { data: shipment, error: shipmentError } = shipmentResult;
     if (existingOrderError) throw existingOrderError;
+    if (shipmentError) throw shipmentError;
 
-    const payload: Record<string, unknown> = {};
-    if ("status" in input) payload.status = input.status?.toLowerCase();
-    if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
-    if ("shippingServiceType" in input) payload.shipping_service_type = input.shippingServiceType;
-    if ("shippingName" in input) payload.shipping_name = input.shippingName ?? null;
-    if ("shippingPhone" in input) payload.shipping_phone = input.shippingPhone ?? null;
-    if ("shippingEmail" in input) payload.shipping_email = input.shippingEmail ?? null;
-    if ("shippingLine1" in input) payload.shipping_line1 = input.shippingLine1 ?? null;
-    if ("shippingLine2" in input) payload.shipping_line2 = input.shippingLine2 ?? null;
-    if ("shippingCity" in input) payload.shipping_city = input.shippingCity ?? null;
-    if ("shippingState" in input) payload.shipping_state = input.shippingState ?? null;
-    if ("shippingPincode" in input) payload.shipping_pincode = input.shippingPincode ?? null;
-
-    const addressFieldsTouched = [
+    const currentOrderStatus = String(existingOrder.status ?? "").toLowerCase();
+    const currentPaymentStatus = String(existingOrder.payment_status ?? "").toLowerCase();
+    if (
+      ["cancelled", "refunded", "returned"].includes(currentOrderStatus) ||
+      ["refunded", "cod_cancelled"].includes(currentPaymentStatus)
+    ) {
+      throw new HttpError(409, "Terminal orders are locked from the admin app");
+    }
+    const readOnlyFieldsTouched = [
+      "shippingServiceType",
+      "shippingName",
+      "shippingPhone",
+      "shippingEmail",
       "shippingLine1",
       "shippingLine2",
       "shippingCity",
       "shippingState",
       "shippingPincode",
     ].some((field) => field in input);
+    if (readOnlyFieldsTouched) {
+      throw new HttpError(
+        400,
+        "Customer and delivery fields are read-only in the admin order editor",
+      );
+    }
 
-    if (addressFieldsTouched) {
-      const line1 =
-        ("shippingLine1" in input ? input.shippingLine1 : existingOrder.shipping_line1) ?? null;
-      const line2 =
-        ("shippingLine2" in input ? input.shippingLine2 : existingOrder.shipping_line2) ?? null;
-      const city =
-        ("shippingCity" in input ? input.shippingCity : existingOrder.shipping_city) ?? null;
-      const state =
-        ("shippingState" in input ? input.shippingState : existingOrder.shipping_state) ?? null;
-      const pincode =
-        ("shippingPincode" in input ? input.shippingPincode : existingOrder.shipping_pincode) ??
-        null;
-      payload.shipping_address = [line1, line2, city, state, pincode].filter(Boolean).join(", ");
-      payload.shipping_formatted_address = payload.shipping_address;
+    const payload: Record<string, unknown> = {};
+    if ("status" in input) payload.status = input.status?.toLowerCase();
+    if ("paymentStatus" in input) payload.payment_status = input.paymentStatus?.toLowerCase();
+    const nextOrderStatus = String(payload.status ?? currentOrderStatus);
+    if (
+      "status" in payload &&
+      !canTransitionManualOrderStatus(
+        currentOrderStatus,
+        nextOrderStatus,
+        isAdminShipmentStarted(shipment),
+      )
+    ) {
+      throw new HttpError(
+        409,
+        isAdminShipmentStarted(shipment) && nextOrderStatus === "cancelled"
+          ? "Shipped orders cannot be cancelled from the admin editor"
+          : `Order cannot move from ${currentOrderStatus.replaceAll("_", " ")} to ${nextOrderStatus.replaceAll("_", " ")}`,
+      );
+    }
+    if (
+      "payment_status" in payload &&
+      !canTransitionManualPaymentStatus(
+        currentPaymentStatus,
+        String(payload.payment_status ?? currentPaymentStatus),
+      )
+    ) {
+      throw new HttpError(409, "Use the payment or refund workflow for this payment state change");
+    }
+    if (["cancelled", "returned"].includes(nextOrderStatus) && !input.reason?.trim()) {
+      throw new HttpError(400, "Add a clear reason for cancellation or return changes");
     }
 
     const { data, error } = await adminDb

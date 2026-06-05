@@ -748,6 +748,66 @@ function canTransitionManualOrderStatusClient(order: AdminOrderRecord, nextStatu
   return nextIndex > currentIndex;
 }
 
+function canAdminCancelOrder(order: AdminOrderRecord) {
+  const status = order.status.toLowerCase();
+  return (
+    !isTerminalOrder(order) &&
+    !adminShipmentStarted(order) &&
+    !["shipped", "out_for_delivery", "delivered"].includes(status)
+  );
+}
+
+function canAdminReturnOrder(order: AdminOrderRecord) {
+  const status = order.status.toLowerCase();
+  return !isTerminalOrder(order) && status === "delivered";
+}
+
+function nextProgressiveOrderStatus(order: AdminOrderRecord) {
+  const progressiveStates = [
+    "pending",
+    "processing",
+    "confirmed",
+    "packed",
+    "shipped",
+    "out_for_delivery",
+    "delivered",
+  ];
+  const currentIndex = progressiveStates.indexOf(order.status.toLowerCase());
+  if (currentIndex === -1 || currentIndex >= progressiveStates.length - 1) return null;
+  return progressiveStates[currentIndex + 1];
+}
+
+function paymentStatusOptionsForOrder(order: AdminOrderRecord) {
+  const currentPaymentStatus = order.paymentStatus.toLowerCase();
+  const paymentMethod = order.paymentMethod.toLowerCase();
+  return paymentStatusOptions.map((option) => {
+    const value = option.value;
+    let disabled = false;
+    if (["partially_refunded", "refunded"].includes(value) && value !== currentPaymentStatus) {
+      disabled = true;
+    }
+    if (
+      value === "failed" &&
+      ["paid", "partially_refunded", "refunded"].includes(currentPaymentStatus)
+    ) {
+      disabled = true;
+    }
+    if (
+      value === "cod_cancelled" &&
+      currentPaymentStatus !== "cod_pending" &&
+      currentPaymentStatus !== "cod_cancelled" &&
+      !paymentMethod.includes("cod")
+    ) {
+      disabled = true;
+    }
+    return { ...option, disabled };
+  });
+}
+
+function statusOptionLabel(value: string) {
+  return manualOrderStatusOptions.find((option) => option.value === value)?.label ?? value;
+}
+
 function adminReasonRequired(nextStatus: string) {
   return ["cancelled", "returned"].includes(nextStatus);
 }
@@ -2374,6 +2434,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   const [refundEditor, setRefundEditor] = useState<RefundEditorState>(emptyRefundEditor());
   const [workflowAction, setWorkflowAction] = useState<string | null>(null);
   const [refundSaving, setRefundSaving] = useState(false);
+  const [confirmingManualState, setConfirmingManualState] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -2418,12 +2479,14 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
       setSelectedId(null);
       setEditor(emptyOrderEditor());
       setRefundEditor(emptyRefundEditor());
+      setConfirmingManualState(false);
       return;
     }
     const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
     setSelectedId(selected.id);
     setEditor(mapOrderToEditor(selected));
     setRefundEditor(mapOrderToRefundEditor(selected));
+    setConfirmingManualState(false);
   }, [orders, selectedId]);
 
   const filtered = orders.filter((order) =>
@@ -2434,13 +2497,27 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
   const selectedOrder = orders.find((order) => order.id === selectedId) ?? null;
   const selectedOrderLocked = selectedOrder ? isTerminalOrder(selectedOrder) : false;
   const refundableAmount = selectedOrder?.refundSummary.refundableAmount ?? 0;
+  const orderStatusChanged = Boolean(selectedOrder && editor.status !== selectedOrder.status);
+  const paymentStatusChanged = Boolean(
+    selectedOrder && editor.paymentStatus !== selectedOrder.paymentStatus,
+  );
+  const hasManualStateChange = orderStatusChanged || paymentStatusChanged;
   const reasonRequiredForEdit = adminReasonRequired(editor.status);
+  const needsManualStateConfirmation = Boolean(
+    selectedOrder && orderStatusChanged && ["cancelled", "returned"].includes(editor.status),
+  );
+  const nextOrderStatus = selectedOrder ? nextProgressiveOrderStatus(selectedOrder) : null;
+  const canCancelSelectedOrder = selectedOrder ? canAdminCancelOrder(selectedOrder) : false;
+  const canReturnSelectedOrder = selectedOrder ? canAdminReturnOrder(selectedOrder) : false;
   const allowedOrderStatusOptions = selectedOrder
     ? manualOrderStatusOptions.map((option) => ({
         ...option,
         disabled: !canTransitionManualOrderStatusClient(selectedOrder, option.value),
       }))
     : manualOrderStatusOptions;
+  const allowedPaymentStatusOptions = selectedOrder
+    ? paymentStatusOptionsForOrder(selectedOrder)
+    : paymentStatusOptions;
 
   const saveOrder = async () => {
     if (!editor.id) return;
@@ -2454,6 +2531,11 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
     }
     if (reasonRequiredForEdit && editor.reason.trim().length < 12) {
       toast.error("Add a clear cancellation or return reason before saving");
+      return;
+    }
+    if (needsManualStateConfirmation && !confirmingManualState) {
+      setConfirmingManualState(true);
+      toast.warning(`Review the reason, then confirm ${editor.status.replaceAll("_", " ")}.`);
       return;
     }
     const payload: Record<string, unknown> = {};
@@ -2479,47 +2561,10 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
         body: JSON.stringify(payload),
       });
       toast.success("Order updated");
+      setConfirmingManualState(false);
       await loadOrders();
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Could not update order");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const manualCancelOrder = async () => {
-    if (!editor.id || !selectedOrder) return;
-    if (selectedOrderLocked) {
-      toast.error("This order is already locked");
-      return;
-    }
-    if (adminShipmentStarted(selectedOrder) || selectedOrder.status.toLowerCase() === "shipped") {
-      toast.error("Shipped orders cannot be cancelled from the admin editor");
-      return;
-    }
-    if (editor.reason.trim().length < 12) {
-      toast.error("Add the cancellation reason first");
-      return;
-    }
-    setEditor((current) => ({
-      ...current,
-      status: "cancelled",
-      paymentStatus: current.paymentStatus === "paid" ? "failed" : current.paymentStatus,
-    }));
-    try {
-      setSaving(true);
-      await requestAdminApi<{ order: unknown }>(accessToken, `/admin/orders/${editor.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: "cancelled",
-          paymentStatus: editor.paymentStatus === "paid" ? "failed" : editor.paymentStatus,
-          reason: editor.reason,
-        }),
-      });
-      toast.success("Order cancelled");
-      await loadOrders();
-    } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Could not cancel order");
     } finally {
       setSaving(false);
     }
@@ -2632,6 +2677,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   setSelectedId(order.id);
                   setEditor(mapOrderToEditor(order));
                   setRefundEditor(mapOrderToRefundEditor(order));
+                  setConfirmingManualState(false);
                 }}
               >
                 <div className="grid gap-4 xl:grid-cols-[1.05fr_1.25fr_0.9fr_auto]">
@@ -2731,7 +2777,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
         </div>
       </Panel>
 
-      <Panel title="Edit order">
+      <Panel title="Order handling">
         {selectedOrder ? (
           <>
             {selectedOrderLocked && (
@@ -2762,11 +2808,84 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
               <InfoTile label="Total" value={formatINR(selectedOrder.total)} />
             </div>
 
+            <div className="mb-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-label-small text-foreground">Current state</p>
+                  <p className="mt-1 text-body-small text-[var(--black-alpha-56)]">
+                    Use quick actions for normal order progress. Use manual correction only when an
+                    order or payment state was recorded incorrectly.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge
+                    value={selectedOrder.status}
+                    accent={statusTone(selectedOrder.status)}
+                  />
+                  <StatusBadge
+                    value={selectedOrder.paymentStatus}
+                    accent={statusTone(selectedOrder.paymentStatus)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {nextOrderStatus && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditor((current) => ({ ...current, status: nextOrderStatus }));
+                      setConfirmingManualState(false);
+                    }}
+                    disabled={selectedOrderLocked}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Mark {statusOptionLabel(nextOrderStatus)}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditor((current) => ({ ...current, status: "cancelled" }));
+                    setConfirmingManualState(false);
+                  }}
+                  disabled={!canCancelSelectedOrder}
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-label-small text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Ban className="size-4" />
+                  Prepare cancellation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditor((current) => ({ ...current, status: "returned" }));
+                    setConfirmingManualState(false);
+                  }}
+                  disabled={!canReturnSelectedOrder}
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Package className="size-4" />
+                  Mark returned
+                </button>
+              </div>
+
+              {!canCancelSelectedOrder && !selectedOrderLocked && (
+                <p className="mt-3 text-body-small text-[var(--black-alpha-56)]">
+                  Cancellation is disabled after shipment starts. Use the return workflow for
+                  delivered orders.
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Order status">
                 <SelectInput
                   value={editor.status}
-                  onChange={(value) => setEditor((current) => ({ ...current, status: value }))}
+                  onChange={(value) => {
+                    setEditor((current) => ({ ...current, status: value }));
+                    setConfirmingManualState(false);
+                  }}
                   disabled={selectedOrderLocked}
                   options={
                     manualOrderStatusValues.has(editor.status)
@@ -2786,10 +2905,11 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 <SelectInput
                   value={editor.paymentStatus}
                   disabled={selectedOrderLocked}
-                  onChange={(value) =>
-                    setEditor((current) => ({ ...current, paymentStatus: value }))
-                  }
-                  options={paymentStatusOptions}
+                  onChange={(value) => {
+                    setEditor((current) => ({ ...current, paymentStatus: value }));
+                    setConfirmingManualState(false);
+                  }}
+                  options={allowedPaymentStatusOptions}
                 />
               </Field>
             </div>
@@ -2807,14 +2927,20 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                 </Field>
               ) : (
                 <p className="text-body-small text-[var(--black-alpha-56)]">
-                  Routine order and payment state changes are saved directly. Cancellation and
-                  return transitions still require a reason.
+                  Routine order and payment corrections do not require a reason. Refund and
+                  cancellation outcomes are still handled through the workflow sections below.
                 </p>
               )}
               <p className="mt-2 text-body-small text-[var(--black-alpha-56)]">
-                Manual edits are limited to order/payment state. Customer cancellation and return
-                request states are handled through the workflow cards below.
+                Refund states cannot be selected manually. Create a refund in the refund section so
+                the payment, request, and admin history stay consistent.
               </p>
+              {needsManualStateConfirmation && confirmingManualState && (
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-body-small text-red-700">
+                  This will mark the order as {editor.status.replaceAll("_", " ")}. Confirm only
+                  after checking shipment state, customer request, and refund eligibility.
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -2822,6 +2948,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   disabled={
                     saving ||
                     selectedOrderLocked ||
+                    !hasManualStateChange ||
                     (reasonRequiredForEdit && editor.reason.trim().length < 12)
                   }
                   className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--heat-100)] px-4 text-label-small text-white transition-colors hover:bg-[var(--heat-200)] disabled:cursor-not-allowed disabled:opacity-55"
@@ -2831,22 +2958,25 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                   ) : (
                     <Save className="size-4" />
                   )}
-                  {reasonRequiredForEdit ? "Save with reason" : "Save change"}
+                  {needsManualStateConfirmation
+                    ? confirmingManualState
+                      ? `Confirm ${editor.status.replaceAll("_", " ")}`
+                      : `Review ${editor.status.replaceAll("_", " ")}`
+                    : "Save state correction"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void manualCancelOrder()}
-                  disabled={
-                    saving ||
-                    selectedOrderLocked ||
-                    adminShipmentStarted(selectedOrder) ||
-                    editor.reason.trim().length < 12
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-label-small text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Ban className="size-4" />
-                  Cancel order
-                </button>
+                {hasManualStateChange && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditor(mapOrderToEditor(selectedOrder));
+                      setConfirmingManualState(false);
+                    }}
+                    disabled={saving}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-small text-foreground transition-colors hover:bg-[var(--background-lighter)] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    Reset change
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3027,7 +3157,7 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-label-small text-foreground">
-                            {formatINR(refund.amount)} · {refund.speed}
+                            {formatINR(refund.amount)} / {refund.speed}
                           </p>
                           <p className="mt-1 text-body-small text-[var(--black-alpha-72)]">
                             {refund.reason || "No reason captured"}
@@ -3040,10 +3170,10 @@ function OrdersManager({ accessToken }: { accessToken: string }) {
                         {refund.processedAt ? (
                           <>
                             {" "}
-                            · Processed <SmartTime date={refund.processedAt} />
+                            / Processed <SmartTime date={refund.processedAt} />
                           </>
                         ) : null}
-                        {refund.providerRefundId ? ` · ${refund.providerRefundId}` : ""}
+                        {refund.providerRefundId ? ` / ${refund.providerRefundId}` : ""}
                       </p>
                     </div>
                   ))}
