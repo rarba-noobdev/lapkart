@@ -27,6 +27,7 @@ import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedOrderIdRouteImport } from './routes/_authenticated/order.$id'
+import { Route as AuthenticatedAdminFulfillmentRouteImport } from './routes/_authenticated/admin.fulfillment'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -117,6 +118,12 @@ const AuthenticatedOrderIdRoute = AuthenticatedOrderIdRouteImport.update({
   path: '/order/$id',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAdminFulfillmentRoute =
+  AuthenticatedAdminFulfillmentRouteImport.update({
+    id: '/fulfillment',
+    path: '/fulfillment',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -131,10 +138,11 @@ export interface FileRoutesByFullPath {
   '/returns-policy': typeof ReturnsPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/terms': typeof TermsRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/product/$id': typeof ProductIdRoute
+  '/admin/fulfillment': typeof AuthenticatedAdminFulfillmentRoute
   '/order/$id': typeof AuthenticatedOrderIdRoute
 }
 export interface FileRoutesByTo {
@@ -150,10 +158,11 @@ export interface FileRoutesByTo {
   '/returns-policy': typeof ReturnsPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/terms': typeof TermsRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/orders': typeof AuthenticatedOrdersRoute
   '/product/$id': typeof ProductIdRoute
+  '/admin/fulfillment': typeof AuthenticatedAdminFulfillmentRoute
   '/order/$id': typeof AuthenticatedOrderIdRoute
 }
 export interface FileRoutesById {
@@ -171,10 +180,11 @@ export interface FileRoutesById {
   '/returns-policy': typeof ReturnsPolicyRoute
   '/shipping-policy': typeof ShippingPolicyRoute
   '/terms': typeof TermsRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
   '/product/$id': typeof ProductIdRoute
+  '/_authenticated/admin/fulfillment': typeof AuthenticatedAdminFulfillmentRoute
   '/_authenticated/order/$id': typeof AuthenticatedOrderIdRoute
 }
 export interface FileRouteTypes {
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/orders'
     | '/product/$id'
+    | '/admin/fulfillment'
     | '/order/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -215,6 +226,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/orders'
     | '/product/$id'
+    | '/admin/fulfillment'
     | '/order/$id'
   id:
     | '__root__'
@@ -235,6 +247,7 @@ export interface FileRouteTypes {
     | '/_authenticated/checkout'
     | '/_authenticated/orders'
     | '/product/$id'
+    | '/_authenticated/admin/fulfillment'
     | '/_authenticated/order/$id'
   fileRoutesById: FileRoutesById
 }
@@ -383,18 +396,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrderIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/fulfillment': {
+      id: '/_authenticated/admin/fulfillment'
+      path: '/fulfillment'
+      fullPath: '/admin/fulfillment'
+      preLoaderRoute: typeof AuthenticatedAdminFulfillmentRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
 
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminFulfillmentRoute: typeof AuthenticatedAdminFulfillmentRoute
+}
+
+const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminFulfillmentRoute: AuthenticatedAdminFulfillmentRoute,
+}
+
+const AuthenticatedAdminRouteWithChildren =
+  AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedCheckoutRoute: typeof AuthenticatedCheckoutRoute
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
   AuthenticatedOrderIdRoute: typeof AuthenticatedOrderIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedCheckoutRoute: AuthenticatedCheckoutRoute,
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
   AuthenticatedOrderIdRoute: AuthenticatedOrderIdRoute,

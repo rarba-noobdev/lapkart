@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   type ComponentProps,
   type ReactNode,
@@ -164,7 +164,7 @@ type AdminAnalytics = {
   }>;
 };
 
-type AdminView = "overview" | "fulfillment" | "catalog" | "orders" | "users" | "promos" | "support";
+type AdminView = "overview" | "catalog" | "orders" | "users" | "promos" | "support";
 
 type AdminProduct = {
   id: string;
@@ -766,8 +766,16 @@ export const Route = createFileRoute("/_authenticated/admin")({
       },
     ],
   }),
-  component: AdminPage,
+  component: AdminRoute,
 });
+
+function AdminRoute() {
+  const location = useLocation();
+  if (location.pathname !== "/admin" && location.pathname !== "/admin/") {
+    return <Outlet />;
+  }
+  return <AdminPage />;
+}
 
 function AdminPage() {
   const navigate = useNavigate();
@@ -891,7 +899,7 @@ function AdminPage() {
           analytics={analytics}
           kpis={kpis}
           onOpenOrders={() => setView("orders")}
-          onOpenFulfillment={() => setView("fulfillment")}
+          onOpenFulfillment={() => void navigate({ to: "/admin/fulfillment" })}
         />
       ) : null}
 
@@ -965,7 +973,6 @@ function AdminPage() {
         </>
       )}
 
-      {view === "fulfillment" && session?.access_token && <FulfillmentQueue />}
       {view === "catalog" && session?.access_token && (
         <CatalogManager accessToken={session.access_token} />
       )}
@@ -1137,7 +1144,6 @@ function AdminTabs({
 }) {
   const items: Array<{ id: AdminView; label: string }> = [
     { id: "overview", label: "Dashboard" },
-    { id: "fulfillment", label: "Fulfillment" },
     { id: "catalog", label: "Catalog" },
     { id: "orders", label: "Orders" },
     { id: "users", label: "Users" },
@@ -1149,18 +1155,27 @@ function AdminTabs({
     <div className="sticky top-0 z-20 -mx-4 mt-6 border-y border-[var(--border-faint)] bg-[var(--background-base)]/95 px-4 py-3 backdrop-blur">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onChange(item.id)}
-            className={`inline-flex h-10 shrink-0 items-center rounded-md border px-4 text-label-small transition-colors ${
-              active === item.id
-                ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
-                : "border-[var(--border-muted)] bg-white text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-            }`}
-          >
-            {item.label}
-          </button>
+          <div key={item.id} className="contents">
+            <button
+              type="button"
+              onClick={() => onChange(item.id)}
+              className={`inline-flex h-10 shrink-0 items-center rounded-md border px-4 text-label-small transition-colors ${
+                active === item.id
+                  ? "border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]"
+                  : "border-[var(--border-muted)] bg-white text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+              }`}
+            >
+              {item.label}
+            </button>
+            {item.id === "overview" && (
+              <Link
+                to="/admin/fulfillment"
+                className="inline-flex h-10 shrink-0 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-label-small text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+              >
+                Fulfillment
+              </Link>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -3506,7 +3521,7 @@ function UsersManager({ accessToken }: { accessToken: string }) {
   );
 }
 
-function FulfillmentQueue() {
+export function FulfillmentQueue() {
   const { role, session } = useAuth();
   const [orders, setOrders] = useState<FulfillmentOrder[]>([]);
   const [account, setAccount] = useState<ShiprocketAccount | null>(null);
