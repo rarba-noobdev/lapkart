@@ -809,29 +809,32 @@
 	<title>Admin - lapkart</title>
 </svelte:head>
 
-<section class="admin-page mx-auto max-w-[1400px] px-6 py-8">
+<section class="admin-page mx-auto max-w-[1400px] px-6 py-8 animate-fade-up">
 	<div
-		class="mb-6 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-card"
+		class="relative mb-6 overflow-hidden rounded-xl border border-white/10 bg-[var(--accent-black)] text-white shadow-lg"
 	>
-		<div class="grain absolute inset-0 opacity-0"></div>
-		<div class="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
+		<div class="grain absolute inset-0 opacity-10 pointer-events-none"></div>
+		<!-- Spotlight overlay -->
+		<div class="absolute -top-24 -left-24 w-72 h-72 bg-radial from-[var(--heat-100)]/15 to-transparent blur-3xl pointer-events-none"></div>
+		
+		<div class="relative z-10 flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
 			<div class="flex items-start gap-4">
 				<div
-					class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-black)] text-[var(--heat-100)]"
+					class="flex w-11 h-11 shrink-0 items-center justify-center rounded-lg bg-white/10 border border-white/10 text-[var(--heat-100)] shadow-inner"
 				>
-					<LayoutDashboard class="size-5" strokeWidth={2} />
+					<LayoutDashboard class="w-5 h-5" strokeWidth={2.2} />
 				</div>
 				<div>
 					<nav
-						class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+						class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-white/40 uppercase"
 					>
-						<a href={resolve('/')} class="motion-soft-link hover:text-foreground">home</a>
-						<span class="text-[var(--black-alpha-24)]">/</span>
-						<span class="text-foreground">operations</span>
+						<a href={resolve('/')} class="motion-soft-link hover:text-white transition-colors duration-200">home</a>
+						<span class="text-white/20">/</span>
+						<span class="text-white">operations</span>
 					</nav>
-					<h1 class="text-title-h4 mt-1.5 font-display text-foreground">Operations workspace</h1>
-					<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-						Catalog, orders, users, and promotions — all in one console.
+					<h1 class="text-title-h4 mt-1.5 font-display text-white font-medium">Operations workspace</h1>
+					<p class="text-body-small mt-1 text-white/60">
+						Catalog, orders, users, and promotions — all in one dashboard console.
 					</p>
 				</div>
 			</div>
@@ -839,19 +842,19 @@
 			<div class="flex flex-wrap items-center gap-2">
 				{#if currentUser?.email}
 					<div
-						class="text-label-small flex h-10 items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 text-[var(--black-alpha-72)]"
+						class="text-label-small flex h-10 items-center gap-2 rounded-lg border border-white/8 bg-white/5 px-3 text-white/80"
 					>
-						<span class="size-2 rounded-full bg-[var(--accent-forest)]"></span>
+						<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-forest)] animate-pulse"></span>
 						<span class="max-w-[200px] truncate">{currentUser.email}</span>
 					</div>
 				{/if}
 				<a
 					href={resolve('/admin/fulfillment')}
-					class="button button-primary text-label-small inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-white"
+					class="button button-primary text-label-small inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-white hover:opacity-95"
 				>
-					<Truck class="size-4" strokeWidth={2} />
+					<Truck class="w-4 h-4" strokeWidth={2} />
 					Fulfillment queue
-					<ArrowUpRight class="size-3.5" strokeWidth={2.2} />
+					<ArrowUpRight class="w-3.5 h-3.5" strokeWidth={2.2} />
 				</a>
 			</div>
 		</div>
@@ -867,20 +870,20 @@
 		</div>
 	{:else}
 		<div
-			class="scrollbar-hide mb-6 flex gap-1 overflow-x-auto rounded-lg border border-[var(--border-faint)] bg-white p-1 shadow-card"
+			class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto rounded-xl border border-[var(--border-faint)] bg-white p-1.5 shadow-sm"
 			aria-label="Tabs"
 		>
 			{#each tabs as tab (tab.id)}
 				<button
 					type="button"
-					class={`text-label-small motion-press flex h-9 items-center gap-2 rounded-md px-3 whitespace-nowrap transition-all ${
+					class={`text-label-small motion-press flex h-9 items-center gap-2 rounded-lg px-4 whitespace-nowrap transition-all duration-300 font-medium cursor-pointer ${
 						view === tab.id
-							? 'bg-[var(--accent-black)] text-white shadow-card'
+							? 'bg-[var(--accent-black)] text-white shadow-md scale-[1.02]'
 							: 'text-[var(--black-alpha-56)] hover:bg-[var(--background-lighter)] hover:text-foreground'
 					}`}
 					onclick={() => setAdminView(tab.id)}
 				>
-					<tab.icon class="size-3.5" strokeWidth={2} />
+					<tab.icon class="w-4 h-4" strokeWidth={2} />
 					{tab.label}
 				</button>
 			{/each}
@@ -897,25 +900,26 @@
 					</div>
 				{/if}
 
-				<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+				<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 					{#each overviewCards as card (card.id)}
 						{@const Icon = overviewIcons[card.id] ?? TrendingUp}
 						<div
-							class="motion-card relative overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white p-5 shadow-card"
+							class="group motion-card relative overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white p-5 shadow-[0_4px_12px_rgba(0,0,0,0.02)] hover:border-[var(--heat-100)]/30 hover:shadow-md transition-all duration-300"
 						>
-							<div class="flex items-start justify-between gap-3">
+							<div class="inside-border group-hover:border-[var(--heat-100)]/12"></div>
+							<div class="relative z-10 flex items-start justify-between gap-3">
 								<div>
 									<p
-										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase font-semibold"
 									>
 										{card.label}
 									</p>
-									<p class="text-title-h4 mt-3 font-display text-foreground">{card.value}</p>
+									<p class="text-title-h4 mt-3 font-display text-foreground font-semibold tracking-tight">{card.value}</p>
 								</div>
 								<div
-									class="flex size-9 items-center justify-center rounded-md bg-[var(--heat-8)] text-[var(--heat-100)]"
+									class="flex w-9 h-9 items-center justify-center rounded-lg bg-[var(--heat-8)] text-[var(--heat-100)] group-hover:scale-110 transition-transform duration-300 shadow-xs"
 								>
-									<Icon class="size-4" strokeWidth={2} />
+									<Icon class="w-4 h-4" strokeWidth={2} />
 								</div>
 							</div>
 						</div>
@@ -924,19 +928,19 @@
 
 				<div class="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
 					<div
-						class="overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-card"
+						class="overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white shadow-[0_4px_12px_rgba(0,0,0,0.02)]"
 					>
 						<div
-							class="flex items-center justify-between gap-3 border-b-1 border-[var(--border-faint)] bg-[var(--background-lighter)] px-5 py-4"
+							class="flex items-center justify-between gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-5 py-4"
 						>
 							<div class="flex items-center gap-3">
 								<div
-									class="flex size-8 items-center justify-center rounded-md bg-[var(--accent-black)] text-[var(--heat-100)]"
+									class="flex w-8 h-8 items-center justify-center rounded-lg bg-[var(--accent-black)] text-[var(--heat-100)]"
 								>
-									<Activity class="size-3.5" strokeWidth={2} />
+									<Activity class="w-4 h-4" strokeWidth={2.2} />
 								</div>
 								<div>
-									<p class="text-label-medium text-foreground">Recent orders</p>
+									<p class="text-label-medium text-foreground font-semibold">Recent orders</p>
 									<p class="text-body-small text-[var(--black-alpha-56)]">
 										Latest order activity across the store
 									</p>
@@ -944,10 +948,10 @@
 							</div>
 							{#if loading}
 								<span
-									class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-[var(--heat-100)] uppercase"
+									class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-[var(--heat-100)] uppercase font-semibold animate-pulse"
 								>
-									<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"></span>
-									Syncing
+									<span class="w-1.5 h-1.5 rounded-full bg-[var(--heat-100)]"></span>
+									Syncing Live
 								</span>
 							{/if}
 						</div>

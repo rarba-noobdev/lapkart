@@ -2,8 +2,7 @@
 /* Heat-orange brand, Geist typography, P3 colors, refined utilities. */
 
 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;450;500;600;700&display=swap');
-@import 'tailwindcss' source(none);
-@source '../src';
+@import 'tailwindcss';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
