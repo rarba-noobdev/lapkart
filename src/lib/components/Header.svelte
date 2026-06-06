@@ -38,7 +38,7 @@
 </script>
 
 <header
-	class="sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 backdrop-blur-xl"
+	class="motion-section sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 backdrop-blur-xl"
 >
 	<div class="hidden border-b border-white/8 bg-[var(--accent-black)] text-white/75 md:block">
 		<div
@@ -52,8 +52,8 @@
 				{/if}
 			</span>
 			<a
-				href={isAdmin ? '/admin' : '/orders'}
-				class="transition-colors hover:text-[var(--heat-100)]"
+				href={resolve(isAdmin ? '/admin' : '/orders')}
+				class="motion-soft-link transition-colors hover:text-[var(--heat-100)]"
 			>
 				{isAdmin ? 'Operations' : 'Track orders'}
 			</a>
@@ -61,7 +61,10 @@
 	</div>
 
 	<div class="container mx-auto flex items-center gap-4 px-4 py-3 sm:gap-8">
-		<a href={isAdmin ? '/admin' : '/'} class="group flex items-baseline gap-2">
+		<a
+			href={resolve(isAdmin ? '/admin' : '/')}
+			class="motion-soft-link group flex items-baseline gap-2"
+		>
 			<Flame
 				class="size-5 -translate-y-px text-[var(--heat-100)] transition-transform group-hover:rotate-6"
 				strokeWidth={2.4}
@@ -98,8 +101,8 @@
 
 		<nav class="ml-auto flex items-center gap-1 sm:gap-3">
 			<a
-				href={isAdmin ? '/admin' : '/products'}
-				class="text-label-medium hidden min-h-11 items-center px-2 text-foreground/80 transition-colors hover:text-[var(--heat-100)] md:inline-flex"
+				href={resolve(isAdmin ? '/admin' : '/products')}
+				class="motion-soft-link text-label-medium hidden min-h-11 items-center px-2 text-foreground/80 transition-colors hover:text-[var(--heat-100)] md:inline-flex"
 			>
 				{isAdmin ? 'Operations' : 'Shop'}
 			</a>
@@ -108,7 +111,7 @@
 				<div class="relative">
 					<button
 						type="button"
-						class="text-label-small flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
+						class="motion-press text-label-small flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
 						aria-expanded={menuOpen}
 						onclick={() => (menuOpen = !menuOpen)}
 					>
@@ -127,7 +130,7 @@
 
 					{#if menuOpen}
 						<div
-							class="absolute top-full right-0 mt-2 w-64 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-[var(--shadow-pop)]"
+							class="motion-popover absolute top-full right-0 mt-2 w-64 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-[var(--shadow-pop)]"
 							transition:fly={{ y: -6, duration: 180 }}
 						>
 							<div class="border-b border-[var(--border-faint)] px-4 py-3">
@@ -139,7 +142,7 @@
 
 							{#if isAdmin}
 								<a
-									href="/admin"
+									href={resolve('/admin')}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<ShieldCheck class="size-[15px] text-[var(--black-alpha-48)]" />
@@ -147,14 +150,14 @@
 								</a>
 							{:else}
 								<a
-									href="/orders"
+									href={resolve('/orders')}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<Package class="size-[15px] text-[var(--black-alpha-48)]" />
 									My orders
 								</a>
 								<a
-									href="/dashboard"
+									href={resolve('/dashboard')}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<User class="size-[15px] text-[var(--black-alpha-48)]" />
@@ -177,8 +180,10 @@
 				</div>
 			{:else}
 				<a
-					href={`/login${page.url.pathname !== '/' ? `?redirect=${encodeURIComponent(page.url.pathname)}` : ''}`}
-					class="text-label-small flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 py-1.5 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+					href={resolve(
+						`/login${page.url.pathname !== '/' ? `?redirect=${encodeURIComponent(page.url.pathname)}` : ''}` as '/login'
+					)}
+					class="motion-press text-label-small flex min-h-11 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 py-1.5 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
 				>
 					<User class="size-4" />
 					<span class="hidden sm:inline">Sign in</span>
@@ -187,8 +192,8 @@
 
 			{#if !isAdmin}
 				<a
-					href="/cart"
-					class="text-label-small relative flex min-h-11 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
+					href={resolve('/cart')}
+					class="motion-press text-label-small relative flex min-h-11 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
 				>
 					<ShoppingCart class="size-[18px]" />
 					<span class="hidden sm:inline">Cart</span>

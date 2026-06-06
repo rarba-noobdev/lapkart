@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { ArrowUpRight, Star } from '@lucide/svelte';
 	import type { Product } from '$lib/catalog';
 	import { discountPct, formatINR } from '$lib/catalog';
@@ -9,9 +10,9 @@
 </script>
 
 <a
-	href={`/product/${product.id}`}
+	href={resolve(`/product/${product.id}`)}
 	aria-label={`${product.title} by ${product.brand}`}
-	class="group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:-translate-y-1 hover:border-[var(--heat-20)] hover:shadow-[0_24px_56px_-24px_var(--heat-40),0_4px_12px_-4px_rgba(0,0,0,0.06)]"
+	class="motion-card motion-image-parent group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white hover:border-[var(--heat-20)] hover:shadow-[0_24px_56px_-24px_var(--heat-40),0_4px_12px_-4px_rgba(0,0,0,0.06)]"
 >
 	{#if discount >= 30}
 		<span
@@ -27,7 +28,7 @@
 			alt={product.title}
 			width="640"
 			height="640"
-			class="size-full object-contain p-6 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.06]"
+			class="motion-image size-full object-contain p-6"
 			loading="lazy"
 		/>
 		<span class="pointer-events-none absolute inset-0 border-b border-[var(--border-faint)]"></span>

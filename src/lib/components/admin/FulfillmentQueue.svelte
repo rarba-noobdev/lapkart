@@ -17,6 +17,7 @@
 	let error = $state<string | null>(null);
 	let activeAction = $state<string | null>(null);
 	let detailOrderId = $state<string | null>(null);
+	let detailModalOpen = $state(false);
 	let selectedOrderIds = $state<string[]>([]);
 
 	const detailOrder = $derived(orders.find((order) => order.id === detailOrderId) ?? null);
@@ -35,6 +36,7 @@
 	function syncQueueState(nextOrders: FulfillmentOrder[]) {
 		if (!nextOrders.length) {
 			detailOrderId = null;
+			detailModalOpen = false;
 			selectedOrderIds = [];
 			return;
 		}
@@ -42,7 +44,10 @@
 		const stillVisible = detailOrderId
 			? nextOrders.some((order) => order.id === detailOrderId)
 			: false;
-		if (!stillVisible) detailOrderId = nextOrders[0]?.id ?? null;
+		if (detailOrderId && !stillVisible) {
+			detailOrderId = null;
+			detailModalOpen = false;
+		}
 		selectedOrderIds = selectedOrderIds.filter((orderId) =>
 			nextOrders.some((order) => order.id === orderId)
 		);
@@ -93,6 +98,27 @@
 		selectedOrderIds = allVisibleOrdersSelected ? [] : [...selectableOrderIds];
 	}
 
+	function openDetails(orderId: string) {
+		detailOrderId = orderId;
+		detailModalOpen = true;
+	}
+
+	function closeDetails() {
+		detailModalOpen = false;
+		detailOrderId = null;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && detailModalOpen) {
+			closeDetails();
+		}
+	}
+
+	function openExternal(url: string | null | undefined) {
+		if (!url) return;
+		window.open(url, '_blank', 'noopener,noreferrer');
+	}
+
 	async function runBulkCreateShipments() {
 		if (!selectedOrderIds.length) {
 			error = 'Select orders first.';
@@ -140,6 +166,8 @@
 		void refresh();
 	});
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="space-y-6">
 	<section class="rounded-[18px] border border-[var(--border-faint)] bg-white p-6">
@@ -314,11 +342,7 @@
 								/>
 							</td>
 							<td class="px-3 py-4">
-								<button
-									type="button"
-									class="group text-left"
-									onclick={() => (detailOrderId = order.id)}
-								>
+								<button type="button" class="group text-left" onclick={() => openDetails(order.id)}>
 									<p class="text-label-small text-foreground">
 										#{order.id.slice(0, 8).toUpperCase()}
 									</p>
@@ -367,14 +391,13 @@
 									<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">{latest.location}</p>
 								{/if}
 								{#if shipment?.trackingUrl}
-									<a
-										href={shipment.trackingUrl}
-										target="_blank"
-										rel="noreferrer"
+									<button
+										type="button"
 										class="text-label-small mt-2 inline-block text-[var(--heat-100)] hover:underline"
+										onclick={() => openExternal(shipment.trackingUrl)}
 									>
 										Live tracking
-									</a>
+									</button>
 								{/if}
 							</td>
 							<td class="px-3 py-4">
@@ -382,7 +405,7 @@
 									<button
 										type="button"
 										class="text-label-small inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-										onclick={() => (detailOrderId = order.id)}
+										onclick={() => openDetails(order.id)}
 									>
 										View details
 									</button>
@@ -470,7 +493,7 @@
 		</div>
 	</section>
 
-	{#if detailOrder}
+	{#if detailModalOpen && detailOrder}
 		{@const shipment = detailOrder.shipment}
 		{@const serviceType =
 			shipment?.shippingServiceType ?? detailOrder.shippingServiceType ?? 'standard'}
@@ -481,233 +504,274 @@
 		{@const latest = latestTracking(detailOrder)}
 		{@const busy = activeAction?.startsWith(detailOrder.id) ?? false}
 
-		<section class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-			<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-6">
-				<div class="flex flex-wrap items-start justify-between gap-3">
-					<div>
-						<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-							Fulfillment detail
-						</p>
-						<h2 class="text-title-h5 mt-1 text-foreground">
-							#{detailOrder.id.slice(0, 8).toUpperCase()}
-						</h2>
-						<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-							{detailOrder.shippingName || 'Customer'} / {formatINR(Number(detailOrder.total ?? 0))}
-						</p>
-					</div>
-					<div class="flex flex-wrap gap-2">
-						<span
-							class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses('neutral')}`}
-						>
-							{serviceType}
-						</span>
-						<span
-							class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses(statusTone(shipment?.status || 'pending'))}`}
-						>
-							{shipment?.status || 'not_created'}
-						</span>
-					</div>
-				</div>
+		<div class="fixed inset-0 z-50">
+			<button
+				type="button"
+				class="motion-backdrop absolute inset-0 cursor-default bg-black/30 backdrop-blur-[2px]"
+				aria-label="Close fulfillment details"
+				onclick={closeDetails}
+			></button>
 
-				<div class="mt-5 space-y-3">
-					{#each detailOrder.items as item (item.id)}
-						<div
-							class="grid gap-3 rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 sm:grid-cols-[88px_1fr_auto] sm:items-center"
-						>
-							<img
-								src={item.image}
-								alt={item.title}
-								class="h-24 w-24 rounded-md border border-[var(--border-faint)] bg-white object-contain p-2"
-							/>
-							<div class="min-w-0">
-								<p class="text-label-medium line-clamp-2 text-foreground">{item.title}</p>
-								<div
-									class="text-mono-x-small mt-2 flex flex-wrap gap-2 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									<span>{item.brand || 'Brand pending'}</span>
-									<span>SKU {item.sku || 'pending'}</span>
-								</div>
-							</div>
-							<div
-								class="rounded-[12px] border border-[var(--border-faint)] bg-white px-3 py-2 text-center"
-							>
+			<div class="pointer-events-none absolute inset-0 overflow-y-auto p-3 sm:p-6">
+				<div
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="fulfillment-detail-title"
+					class="motion-dialog pointer-events-auto mx-auto grid w-full max-w-6xl gap-6 rounded-[24px] border border-[var(--border-faint)] bg-[var(--background-base)] p-4 shadow-[var(--shadow-pop)] sm:p-6 lg:grid-cols-[1.15fr_0.85fr]"
+				>
+					<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-6">
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div>
 								<p
 									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
 								>
-									Qty
+									Fulfillment detail
 								</p>
-								<p class="text-label-large mt-1 text-foreground">{item.qty}</p>
+								<h2 id="fulfillment-detail-title" class="text-title-h5 mt-1 text-foreground">
+									#{detailOrder.id.slice(0, 8).toUpperCase()}
+								</h2>
+								<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
+									{detailOrder.shippingName || 'Customer'} / {formatINR(
+										Number(detailOrder.total ?? 0)
+									)}
+								</p>
+							</div>
+							<div class="flex flex-wrap gap-2">
+								<button
+									type="button"
+									class="text-label-small inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+									onclick={closeDetails}
+								>
+									Close
+								</button>
+								<span
+									class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses('neutral')}`}
+								>
+									{serviceType}
+								</span>
+								<span
+									class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses(statusTone(shipment?.status || 'pending'))}`}
+								>
+									{shipment?.status || 'not_created'}
+								</span>
 							</div>
 						</div>
-					{/each}
-				</div>
-			</div>
 
-			<div class="space-y-4">
-				<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
-					<p class="text-label-small text-foreground">Delivery</p>
-					<p class="text-body-small mt-3 text-[var(--black-alpha-72)]">
-						{[detailOrder.shippingCity, detailOrder.shippingState, detailOrder.shippingPincode]
-							.filter(Boolean)
-							.join(', ') || 'Address pending'}
-					</p>
-					<p
-						class="text-mono-x-small mt-2 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Service {serviceType}
-					</p>
-				</div>
+						<div class="mt-5 space-y-3">
+							{#each detailOrder.items as item (item.id)}
+								<div
+									class="grid gap-3 rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 sm:grid-cols-[88px_1fr_auto] sm:items-center"
+								>
+									<img
+										src={item.image}
+										alt={item.title}
+										class="h-24 w-24 rounded-md border border-[var(--border-faint)] bg-white object-contain p-2"
+									/>
+									<div class="min-w-0">
+										<p class="text-label-medium line-clamp-2 text-foreground">{item.title}</p>
+										<div
+											class="text-mono-x-small mt-2 flex flex-wrap gap-2 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+										>
+											<span>{item.brand || 'Brand pending'}</span>
+											<span>SKU {item.sku || 'pending'}</span>
+										</div>
+									</div>
+									<div
+										class="rounded-[12px] border border-[var(--border-faint)] bg-white px-3 py-2 text-center"
+									>
+										<p
+											class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+										>
+											Qty
+										</p>
+										<p class="text-label-large mt-1 text-foreground">{item.qty}</p>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
 
-				<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
-					<p class="text-label-small text-foreground">Shipment</p>
-					<div class="mt-4 grid gap-3 sm:grid-cols-2">
-						<div
-							class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-						>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								Status
+					<div class="space-y-4">
+						<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
+							<p class="text-label-small text-foreground">Delivery</p>
+							<p class="text-body-small mt-3 text-[var(--black-alpha-72)]">
+								{[detailOrder.shippingCity, detailOrder.shippingState, detailOrder.shippingPincode]
+									.filter(Boolean)
+									.join(', ') || 'Address pending'}
 							</p>
-							<p class="text-body-small mt-2 text-foreground">
-								{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
-							</p>
-						</div>
-						<div
-							class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-						>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								AWB
-							</p>
-							<p class="text-body-small mt-2 text-foreground">{shipment?.awbCode || 'Pending'}</p>
-						</div>
-						<div
-							class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-						>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								Courier
-							</p>
-							<p class="text-body-small mt-2 text-foreground">
-								{shipment?.courierName || 'Pending'}
+							<p
+								class="text-mono-x-small mt-2 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+							>
+								Service {serviceType}
 							</p>
 						</div>
-						<div
-							class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-						>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								Pickup
+
+						<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
+							<p class="text-label-small text-foreground">Shipment</p>
+							<div class="mt-4 grid gap-3 sm:grid-cols-2">
+								<div
+									class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+								>
+									<p
+										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+									>
+										Status
+									</p>
+									<p class="text-body-small mt-2 text-foreground">
+										{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
+									</p>
+								</div>
+								<div
+									class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+								>
+									<p
+										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+									>
+										AWB
+									</p>
+									<p class="text-body-small mt-2 text-foreground">
+										{shipment?.awbCode || 'Pending'}
+									</p>
+								</div>
+								<div
+									class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+								>
+									<p
+										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+									>
+										Courier
+									</p>
+									<p class="text-body-small mt-2 text-foreground">
+										{shipment?.courierName || 'Pending'}
+									</p>
+								</div>
+								<div
+									class="rounded-[14px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
+								>
+									<p
+										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+									>
+										Pickup
+									</p>
+									<p class="text-body-small mt-2 text-foreground">
+										{shipment?.pickupScheduledDate || 'Not scheduled'}
+									</p>
+								</div>
+							</div>
+						</div>
+
+						<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
+							<p class="text-label-small text-foreground">Tracking</p>
+							<p class="text-body-small mt-3 text-[var(--black-alpha-72)]">
+								{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
 							</p>
-							<p class="text-body-small mt-2 text-foreground">
-								{shipment?.pickupScheduledDate || 'Not scheduled'}
-							</p>
+							{#if latest?.location}
+								<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">{latest.location}</p>
+							{/if}
+							{#if shipment?.trackingUrl}
+								<button
+									type="button"
+									class="text-label-small mt-3 inline-block text-[var(--heat-100)] hover:underline"
+									onclick={() => openExternal(shipment.trackingUrl)}
+								>
+									Open live tracking
+								</button>
+							{/if}
+						</div>
+
+						<div class="rounded-[18px] border border-[var(--heat-20)] bg-white p-5">
+							<p class="text-label-small text-foreground">Fulfillment actions</p>
+							<div class="mt-3 flex flex-wrap gap-2">
+								{#if !shipment}
+									<button
+										type="button"
+										class="button button-primary text-label-small inline-flex h-10 items-center justify-center rounded-md px-4 text-white disabled:opacity-60"
+										disabled={busy}
+										onclick={() =>
+											void runAction(
+												createKey,
+												'/shipments/shiprocket/create',
+												postJson({ orderId: detailOrder.id })
+											)}
+									>
+										{activeAction === createKey ? 'Creating...' : 'Create shipment'}
+									</button>
+								{/if}
+								{#if shipment && !shipment.awbCode}
+									<button
+										type="button"
+										class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
+										disabled={busy}
+										onclick={() =>
+											void runAction(
+												awbKey,
+												'/shipments/shiprocket/assign-awb',
+												postJson({ shipmentId: shipment.id })
+											)}
+									>
+										{activeAction === awbKey
+											? 'Assigning...'
+											: serviceType === 'quick'
+												? 'Assign AWB and rider'
+												: 'Assign AWB'}
+									</button>
+								{/if}
+								{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate}
+									<button
+										type="button"
+										class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
+										disabled={busy}
+										onclick={() =>
+											void runAction(
+												pickupKey,
+												'/shipments/shiprocket/pickup',
+												postJson({ shipmentId: shipment.id })
+											)}
+									>
+										{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
+									</button>
+								{/if}
+								{#if shipment?.shiprocketShipmentId}
+									<button
+										type="button"
+										class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
+										disabled={busy}
+										onclick={() =>
+											void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
+									>
+										{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
+									</button>
+								{/if}
+								{#if shipment?.manifestUrl}
+									<button
+										type="button"
+										class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+										onclick={() => openExternal(shipment.manifestUrl)}
+									>
+										Open manifest
+									</button>
+								{/if}
+								{#if shipment?.labelUrl}
+									<button
+										type="button"
+										class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+										onclick={() => openExternal(shipment.labelUrl)}
+									>
+										Open labels
+									</button>
+								{/if}
+								<button
+									type="button"
+									class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+									onclick={closeDetails}
+								>
+									Close details
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
-
-				<div class="rounded-[18px] border border-[var(--border-faint)] bg-white p-5">
-					<p class="text-label-small text-foreground">Tracking</p>
-					<p class="text-body-small mt-3 text-[var(--black-alpha-72)]">
-						{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
-					</p>
-					{#if latest?.location}
-						<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">{latest.location}</p>
-					{/if}
-					{#if shipment?.trackingUrl}
-						<a
-							href={shipment.trackingUrl}
-							target="_blank"
-							rel="noreferrer"
-							class="text-label-small mt-3 inline-block text-[var(--heat-100)] hover:underline"
-						>
-							Open live tracking
-						</a>
-					{/if}
-				</div>
-
-				<div class="rounded-[18px] border border-[var(--heat-20)] bg-white p-5">
-					<p class="text-label-small text-foreground">Fulfillment actions</p>
-					<div class="mt-3 flex flex-wrap gap-2">
-						{#if !shipment}
-							<button
-								type="button"
-								class="button button-primary text-label-small inline-flex h-10 items-center justify-center rounded-md px-4 text-white disabled:opacity-60"
-								disabled={busy}
-								onclick={() =>
-									void runAction(
-										createKey,
-										'/shipments/shiprocket/create',
-										postJson({ orderId: detailOrder.id })
-									)}
-							>
-								{activeAction === createKey ? 'Creating...' : 'Create shipment'}
-							</button>
-						{/if}
-						{#if shipment && !shipment.awbCode}
-							<button
-								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
-								disabled={busy}
-								onclick={() =>
-									void runAction(
-										awbKey,
-										'/shipments/shiprocket/assign-awb',
-										postJson({ shipmentId: shipment.id })
-									)}
-							>
-								{activeAction === awbKey
-									? 'Assigning...'
-									: serviceType === 'quick'
-										? 'Assign AWB and rider'
-										: 'Assign AWB'}
-							</button>
-						{/if}
-						{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate}
-							<button
-								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
-								disabled={busy}
-								onclick={() =>
-									void runAction(
-										pickupKey,
-										'/shipments/shiprocket/pickup',
-										postJson({ shipmentId: shipment.id })
-									)}
-							>
-								{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
-							</button>
-						{/if}
-						{#if shipment?.shiprocketShipmentId}
-							<button
-								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-60"
-								disabled={busy}
-								onclick={() =>
-									void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
-							>
-								{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
-							</button>
-						{/if}
-						{#if shipment?.manifestUrl}
-							<a
-								href={shipment.manifestUrl}
-								target="_blank"
-								rel="noreferrer"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-							>
-								Open manifest
-							</a>
-						{/if}
-						{#if shipment?.labelUrl}
-							<a
-								href={shipment.labelUrl}
-								target="_blank"
-								rel="noreferrer"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-							>
-								Open labels
-							</a>
-						{/if}
-					</div>
-				</div>
 			</div>
-		</section>
+		</div>
 	{/if}
 </div>

@@ -785,6 +785,13 @@ function normalizeShipmentStatus(status: string) {
 	return 'in_transit';
 }
 
+async function sha256Hex(value: string) {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+	return Array.from(new Uint8Array(digest))
+		.map((byte) => byte.toString(16).padStart(2, '0'))
+		.join('');
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -2929,7 +2936,7 @@ async function handle(req: Request) {
 	const adminCancellationMatch = matchRoute(path, /^\/admin\/cancellation-requests\/([^/]+)$/);
 	if (req.method === 'POST' && adminCancellationMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		const adminUser = await requireAdmin(req);
 		const { orderId: cancellationId } = orderIdParamSchema.parse({
 			orderId: adminCancellationMatch[1]
 		});
@@ -2941,25 +2948,29 @@ async function handle(req: Request) {
 			.single();
 		if (currentRequestError) throw currentRequestError;
 		if (input.action === 'approve') {
-			const { data: shipment, error: shipmentError } = await adminDb
-				.from('shipments')
-				.select('status')
-				.eq('order_id', currentRequest.order_id)
-				.eq('shipping_direction', 'outbound')
-				.order('created_at', { ascending: false })
-				.limit(1)
-				.maybeSingle();
-			if (shipmentError) throw shipmentError;
-			if (isShipmentStarted(shipment as Record<string, unknown> | null)) {
-				throw new HttpError(409, 'This order has already started shipping and cannot be cancelled');
+			const reason = input.note?.trim();
+			if (!reason || reason.length < 3) {
+				throw new HttpError(400, 'Add a clear reason before approving cancellation');
 			}
+			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
+				p_order_id: currentRequest.order_id,
+				p_admin_user_id: adminUser.id,
+				p_reason: reason,
+				p_metadata: {
+					source: 'admin_cancellation_request',
+					cancellationRequestId: cancellationId
+				}
+			});
+			if (cancellationError) throw cancellationError;
+			const { data: requestRow, error: requestError } = await adminDb
+				.from('order_cancellation_requests')
+				.select('*')
+				.eq('id', cancellationId)
+				.single();
+			if (requestError) throw requestError;
+			return json(req, 200, { cancellationRequest: requestRow });
 		}
-		const status =
-			input.action === 'approve'
-				? 'refund_pending'
-				: input.action === 'reject'
-					? 'rejected'
-					: 'closed';
+		const status = input.action === 'reject' ? 'rejected' : 'closed';
 		const { data: requestRow, error: requestError } = await adminDb
 			.from('order_cancellation_requests')
 			.update({
@@ -2972,9 +2983,6 @@ async function handle(req: Request) {
 			.select('*')
 			.single();
 		if (requestError) throw requestError;
-		if (input.action === 'approve') {
-			await adminDb.from('orders').update({ status: 'cancelled' }).eq('id', requestRow.order_id);
-		}
 		return json(req, 200, { cancellationRequest: requestRow });
 	}
 
@@ -3785,6 +3793,18 @@ async function handle(req: Request) {
 		const body = asRecord(await req.json());
 		const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? '').trim() || null;
 		const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
+		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
+		const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? '');
+		const providerEventId = String(body.event_id ?? body.eventId ?? body.id ?? '').trim() || null;
+		const idempotencySeed =
+			providerEventId ??
+			[
+				awb ?? '',
+				Number.isFinite(shiprocketShipmentId) ? String(shiprocketShipmentId) : '',
+				status,
+				statusTime
+			].join('|');
+		const idempotencyKey = await sha256Hex(idempotencySeed);
 		let shipmentId: string | null = null;
 		if (awb || Number.isFinite(shiprocketShipmentId)) {
 			let query = adminDb.from('shipments').select('id').limit(1);
@@ -3793,8 +3813,25 @@ async function handle(req: Request) {
 			const { data } = await query.maybeSingle();
 			shipmentId = data?.id ?? null;
 		}
-		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
-		const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? '');
+		const { data: webhookEvent, error: webhookEventError } = await adminDb
+			.from('provider_webhook_events')
+			.insert({
+				provider: 'shiprocket',
+				provider_event_id: providerEventId,
+				event_type: status,
+				signature_valid: true,
+				idempotency_key: idempotencyKey,
+				related_shipment_id: shipmentId,
+				payload: body
+			})
+			.select('id')
+			.single();
+		if (webhookEventError) {
+			if (webhookEventError.code === '23505') {
+				return json(req, 200, { ok: true, duplicate: true });
+			}
+			throw webhookEventError;
+		}
 		await adminDb.from('shipment_events').insert({
 			shipment_id: shipmentId,
 			provider: 'shiprocket',
@@ -3818,6 +3855,14 @@ async function handle(req: Request) {
 				})
 				.eq('id', shipmentId);
 		}
+		await adminDb
+			.from('provider_webhook_events')
+			.update({
+				processing_status: shipmentId ? 'processed' : 'ignored',
+				related_shipment_id: shipmentId,
+				processed_at: new Date().toISOString()
+			})
+			.eq('id', webhookEvent.id);
 		return json(req, 200, { ok: true });
 	}
 
@@ -4620,6 +4665,35 @@ async function handle(req: Request) {
 			payload,
 			existingOrder as Record<string, unknown>
 		);
+		if (payload.status === 'cancelled') {
+			if ('payment_status' in payload) {
+				throw new HttpError(400, 'Use the cancellation workflow before changing payment state');
+			}
+			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
+				p_order_id: orderId,
+				p_admin_user_id: adminUser.id,
+				p_reason: reason,
+				p_metadata: {
+					source: 'admin_order_editor',
+					changedFields: changedFieldNames
+				}
+			});
+			if (cancellationError) throw cancellationError;
+			const { data: cancelledOrder, error: cancelledOrderError } = await adminDb
+				.from('orders')
+				.select('id,status,payment_status,updated_at')
+				.eq('id', orderId)
+				.single();
+			if (cancelledOrderError) throw cancelledOrderError;
+			return json(req, 200, {
+				order: {
+					id: cancelledOrder.id,
+					status: cancelledOrder.status,
+					paymentStatus: cancelledOrder.payment_status,
+					updatedAt: cancelledOrder.updated_at
+				}
+			});
+		}
 		const { data, error } = await adminDb
 			.from('orders')
 			.update(payload)

@@ -13,6 +13,7 @@
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
+	const routePath = $derived(page.url.pathname);
 
 	const auth = {
 		get supabase() {
@@ -104,7 +105,9 @@
 	{#if !isLoginRoute}
 		<Header />
 	{/if}
-	<main class="flex flex-1 flex-col">{@render children()}</main>
+	{#key routePath}
+		<main class="motion-page flex flex-1 flex-col">{@render children()}</main>
+	{/key}
 	{#if !isLoginRoute}
 		<Footer />
 	{/if}

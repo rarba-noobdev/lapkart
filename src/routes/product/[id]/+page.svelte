@@ -280,31 +280,31 @@
 				</div>
 
 				<!-- ── Add-to-cart action ── -->
-				<div class="mt-6 flex items-center gap-3">
-					<!-- Quantity stepper -->
-					<div class="inline-flex items-center rounded-md border border-[var(--border-muted)]">
+				<div class="mt-8 flex flex-wrap items-center gap-12">
+					<!-- Quantity controls -->
+					<div class="flex h-12 items-center rounded-lg border border-[var(--border-muted)]">
 						<button
 							type="button"
 							aria-label="Decrease quantity"
-							class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground disabled:opacity-30"
 							disabled={qty <= 1}
+							class="grid size-12 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground disabled:opacity-30"
 							onclick={decrement}
 						>
-							<Minus class="size-3.5" />
+							<Minus class="size-4" />
 						</button>
 						<input
-							bind:value={qty}
 							type="number"
 							min="1"
-							class="text-label-medium h-10 w-10 [appearance:textfield] border-x border-[var(--border-muted)] bg-transparent text-center outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+							bind:value={qty}
+							class="text-label-medium h-full w-12 [appearance:textfield] bg-transparent text-center text-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 						/>
 						<button
 							type="button"
 							aria-label="Increase quantity"
-							class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground"
+							class="grid size-12 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground"
 							onclick={increment}
 						>
-							<Plus class="size-3.5" />
+							<Plus class="size-4" />
 						</button>
 					</div>
 
@@ -313,7 +313,7 @@
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
-						class="button button-primary text-label-medium inline-flex h-10 items-center justify-center gap-2 rounded-md px-8 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:h-11"
+						class="text-label-small inline-flex h-12 w-fit items-center justify-center gap-2 rounded-lg bg-[var(--heat-100)] px-8 text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 						onclick={handleAddToCart}
 					>
 						{#if added}
@@ -324,16 +324,18 @@
 							Add to cart
 						{/if}
 					</button>
-				</div>
 
-				<!-- Review cart -->
-				<a
-					href={resolve('/cart')}
-					class="text-label-small mt-2.5 inline-flex h-10 items-center justify-center gap-1 rounded-md border border-[var(--border-muted)] px-8 text-foreground transition-[border-color,color] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:h-11"
-				>
-					Review cart
-					<ChevronRight class="size-3.5" />
-				</a>
+					<!-- Review cart -->
+					{#if added}
+						<a
+							href={resolve('/cart')}
+							class="text-label-small inline-flex h-12 w-fit items-center justify-center gap-2 rounded-lg border border-[var(--border-muted)] bg-transparent px-8 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+						>
+							Review cart
+							<ChevronRight class="size-4" />
+						</a>
+					{/if}
+				</div>
 
 				{#if added}
 					<p class="text-body-small mt-2 text-[var(--accent-forest)]">

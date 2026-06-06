@@ -130,6 +130,16 @@
 	--border: var(--border-muted);
 	--input: var(--border-muted);
 	--ring: var(--heat-100);
+
+	/* Motion */
+	--motion-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+	--motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--motion-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+	--motion-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+	--motion-fast: 140ms;
+	--motion-standard: 200ms;
+	--motion-page: 260ms;
+	--motion-panel: 220ms;
 }
 
 .dark {
@@ -425,7 +435,7 @@
 		inset: 0;
 		border-radius: inherit;
 		border: 1px solid var(--black-alpha-8);
-		transition: border-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+		transition: border-color var(--motion-standard) var(--motion-ease);
 	}
 	.inside-border-heat {
 		border-color: var(--heat-20);
@@ -554,6 +564,169 @@
 	}
 	.button-primary:active::before {
 		opacity: 0.3;
+	}
+}
+
+/* ----- Motion system (Emil-style: fast, interruptible, GPU-safe) ----- */
+@layer utilities {
+	.motion-page {
+		animation: motion-page-enter var(--motion-page) var(--motion-ease-out) both;
+		transform-origin: 50% 24px;
+	}
+
+	.motion-section {
+		animation: motion-section-enter var(--motion-panel) var(--motion-ease-out) both;
+	}
+
+	.motion-card {
+		transition:
+			transform var(--motion-standard) var(--motion-ease-out),
+			border-color var(--motion-standard) var(--motion-ease),
+			box-shadow var(--motion-standard) var(--motion-ease-out),
+			background-color var(--motion-standard) var(--motion-ease);
+		will-change: transform;
+	}
+
+	.motion-image {
+		transition: transform 260ms var(--motion-ease-out);
+		will-change: transform;
+	}
+
+	.motion-popover {
+		animation: motion-popover-enter 180ms var(--motion-ease-out) both;
+		transform-origin: top right;
+	}
+
+	.motion-dialog {
+		animation: motion-dialog-enter var(--motion-panel) var(--motion-ease-out) both;
+		transform-origin: center;
+	}
+
+	.motion-backdrop {
+		animation: motion-fade-in var(--motion-fast) var(--motion-ease-out) both;
+	}
+
+	.motion-list > * {
+		animation: motion-section-enter var(--motion-panel) var(--motion-ease-out) both;
+	}
+	.motion-list > *:nth-child(1) {
+		animation-delay: 0ms;
+	}
+	.motion-list > *:nth-child(2) {
+		animation-delay: 35ms;
+	}
+	.motion-list > *:nth-child(3) {
+		animation-delay: 70ms;
+	}
+	.motion-list > *:nth-child(4) {
+		animation-delay: 105ms;
+	}
+	.motion-list > *:nth-child(5) {
+		animation-delay: 140ms;
+	}
+	.motion-list > *:nth-child(n + 6) {
+		animation-delay: 170ms;
+	}
+
+	.motion-press,
+	.button,
+	button,
+	[role='button'] {
+		transition:
+			transform var(--motion-fast) var(--motion-ease-out),
+			background-color var(--motion-standard) var(--motion-ease),
+			border-color var(--motion-standard) var(--motion-ease),
+			color var(--motion-standard) var(--motion-ease),
+			box-shadow var(--motion-standard) var(--motion-ease-out),
+			opacity var(--motion-standard) var(--motion-ease);
+	}
+
+	.motion-press:active,
+	.button:active,
+	button:not(:disabled):active,
+	[role='button']:active {
+		transform: scale(0.98);
+	}
+
+	.motion-backdrop:active {
+		transform: none;
+	}
+
+	.motion-soft-link {
+		transition:
+			color var(--motion-standard) var(--motion-ease),
+			background-color var(--motion-standard) var(--motion-ease),
+			border-color var(--motion-standard) var(--motion-ease),
+			transform var(--motion-fast) var(--motion-ease-out);
+	}
+
+	@media (hover: hover) and (pointer: fine) {
+		.motion-lift:hover,
+		.motion-card:hover {
+			transform: translateY(-3px);
+		}
+
+		.motion-image-parent:hover .motion-image,
+		.group:hover .motion-image {
+			transform: scale(1.045);
+		}
+
+		.motion-soft-link:hover {
+			transform: translateY(-1px);
+		}
+	}
+
+	@keyframes motion-page-enter {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes motion-section-enter {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes motion-popover-enter {
+		from {
+			opacity: 0;
+			transform: translateY(-4px) scale(0.97);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+
+	@keyframes motion-dialog-enter {
+		from {
+			opacity: 0;
+			transform: translateY(10px) scale(0.98);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+
+	@keyframes motion-fade-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
 }
 
@@ -692,7 +865,9 @@
 	.delay-500 {
 		animation-delay: 500ms;
 	}
+}
 
+@layer components {
 	.input-field {
 		height: 48px;
 		width: 100%;
@@ -705,10 +880,10 @@
 		line-height: 20px;
 		color: var(--foreground);
 		transition:
-			border-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			box-shadow 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			background-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+			border-color var(--motion-standard) var(--motion-ease),
+			box-shadow var(--motion-standard) var(--motion-ease),
+			background-color var(--motion-standard) var(--motion-ease),
+			color var(--motion-standard) var(--motion-ease);
 		outline: none;
 	}
 	.input-field::placeholder {
@@ -741,5 +916,17 @@
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
+	}
+
+	.motion-page,
+	.motion-section,
+	.motion-card,
+	.motion-image,
+	.motion-popover,
+	.motion-dialog,
+	.motion-backdrop,
+	.motion-list > * {
+		animation-duration: 0.01ms !important;
+		transform: none !important;
 	}
 }

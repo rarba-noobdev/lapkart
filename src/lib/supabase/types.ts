@@ -382,6 +382,129 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			inventory_movements: {
+				Row: {
+					actor_user_id: string | null;
+					created_at: string;
+					id: string;
+					metadata: Json;
+					movement_type: string;
+					order_id: string | null;
+					order_item_id: string | null;
+					product_id: string;
+					qty_delta: number;
+					reason: string;
+				};
+				Insert: {
+					actor_user_id?: string | null;
+					created_at?: string;
+					id?: string;
+					metadata?: Json;
+					movement_type: string;
+					order_id?: string | null;
+					order_item_id?: string | null;
+					product_id: string;
+					qty_delta: number;
+					reason: string;
+				};
+				Update: {
+					actor_user_id?: string | null;
+					created_at?: string;
+					id?: string;
+					metadata?: Json;
+					movement_type?: string;
+					order_id?: string | null;
+					order_item_id?: string | null;
+					product_id?: string;
+					qty_delta?: number;
+					reason?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'inventory_movements_order_id_fkey';
+						columns: ['order_id'];
+						isOneToOne: false;
+						referencedRelation: 'orders';
+						referencedColumns: ['id'];
+					},
+					{
+						foreignKeyName: 'inventory_movements_order_item_id_fkey';
+						columns: ['order_item_id'];
+						isOneToOne: false;
+						referencedRelation: 'order_items';
+						referencedColumns: ['id'];
+					},
+					{
+						foreignKeyName: 'inventory_movements_product_id_fkey';
+						columns: ['product_id'];
+						isOneToOne: false;
+						referencedRelation: 'products';
+						referencedColumns: ['id'];
+					}
+				];
+			};
+			notification_outbox: {
+				Row: {
+					attempts: number;
+					body: string;
+					channel: string;
+					created_at: string;
+					error_message: string | null;
+					event_type: string;
+					id: string;
+					next_attempt_at: string;
+					order_id: string | null;
+					payload: Json;
+					sent_at: string | null;
+					status: string;
+					title: string;
+					updated_at: string;
+					user_id: string;
+				};
+				Insert: {
+					attempts?: number;
+					body: string;
+					channel: string;
+					created_at?: string;
+					error_message?: string | null;
+					event_type: string;
+					id?: string;
+					next_attempt_at?: string;
+					order_id?: string | null;
+					payload?: Json;
+					sent_at?: string | null;
+					status?: string;
+					title: string;
+					updated_at?: string;
+					user_id: string;
+				};
+				Update: {
+					attempts?: number;
+					body?: string;
+					channel?: string;
+					created_at?: string;
+					error_message?: string | null;
+					event_type?: string;
+					id?: string;
+					next_attempt_at?: string;
+					order_id?: string | null;
+					payload?: Json;
+					sent_at?: string | null;
+					status?: string;
+					title?: string;
+					updated_at?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'notification_outbox_order_id_fkey';
+						columns: ['order_id'];
+						isOneToOne: false;
+						referencedRelation: 'orders';
+						referencedColumns: ['id'];
+					}
+				];
+			};
 			order_cancellation_requests: {
 				Row: {
 					admin_note: string | null;
@@ -815,6 +938,42 @@ export type Database = {
 					}
 				];
 			};
+			product_search_sync_events: {
+				Row: {
+					attempts: number;
+					created_at: string;
+					error_message: string | null;
+					id: number;
+					operation: string;
+					processed_at: string | null;
+					product_id: string;
+					status: string;
+					updated_at: string;
+				};
+				Insert: {
+					attempts?: number;
+					created_at?: string;
+					error_message?: string | null;
+					id?: number;
+					operation: string;
+					processed_at?: string | null;
+					product_id: string;
+					status?: string;
+					updated_at?: string;
+				};
+				Update: {
+					attempts?: number;
+					created_at?: string;
+					error_message?: string | null;
+					id?: number;
+					operation?: string;
+					processed_at?: string | null;
+					product_id?: string;
+					status?: string;
+					updated_at?: string;
+				};
+				Relationships: [];
+			};
 			products: {
 				Row: {
 					authenticity_grade: string;
@@ -946,6 +1105,69 @@ export type Database = {
 					updated_at?: string;
 				};
 				Relationships: [];
+			};
+			provider_webhook_events: {
+				Row: {
+					error_message: string | null;
+					event_type: string;
+					id: string;
+					idempotency_key: string;
+					payload: Json;
+					processed_at: string | null;
+					processing_status: string;
+					provider: string;
+					provider_event_id: string | null;
+					received_at: string;
+					related_order_id: string | null;
+					related_shipment_id: string | null;
+					signature_valid: boolean;
+				};
+				Insert: {
+					error_message?: string | null;
+					event_type: string;
+					id?: string;
+					idempotency_key: string;
+					payload: Json;
+					processed_at?: string | null;
+					processing_status?: string;
+					provider: string;
+					provider_event_id?: string | null;
+					received_at?: string;
+					related_order_id?: string | null;
+					related_shipment_id?: string | null;
+					signature_valid?: boolean;
+				};
+				Update: {
+					error_message?: string | null;
+					event_type?: string;
+					id?: string;
+					idempotency_key?: string;
+					payload?: Json;
+					processed_at?: string | null;
+					processing_status?: string;
+					provider?: string;
+					provider_event_id?: string | null;
+					received_at?: string;
+					related_order_id?: string | null;
+					related_shipment_id?: string | null;
+					signature_valid?: boolean;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'provider_webhook_events_related_order_id_fkey';
+						columns: ['related_order_id'];
+						isOneToOne: false;
+						referencedRelation: 'orders';
+						referencedColumns: ['id'];
+					},
+					{
+						foreignKeyName: 'provider_webhook_events_related_shipment_id_fkey';
+						columns: ['related_shipment_id'];
+						isOneToOne: false;
+						referencedRelation: 'shipments';
+						referencedColumns: ['id'];
+					}
+				];
 			};
 			refunds: {
 				Row: {
@@ -1736,6 +1958,15 @@ export type Database = {
 			[_ in never]: never;
 		};
 		Functions: {
+			admin_cancel_order: {
+				Args: {
+					p_admin_user_id: string;
+					p_metadata?: Json;
+					p_order_id: string;
+					p_reason: string;
+				};
+				Returns: Json;
+			};
 			complete_checkout_payment: {
 				Args: {
 					p_address_payload: Json;
@@ -1748,6 +1979,13 @@ export type Database = {
 					p_user_id: string;
 				};
 				Returns: string;
+			};
+			has_role: {
+				Args: {
+					_role: Database['public']['Enums']['app_role'];
+					_user_id: string;
+				};
+				Returns: boolean;
 			};
 			is_admin: { Args: never; Returns: boolean };
 		};

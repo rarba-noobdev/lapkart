@@ -75,18 +75,18 @@
 			class="flex flex-col justify-center rounded-[16px] bg-white p-5 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.16)] sm:p-7 md:p-10"
 		>
 			<p class="text-body-small font-medium tracking-wider text-[var(--black-alpha-56)] uppercase">
-				Premium Laptop Components
+				Original Equipment Manufacturer Parts
 			</p>
 			<h1
 				class="mt-3 font-display text-[clamp(2rem,6vw,4.5rem)] leading-[1.05] tracking-tight text-balance text-foreground sm:mt-4 md:max-w-[14ch]"
 			>
-				Revive your laptop with genuine parts.
+				Genuine laptop components & repair parts.
 			</h1>
 			<p
 				class="text-body-medium sm:text-body-large mt-4 max-w-[33rem] text-[var(--black-alpha-72)] sm:mt-5"
 			>
-				Shop India's most trusted catalog of laptop screens, batteries, SSDs, and RAM. Guaranteed
-				compatibility, fast dispatch, and 7-day DOA support.
+				Direct supply of tested SSDs, memory, displays, and batteries. Verified compatibility and
+				next-day dispatch.
 			</p>
 
 			<div class="mt-6 flex flex-wrap gap-3 sm:mt-8">
@@ -147,18 +147,18 @@
 						<p
 							class="text-body-small font-medium tracking-wider text-[var(--black-alpha-56)] uppercase"
 						>
-							Trending Category
+							High Demand
 						</p>
 						{#if secondaryProduct}
 							<p class="text-label-large mt-2 line-clamp-2 text-foreground">
 								{secondaryProduct.title}
 							</p>
 							<p class="text-body-small mt-3 text-[var(--black-alpha-64)]">
-								High demand replacement parts available for immediate dispatch.
+								Available for immediate dispatch.
 							</p>
 						{:else}
 							<p class="text-body-small mt-2 text-[var(--black-alpha-64)]">
-								Battery replacements and SSD upgrades are currently in high demand.
+								Stock status: High demand.
 							</p>
 						{/if}
 					</div>
@@ -219,10 +219,9 @@
 
 <section class="container mx-auto px-4 pt-10 md:pt-16">
 	<div class="mb-6 md:mb-8">
-		<h2 class="text-title-h3 font-display text-foreground">Top Selling Components</h2>
+		<h2 class="text-title-h3 font-display text-foreground">Highest Volume Components</h2>
 		<p class="text-body-medium mt-2 max-w-[42rem] text-[var(--black-alpha-56)]">
-			Our most popular parts across all categories, backed by guaranteed compatibility and fast
-			delivery.
+			Frequently ordered parts with verified compatibility.
 		</p>
 	</div>
 
@@ -244,9 +243,9 @@
 {#if leadRepairPath}
 	<section class="container mx-auto px-4 pt-10 md:pt-16">
 		<div class="mb-8">
-			<h2 class="text-title-h3 font-display text-foreground">Find the Right Fix</h2>
+			<h2 class="text-title-h3 font-display text-foreground">Repair Categories</h2>
 			<p class="text-body-medium mt-2 max-w-[42rem] text-[var(--black-alpha-56)]">
-				Browse curated parts for the most common laptop repairs and upgrades.
+				Select a category to view compatible components.
 			</p>
 		</div>
 
@@ -312,9 +311,9 @@
 {#if leadDeal}
 	<section class="container mx-auto px-4 pt-10 pb-8 md:pt-16 md:pb-12">
 		<div class="mb-8">
-			<h2 class="text-title-h3 font-display text-foreground">Today's Top Deals</h2>
+			<h2 class="text-title-h3 font-display text-foreground">Clearance & Offers</h2>
 			<p class="text-body-medium mt-2 max-w-[42rem] text-[var(--black-alpha-56)]">
-				Save big on premium components with these limited-time price drops.
+				Discounted inventory for immediate clearance.
 			</p>
 		</div>
 		<div class="grid gap-4 lg:grid-cols-[1.02fr_0.98fr]">
@@ -326,8 +325,7 @@
 					<div>
 						<h3 class="text-title-h4 font-display text-foreground">{leadDeal.title}</h3>
 						<p class="text-body-medium mt-3 text-[var(--black-alpha-56)]">
-							Don't miss out on this massive discount on one of our top-rated products. Limited
-							stock available.
+							Limited quantity available at reduced pricing.
 						</p>
 					</div>
 
@@ -405,11 +403,11 @@
 		<div class="grid gap-6 sm:gap-8 lg:grid-cols-[0.9fr_1.1fr]">
 			<div class="max-w-[30rem]">
 				<h2 class="text-title-h3 font-display text-foreground">
-					Why thousands of customers trust LapKart.
+					Verified Supply Chain & Logistics
 				</h2>
 				<p class="text-body-medium mt-3 text-[var(--black-alpha-64)]">
-					We built LapKart to solve the hardest parts of repairing laptops in India: finding genuine
-					components, guaranteeing compatibility, and getting them fast.
+					We source direct to ensure authenticity, test for reliability, and dispatch rapidly to
+					minimize device downtime.
 				</p>
 				<a
 					href={resolve('/orders')}

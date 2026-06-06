@@ -1,10 +1,20 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+	import type { RouteId } from '$app/types';
 	import { ArrowUpRight, Flame } from '@lucide/svelte';
 	import { getAuthContext } from '$lib/auth-context';
 
+	type FooterColumn = {
+		title: string;
+		items: {
+			label: string;
+			to: RouteId;
+		}[];
+	};
+
 	const auth = getAuthContext();
 	const isAdmin = $derived(auth.role === 'admin');
-	const footerColumns = $derived(
+	const footerColumns = $derived<FooterColumn[]>(
 		isAdmin
 			? [
 					{
@@ -77,7 +87,9 @@
 	);
 </script>
 
-<footer class="relative mt-24 overflow-hidden bg-[var(--accent-black)] text-white/70">
+<footer
+	class="motion-section relative mt-24 overflow-hidden bg-[var(--accent-black)] text-white/70"
+>
 	<div class="relative container mx-auto px-4 pt-16 pb-8">
 		<div class="grid gap-12 border-b border-white/8 pb-12 md:grid-cols-[1.4fr_2fr]">
 			<div>
@@ -111,7 +123,7 @@
 							{#each column.items as item (item.to)}
 								<li>
 									<a
-										href={item.to}
+										href={resolve(item.to as '/')}
 										class="group text-body-small inline-flex items-center gap-1 text-white/75 transition-colors hover:text-[var(--heat-100)]"
 									>
 										{item.label}

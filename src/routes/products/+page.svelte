@@ -5,7 +5,7 @@
 	import { SlidersHorizontal, X } from '@lucide/svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import ProductCard from '$lib/components/ProductCard.svelte';
-	import { categories, discountPct, formatINR, type Product } from '$lib/catalog';
+	import { categories, formatINR, type Product } from '$lib/catalog';
 
 	type FilterKey =
 		| 'category'
@@ -26,8 +26,13 @@
 		{ value: 'newest', label: 'Newest' }
 	];
 
-	let { data }: { data: { products: Product[] } } = $props();
+	let {
+		data
+	}: {
+		data: { products: Product[]; productTotal: number };
+	} = $props();
 	let products = $derived(data.products);
+	let productTotal = $derived(data.productTotal);
 
 	const category = $derived(page.url.searchParams.get('category') ?? '');
 	const q = $derived(page.url.searchParams.get('q') ?? '');
@@ -50,45 +55,7 @@
 			.filter(Boolean)
 			.sort((a, b) => a.localeCompare(b))
 	);
-	const minPriceValue = $derived(Number(minPrice));
-	const maxPriceValue = $derived(Number(maxPrice));
-	const minRatingValue = $derived(Number(minRating));
-
-	const filtered = $derived.by(() => {
-		return products.filter((product) => {
-			if (category && product.category !== category) return false;
-			if (q && !`${product.title} ${product.brand}`.toLowerCase().includes(q.toLowerCase())) {
-				return false;
-			}
-			if (brand && product.brand !== brand) return false;
-			if (Number.isFinite(minPriceValue) && minPriceValue > 0 && product.price < minPriceValue) {
-				return false;
-			}
-			if (Number.isFinite(maxPriceValue) && maxPriceValue > 0 && product.price > maxPriceValue) {
-				return false;
-			}
-			if (inStock === 'true' && product.stock <= 0) return false;
-			if (
-				Number.isFinite(minRatingValue) &&
-				minRatingValue > 0 &&
-				product.rating < minRatingValue
-			) {
-				return false;
-			}
-			return true;
-		});
-	});
-
-	const sorted = $derived.by(() => {
-		const items = [...filtered];
-		if (activeSort === 'price-asc') return items.sort((a, b) => a.price - b.price);
-		if (activeSort === 'price-desc') return items.sort((a, b) => b.price - a.price);
-		if (activeSort === 'rating-desc') return items.sort((a, b) => b.rating - a.rating);
-		if (activeSort === 'discount-desc') {
-			return items.sort((a, b) => discountPct(b) - discountPct(a));
-		}
-		return items;
-	});
+	const sorted = $derived(products);
 
 	const appliedFilters = $derived.by(() => {
 		const filters: Array<{ key: FilterKey; label: string }> = [];
@@ -139,9 +106,11 @@
 <div class="border-b border-[var(--border-faint)] bg-white">
 	<div class="container mx-auto px-4 py-10">
 		<nav class="text-mono-x-small tracking-[0.18em] text-[var(--black-alpha-48)] uppercase">
-			<a href="/" class="transition-colors hover:text-[var(--heat-100)]">home</a>
+			<a href={resolve('/')} class="transition-colors hover:text-[var(--heat-100)]">home</a>
 			<span class="mx-2 text-[var(--black-alpha-24)]">/</span>
-			<a href="/products" class="transition-colors hover:text-[var(--heat-100)]">catalog</a>
+			<a href={resolve('/products')} class="transition-colors hover:text-[var(--heat-100)]"
+				>catalog</a
+			>
 			{#if currentCategory}
 				<span class="mx-2 text-[var(--black-alpha-24)]">/</span>
 				<span class="text-[var(--heat-100)]">{currentCategory.name}</span>
@@ -160,7 +129,7 @@
 					{/if}
 				</h1>
 				<p class="text-body-medium mt-1 text-[var(--black-alpha-56)]">
-					<span class="font-medium text-foreground">{sorted.length}</span> products{category
+					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
 						: ''}
 				</p>
@@ -213,7 +182,7 @@
 	<div class="lg:hidden">
 		<div class="scrollbar-hide flex gap-2 overflow-x-auto pb-2">
 			<a
-				href={q ? `/products?q=${encodeURIComponent(q)}` : '/products'}
+				href={resolve(q ? `/products?q=${encodeURIComponent(q)}` : '/products')}
 				aria-current={!category ? 'page' : undefined}
 				class={`text-label-small shrink-0 rounded-full border px-4 py-2 transition-colors ${
 					!category
@@ -225,9 +194,11 @@
 			</a>
 			{#each categories as item (item.slug)}
 				<a
-					href={q
-						? `/products?category=${item.slug}&q=${encodeURIComponent(q)}`
-						: `/products?category=${item.slug}`}
+					href={resolve(
+						q
+							? `/products?category=${item.slug}&q=${encodeURIComponent(q)}`
+							: `/products?category=${item.slug}`
+					)}
 					aria-current={category === item.slug ? 'page' : undefined}
 					class={`text-label-small shrink-0 rounded-full border px-4 py-2 transition-colors ${
 						category === item.slug
@@ -364,7 +335,7 @@
 						onclick={() => updateSearch({ category: undefined, brand: undefined })}
 					>
 						All products
-						<span class="text-mono-x-small text-[var(--black-alpha-40)]">{products.length}</span>
+						<span class="text-mono-x-small text-[var(--black-alpha-40)]">{productTotal}</span>
 					</button>
 				</li>
 				{#each categories as item (item.slug)}

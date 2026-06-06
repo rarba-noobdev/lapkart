@@ -412,6 +412,10 @@ function normalizeShipmentStatus(status: string) {
 	return 'in_transit';
 }
 
+function sha256Hex(value: string) {
+	return crypto.createHash('sha256').update(value).digest('hex');
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -1830,6 +1834,18 @@ app.post('/logistics/events', webhookLimiter, async (req, res, next) => {
 		const body = req.body as Record<string, unknown>;
 		const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? '').trim() || null;
 		const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
+		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
+		const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? '');
+		const providerEventId = String(body.event_id ?? body.eventId ?? body.id ?? '').trim() || null;
+		const idempotencySeed =
+			providerEventId ??
+			[
+				awb ?? '',
+				Number.isFinite(shiprocketShipmentId) ? String(shiprocketShipmentId) : '',
+				status,
+				statusTime
+			].join('|');
+		const idempotencyKey = sha256Hex(idempotencySeed);
 
 		let shipmentId: string | null = null;
 		if (awb || Number.isFinite(shiprocketShipmentId)) {
@@ -1840,8 +1856,26 @@ app.post('/logistics/events', webhookLimiter, async (req, res, next) => {
 			shipmentId = data?.id ?? null;
 		}
 
-		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
-		const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? '');
+		const { data: webhookEvent, error: webhookEventError } = await supabaseAdmin
+			.from('provider_webhook_events')
+			.insert({
+				provider: 'shiprocket',
+				provider_event_id: providerEventId,
+				event_type: status,
+				signature_valid: true,
+				idempotency_key: idempotencyKey,
+				related_shipment_id: shipmentId,
+				payload: body
+			})
+			.select('id')
+			.single();
+		if (webhookEventError) {
+			if (webhookEventError.code === '23505') {
+				res.json({ ok: true, duplicate: true });
+				return;
+			}
+			throw webhookEventError;
+		}
 
 		await supabaseAdmin.from('shipment_events').insert({
 			shipment_id: shipmentId,
@@ -1867,6 +1901,15 @@ app.post('/logistics/events', webhookLimiter, async (req, res, next) => {
 				})
 				.eq('id', shipmentId);
 		}
+
+		await supabaseAdmin
+			.from('provider_webhook_events')
+			.update({
+				processing_status: shipmentId ? 'processed' : 'ignored',
+				related_shipment_id: shipmentId,
+				processed_at: new Date().toISOString()
+			})
+			.eq('id', webhookEvent.id);
 
 		res.json({ ok: true });
 	} catch (error) {
@@ -2498,6 +2541,68 @@ app.patch('/admin/orders/:orderId', requireAdmin, async (req, res, next) => {
 		}
 		if (['cancelled', 'returned'].includes(nextOrderStatus) && !input.reason?.trim()) {
 			throw new HttpError(400, 'Add a clear reason for cancellation or return changes');
+		}
+
+		if (payload.status === 'cancelled') {
+			if ('payment_status' in payload) {
+				throw new HttpError(400, 'Use the cancellation workflow before changing payment state');
+			}
+			const adminUser = (req as AuthenticatedRequest).authUser;
+			if (!adminUser) {
+				throw new HttpError(401, 'Admin session is missing');
+			}
+			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
+				p_order_id: orderId,
+				p_admin_user_id: adminUser.id,
+				p_reason: input.reason?.trim(),
+				p_metadata: {
+					source: 'admin_order_editor'
+				}
+			});
+			if (cancellationError) throw cancellationError;
+			const { data: cancelledOrder, error: cancelledOrderError } = await adminDb
+				.from('orders')
+				.select(
+					`
+        id,
+        status,
+        payment_status,
+        shipping_service_type,
+        shipping_name,
+        shipping_phone,
+        shipping_email,
+        shipping_line1,
+        shipping_line2,
+        shipping_city,
+        shipping_state,
+        shipping_pincode,
+        shipping_address,
+        updated_at
+      `
+				)
+				.eq('id', orderId)
+				.single();
+			if (cancelledOrderError) throw cancelledOrderError;
+
+			res.json({
+				order: {
+					id: cancelledOrder.id,
+					status: cancelledOrder.status,
+					paymentStatus: cancelledOrder.payment_status,
+					shippingServiceType: cancelledOrder.shipping_service_type,
+					shippingName: cancelledOrder.shipping_name,
+					shippingPhone: cancelledOrder.shipping_phone,
+					shippingEmail: cancelledOrder.shipping_email,
+					shippingLine1: cancelledOrder.shipping_line1,
+					shippingLine2: cancelledOrder.shipping_line2,
+					shippingCity: cancelledOrder.shipping_city,
+					shippingState: cancelledOrder.shipping_state,
+					shippingPincode: cancelledOrder.shipping_pincode,
+					shippingAddress: cancelledOrder.shipping_address,
+					updatedAt: cancelledOrder.updated_at
+				}
+			});
+			return;
 		}
 
 		const { data, error } = await adminDb

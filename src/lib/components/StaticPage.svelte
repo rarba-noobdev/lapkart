@@ -20,11 +20,11 @@
 	} = $props();
 </script>
 
-<section class="border-b border-[var(--border-faint)] bg-white">
+<section class="motion-section border-b border-[var(--border-faint)] bg-white">
 	<div class="container mx-auto max-w-4xl px-4 py-12">
 		<a
 			href={resolve('/')}
-			class="text-label-small inline-flex items-center gap-2 text-[var(--black-alpha-56)] transition-colors hover:text-[var(--heat-100)]"
+			class="motion-soft-link text-label-small inline-flex items-center gap-2 text-[var(--black-alpha-56)] transition-colors hover:text-[var(--heat-100)]"
 		>
 			<ArrowLeft class="size-4" />
 			Home
@@ -39,9 +39,9 @@
 	</div>
 </section>
 
-<section class="container mx-auto max-w-4xl px-4 py-10">
+<section class="motion-section container mx-auto max-w-4xl px-4 py-10">
 	<div
-		class="divide-y divide-[var(--border-faint)] rounded-lg border border-[var(--border-muted)] bg-white"
+		class="motion-card divide-y divide-[var(--border-faint)] rounded-lg border border-[var(--border-muted)] bg-white"
 	>
 		{#each sections as section (section.title)}
 			<article class="p-6">
