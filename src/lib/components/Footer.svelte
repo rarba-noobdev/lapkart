@@ -55,7 +55,7 @@
 							{ label: 'All components', to: '/products' },
 							{ label: 'Cart', to: '/cart' },
 							{ label: 'Orders', to: '/orders' },
-							{ label: 'Account', to: '/dashboard' }
+							{ label: 'Account', to: '/profile' }
 						]
 					},
 					{

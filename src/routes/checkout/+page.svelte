@@ -125,16 +125,14 @@
 	const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID ?? '';
 
 	const indianStates = [
-		'Andhra Pradesh',
-		'Delhi',
-		'Gujarat',
-		'Karnataka',
-		'Maharashtra',
-		'Rajasthan',
-		'Tamil Nadu',
-		'Telangana',
-		'Uttar Pradesh',
-		'West Bengal'
+		'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+		'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+		'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+		'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+		'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+		'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+		'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Puducherry',
+		'Chandigarh', 'Andaman and Nicobar', 'Dadra and Nagar Haveli', 'Lakshadweep'
 	];
 	const checkoutSkeletons = [1, 2, 3];
 	const auth = getAuthContext();
@@ -154,6 +152,9 @@
 	let couponCode = $state('');
 	let appliedSummary = $state<CheckoutSummary | null>(null);
 	let saveAddress = $state(true);
+	let savedAddresses = $state<Tables<'addresses'>[]>([]);
+	let selectedSavedAddressId = $state<string | null>(null);
+	let showManualForm = $state(false);
 	let address = $state({
 		fullName: '',
 		phone: '',
@@ -284,12 +285,53 @@
 			.select('*')
 			.eq('user_id', userId)
 			.order('is_default', { ascending: false })
-			.order('created_at', { ascending: false })
-			.limit(1)
-			.maybeSingle();
+			.order('created_at', { ascending: false });
 
 		if (error || !data || savedAddressLoadedForUserId !== userId) return;
-		applySavedAddress(data as Tables<'addresses'>);
+		savedAddresses = data as Tables<'addresses'>[];
+		if (data.length > 0) {
+			const defaultAddr = data[0] as Tables<'addresses'>;
+			selectedSavedAddressId = defaultAddr.id;
+			applySavedAddress(defaultAddr);
+			showManualForm = false;
+		} else {
+			showManualForm = true;
+		}
+	}
+
+	function selectSavedAddress(addr: Tables<'addresses'>) {
+		selectedSavedAddressId = addr.id;
+		showManualForm = false;
+		address.fullName = addr.full_name;
+		address.phone = addr.phone;
+		address.line1 = addr.line1;
+		address.line2 = addr.line2 ?? '';
+		address.city = addr.city;
+		address.state = addr.state;
+		address.pincode = addr.pincode;
+		address.latitude = addr.latitude;
+		address.longitude = addr.longitude;
+		address.locationSource = (addr.location_source as DeliveryPin['source'] | null) ?? null;
+		address.olaPlaceId = addr.ola_place_id;
+		address.formattedAddress = addr.formatted_address ?? '';
+	}
+
+	function useNewAddress() {
+		selectedSavedAddressId = null;
+		showManualForm = true;
+		address.fullName = currentUser?.user_metadata?.full_name ?? '';
+		address.phone = '';
+		address.email = currentUser?.email ?? '';
+		address.line1 = '';
+		address.line2 = '';
+		address.city = '';
+		address.state = 'Tamil Nadu';
+		address.pincode = '';
+		address.latitude = null;
+		address.longitude = null;
+		address.locationSource = null;
+		address.olaPlaceId = null;
+		address.formattedAddress = '';
 	}
 
 	function clearEstimateRequest() {
@@ -516,6 +558,7 @@
 			setMessage('error', 'Sign in again before checkout.');
 			return;
 		}
+		const authHeaders = { Authorization: `Bearer ${accessToken}` };
 
 		if (rows.length === 0) {
 			setMessage('error', 'Add at least one item to your cart.');
@@ -550,7 +593,7 @@
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						...(await getAuthorizationHeaders())
+						...authHeaders
 					},
 					body: JSON.stringify({
 						items: rows.map(({ item, product }) => ({ id: product.id, qty: item.qty })),
@@ -602,7 +645,7 @@
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					...(await getAuthorizationHeaders())
+					...authHeaders
 				},
 				body: JSON.stringify({
 					items: rows.map(({ item, product }) => ({ id: product.id, qty: item.qty })),
@@ -744,341 +787,262 @@
 	<title>Checkout - lapkart</title>
 </svelte:head>
 
-<section class="motion-page mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-	<header
-		class="relative mb-6 overflow-hidden rounded-[24px] border border-[var(--border-faint)] bg-white shadow-card"
-	>
-		<div class="grain absolute inset-0 opacity-20"></div>
-		<div
-			class="pointer-events-none absolute -top-24 -right-20 h-72 w-72 rounded-full bg-[var(--heat-12)] blur-3xl"
-		></div>
-		<div class="relative grid gap-6 p-5 md:grid-cols-[1fr_auto] md:p-6 lg:p-8">
-			<div>
-				<a
-					href={resolve('/cart')}
-					class="motion-soft-link text-label-small mb-5 inline-flex items-center gap-2 text-[var(--black-alpha-56)] hover:text-[var(--heat-100)]"
-				>
-					<ArrowLeft class="size-4" strokeWidth={2} />
-					Back to cart
-				</a>
-				<p class="text-mono-x-small tracking-[0.18em] text-[var(--black-alpha-48)] uppercase">
-					Secure checkout
-				</p>
-				<h1 class="text-title-h3 mt-2 max-w-[760px] font-display text-balance text-foreground">
-					Delivery, courier, and payment
-				</h1>
-				<p class="text-body-medium mt-3 max-w-[640px] text-[var(--black-alpha-56)]">
-					Confirm the address, pick a live courier quote, then place the order through Razorpay or
-					eligible cash on delivery.
-				</p>
-			</div>
-
-			<div
-				class="grid min-w-[280px] gap-2 rounded-[18px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 sm:grid-cols-3 md:min-w-[360px]"
-				aria-label="Checkout progress"
+<section class="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 sm:py-8">
+	<!-- Compact header -->
+	<div class="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+		<div class="flex items-center gap-3">
+			<a
+				href={resolve('/cart')}
+				class="flex size-8 items-center justify-center rounded-md border border-[var(--border-faint)] bg-white text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
 			>
-				<div class="rounded-[14px] bg-white p-3 shadow-card">
-					<Package class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-					<p
-						class="text-mono-x-small mt-3 tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Cart
-					</p>
-					<p class="text-label-small text-foreground">
-						{rows.length || $cartState.items.length} items
-					</p>
-				</div>
-				<div class="rounded-[14px] bg-white p-3 shadow-card">
-					<MapPin class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-					<p
-						class="text-mono-x-small mt-3 tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Delivery
-					</p>
-					<p class="text-label-small text-foreground">{hasDeliveryPin ? 'Pinned' : 'Needs pin'}</p>
-				</div>
-				<div class="rounded-[14px] bg-white p-3 shadow-card">
-					<ShieldCheck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-					<p
-						class="text-mono-x-small mt-3 tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Payment
-					</p>
-					<p class="text-label-small text-foreground">
-						{paymentMode === 'cod' ? 'COD' : 'Razorpay'}
-					</p>
-				</div>
+				<ArrowLeft class="size-4" strokeWidth={2} />
+			</a>
+			<div>
+				<h1 class="text-[18px] font-medium tracking-tight text-foreground sm:text-[22px]">Checkout</h1>
+				<p class="text-[11px] text-[var(--black-alpha-40)]">Address · Courier · Payment</p>
 			</div>
 		</div>
-	</header>
+		<div class="flex items-center gap-2 text-[11px]">
+			<span class="flex items-center gap-1 rounded-md bg-[var(--background-lighter)] px-2 py-1 text-[var(--black-alpha-48)]">
+				<Package class="size-3" /> {rows.length || $cartState.items.length} items
+			</span>
+			<span class="flex items-center gap-1 rounded-md px-2 py-1 {hasDeliveryPin ? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]' : 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}">
+				<MapPin class="size-3" /> {hasDeliveryPin ? 'Pinned' : 'Needs pin'}
+			</span>
+			<span class="flex items-center gap-1 rounded-md bg-[var(--background-lighter)] px-2 py-1 text-[var(--black-alpha-48)]">
+				<ShieldCheck class="size-3" /> {paymentMode === 'cod' ? 'COD' : 'Razorpay'}
+			</span>
+		</div>
+	</div>
 
 	{#if !$cartState.hydrated || productsLoading}
-		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
-			<div class="motion-list space-y-4">
+		<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+			<div class="space-y-3">
 				{#each checkoutSkeletons as skeleton (skeleton)}
-					<div
-						class="h-40 animate-pulse rounded-[22px] border border-[var(--border-faint)] bg-white"
-					></div>
+					<div class="h-32 animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
 				{/each}
 			</div>
-			<div
-				class="h-[420px] animate-pulse rounded-[22px] border border-[var(--border-faint)] bg-white"
-			></div>
+			<div class="h-[380px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
 		</div>
 	{:else if productsError}
-		<div class="rounded-[18px] border border-red-200 bg-red-50 p-5 text-red-700">
-			<div class="flex gap-3">
-				<AlertTriangle class="mt-1 size-5 shrink-0" strokeWidth={2} />
-				<p class="text-body-medium">{productsError}</p>
-			</div>
+		<div class="flex items-start gap-2 rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-4 text-[13px] text-[var(--accent-crimson)]">
+			<AlertTriangle class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+			<span>{productsError}</span>
 		</div>
 	{:else if rows.length === 0}
-		<div
-			class="rounded-[24px] border border-dashed border-[var(--border-muted)] bg-white p-8 text-center shadow-card"
-		>
-			<div
-				class="mx-auto flex size-12 items-center justify-center rounded-[16px] bg-[var(--heat-8)] text-[var(--heat-100)]"
-			>
-				<Package class="size-6" strokeWidth={2} />
-			</div>
-			<p class="text-label-small mt-5 text-[var(--heat-100)]">Your cart is empty</p>
-			<p class="text-body-large mt-2 text-foreground">Add parts to your cart before checkout.</p>
-			<a
-				href={resolve('/products')}
-				class="button button-primary text-label-medium mt-6 inline-flex h-11 items-center justify-center rounded-md px-5 text-white"
-			>
+		<div class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-10 text-center">
+			<Package class="mx-auto size-8 text-[var(--black-alpha-32)]" strokeWidth={1.5} />
+			<p class="mt-3 text-[13px] font-medium text-foreground">Cart is empty</p>
+			<p class="mt-1 text-[12px] text-[var(--black-alpha-48)]">Add parts before checkout.</p>
+			<a href={resolve('/products')} class="button button-primary mt-4 inline-flex h-9 items-center rounded-md px-4 text-[12px] text-white">
 				Browse products
 			</a>
 		</div>
 	{:else}
-		<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
-			<div class="motion-list space-y-6">
-				<article class="rounded-[22px] border border-[var(--border-faint)] bg-white shadow-card">
-					<div
-						class="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] p-5"
-					>
-						<div class="flex gap-3">
-							<div
-								class="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent-black)] text-[var(--heat-100)]"
-							>
-								<MapPin class="size-5" strokeWidth={2} />
-							</div>
-							<div>
-								<p
-									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									Step 1
-								</p>
-								<h2 class="text-title-h5 text-foreground">Address and delivery pin</h2>
-								<p class="text-body-small mt-1 max-w-[620px] text-[var(--black-alpha-56)]">
-									Use a precise map pin so courier and COD rules are calculated from the real
-									delivery location.
-								</p>
-							</div>
+		<div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+			<div class="space-y-3 sm:space-y-4">
+				<!-- Address section -->
+				<article class="rounded-lg border border-[var(--border-faint)] bg-white">
+					<div class="flex items-center justify-between border-b border-[var(--border-faint)] px-3 py-2.5 sm:px-4 sm:py-3">
+						<div class="flex items-center gap-2">
+							<MapPin class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+							<h2 class="text-[13px] font-medium text-foreground">Delivery address</h2>
 						</div>
 						{#if hasValidAddress && hasDeliveryPin}
-							<span
-								class="text-mono-x-small inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 uppercase"
-							>
-								<CheckCircle2 class="size-3.5" strokeWidth={2} />
-								Ready
+							<span class="flex items-center gap-1 rounded-full bg-[var(--accent-forest)]/8 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-forest)]">
+								<CheckCircle2 class="size-3" strokeWidth={2} /> Ready
 							</span>
 						{/if}
 					</div>
 
-					<div class="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(320px,1.05fr)]">
-						<div class="grid content-start gap-4 md:grid-cols-2">
-							<label>
-								<span class="text-label-small mb-2 block text-foreground">Full name</span>
-								<input bind:value={address.fullName} class="input-field" autocomplete="name" />
-							</label>
-							<label>
-								<span class="text-label-small mb-2 block text-foreground">Phone</span>
-								<input bind:value={address.phone} class="input-field" autocomplete="tel" />
-							</label>
-							<label class="md:col-span-2">
-								<span class="text-label-small mb-2 block text-foreground">Email</span>
-								<input bind:value={address.email} class="input-field" autocomplete="email" />
-							</label>
-							<label class="md:col-span-2">
-								<span class="text-label-small mb-2 block text-foreground">Address line 1</span>
-								<input
-									bind:value={address.line1}
-									class="input-field"
-									autocomplete="address-line1"
-								/>
-							</label>
-							<label class="md:col-span-2">
-								<span class="text-label-small mb-2 block text-foreground">Address line 2</span>
-								<input
-									bind:value={address.line2}
-									class="input-field"
-									autocomplete="address-line2"
-								/>
-							</label>
-							<label>
-								<span class="text-label-small mb-2 block text-foreground">City</span>
-								<input
-									bind:value={address.city}
-									class="input-field"
-									autocomplete="address-level2"
-								/>
-							</label>
-							<label>
-								<span class="text-label-small mb-2 block text-foreground">Pincode</span>
-								<input
-									bind:value={address.pincode}
-									class="input-field"
-									autocomplete="postal-code"
-									inputmode="numeric"
-								/>
-							</label>
-							<label class="md:col-span-2">
-								<span class="text-label-small mb-2 block text-foreground">State</span>
-								<select bind:value={address.state} class="input-field">
-									{#each indianStates as state (state)}
-										<option value={state}>{state}</option>
-									{/each}
-								</select>
-							</label>
+					<!-- Saved address picker -->
+					{#if savedAddresses.length > 0}
+						<div class="border-b border-[var(--border-faint)] p-3 sm:p-4">
+							<p class="mb-2 text-[11px] font-medium text-[var(--black-alpha-48)]">Saved addresses</p>
+							<div class="space-y-1.5">
+								{#each savedAddresses as addr (addr.id)}
+									<button
+										type="button"
+										class="w-full rounded-md border p-2.5 text-left transition-colors sm:p-3
+											{selectedSavedAddressId === addr.id && !showManualForm
+												? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
+												: 'border-[var(--border-faint)] hover:border-[var(--heat-40)]'}"
+										onclick={() => selectSavedAddress(addr)}
+									>
+										<div class="flex items-start justify-between gap-2">
+											<div class="min-w-0">
+												<p class="text-[12px] font-medium text-foreground sm:text-[13px]">{addr.full_name}</p>
+												<p class="mt-0.5 text-[11px] leading-relaxed text-[var(--black-alpha-56)]">
+													{addr.line1}{addr.line2 ? `, ${addr.line2}` : ''}, {addr.city} — {addr.pincode}
+												</p>
+											</div>
+											{#if addr.is_default}
+												<span class="shrink-0 rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--heat-100)] uppercase">Default</span>
+											{/if}
+										</div>
+									</button>
+								{/each}
+								<button
+									type="button"
+									class="w-full rounded-md border border-dashed p-2.5 text-center text-[12px] font-medium transition-colors sm:p-3
+										{showManualForm
+											? 'border-[var(--heat-100)] bg-[var(--heat-4)] text-[var(--heat-100)]'
+											: 'border-[var(--border-muted)] text-[var(--black-alpha-56)] hover:border-[var(--heat-40)] hover:text-[var(--heat-100)]'}"
+									onclick={useNewAddress}
+								>
+									+ Use a different address
+								</button>
+							</div>
 						</div>
+					{/if}
 
-						<div
-							class="rounded-[18px] border border-[var(--border-faint)] bg-[var(--background-base)] p-3"
-						>
-							<DeliveryMapPicker
-								value={deliveryPin}
-								onChange={(pin) => {
-									address.latitude = pin.latitude;
-									address.longitude = pin.longitude;
-									address.locationSource = pin.source;
-								}}
-								onAddressResolved={applyResolvedAddress}
-							/>
+					<!-- Address form (show if no saved addresses OR manual mode) -->
+					{#if savedAddresses.length === 0 || showManualForm}
+						<div class="grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)]">
+							<div class="grid content-start gap-2 sm:gap-2.5 sm:grid-cols-2">
+								<label>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Full name</span>
+									<input bind:value={address.fullName} class="input-field !h-10 text-[13px]" autocomplete="name" />
+								</label>
+								<label>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Phone</span>
+									<input bind:value={address.phone} class="input-field !h-10 text-[13px]" autocomplete="tel" />
+								</label>
+								<label class="sm:col-span-2">
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Email</span>
+									<input bind:value={address.email} class="input-field !h-10 text-[13px]" autocomplete="email" />
+								</label>
+								<label class="sm:col-span-2">
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Address line 1</span>
+									<input bind:value={address.line1} class="input-field !h-10 text-[13px]" autocomplete="address-line1" />
+								</label>
+								<label class="sm:col-span-2">
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Address line 2</span>
+									<input bind:value={address.line2} class="input-field !h-10 text-[13px]" autocomplete="address-line2" />
+								</label>
+								<label>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">City</span>
+									<input bind:value={address.city} class="input-field !h-10 text-[13px]" autocomplete="address-level2" />
+								</label>
+								<label>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Pincode</span>
+									<input bind:value={address.pincode} class="input-field !h-10 text-[13px]" autocomplete="postal-code" inputmode="numeric" />
+								</label>
+								<label class="sm:col-span-2">
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">State</span>
+									<select bind:value={address.state} class="input-field !h-10 text-[13px]">
+										{#each indianStates as st (st)}
+											<option value={st}>{st}</option>
+										{/each}
+									</select>
+								</label>
+							</div>
+
+							<div class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2">
+								<DeliveryMapPicker
+									value={deliveryPin}
+									onChange={(pin) => {
+										address.latitude = pin.latitude;
+										address.longitude = pin.longitude;
+										address.locationSource = pin.source;
+									}}
+									onAddressResolved={applyResolvedAddress}
+								/>
+							</div>
 						</div>
-					</div>
+					{:else}
+						<!-- Map picker for saved address (may need pin update) -->
+						<div class="p-3 sm:p-4">
+							<div class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2">
+								<DeliveryMapPicker
+									value={deliveryPin}
+									onChange={(pin) => {
+										address.latitude = pin.latitude;
+										address.longitude = pin.longitude;
+										address.locationSource = pin.source;
+									}}
+									onAddressResolved={applyResolvedAddress}
+								/>
+							</div>
+						</div>
+					{/if}
 
-					<div class="border-t border-[var(--border-faint)] p-5">
-						<label
-							class="text-body-small flex items-start gap-3 rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-4 text-[var(--black-alpha-72)]"
-						>
-							<input bind:checked={saveAddress} type="checkbox" class="mt-1 h-4 w-4 shrink-0" />
-							<span>Save this delivery address to your account for faster future checkouts.</span>
+					<div class="border-t border-[var(--border-faint)] px-3 py-2.5 sm:px-4 sm:py-3">
+						<label class="flex items-center gap-2 text-[12px] text-[var(--black-alpha-64)]">
+							<input bind:checked={saveAddress} type="checkbox" class="size-3.5 accent-[var(--heat-100)]" />
+							Save address for future checkouts
 						</label>
 					</div>
 				</article>
 
-				<article
-					class="rounded-[22px] border border-[var(--border-faint)] bg-white p-5 shadow-card"
-				>
-					<div class="flex gap-3">
-						<div
-							class="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent-black)] text-[var(--heat-100)]"
-						>
-							<Truck class="size-5" strokeWidth={2} />
-						</div>
-						<div>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								Step 2
-							</p>
-							<h2 class="text-title-h5 text-foreground">Courier options</h2>
-							<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-								Live quotes update after address, pin, and cart changes.
-							</p>
-						</div>
+				<!-- Courier section -->
+				<article class="rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:p-4">
+					<div class="flex items-center gap-2 mb-2.5 sm:mb-3">
+						<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+						<h2 class="text-[13px] font-medium text-foreground">Courier options</h2>
 					</div>
 
 					{#if estimateLoading}
-						<div
-							class="text-body-small mt-5 flex items-center gap-3 rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-4 text-[var(--black-alpha-64)]"
-						>
-							<LoaderCircle class="size-4 animate-spin text-[var(--heat-100)]" strokeWidth={2} />
-							Checking route distance and delivery quotes...
+						<div class="flex items-center gap-2 rounded-md bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
+							<LoaderCircle class="size-3.5 animate-spin text-[var(--heat-100)]" strokeWidth={2} />
+							Checking delivery quotes...
 						</div>
 					{:else if estimateError}
-						<div
-							class="text-body-small mt-5 flex items-start gap-3 rounded-[16px] border border-red-200 bg-red-50 px-4 py-4 text-red-700"
-						>
-							<AlertTriangle class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+						<div class="flex items-start gap-2 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">
+							<AlertTriangle class="mt-0.5 size-3.5 shrink-0" strokeWidth={2} />
 							<span>{estimateError}</span>
 						</div>
 					{:else if !deliveryEstimate}
-						<div
-							class="text-body-small mt-5 flex items-start gap-3 rounded-[16px] border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] px-4 py-4 text-[var(--black-alpha-64)]"
-						>
-							<Navigation class="mt-0.5 size-4 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
-							<span>Add a valid pincode and delivery pin to load courier options.</span>
+						<div class="flex items-start gap-2 rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
+							<Navigation class="mt-0.5 size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
+							<span>Add pincode and delivery pin to load courier options.</span>
 						</div>
 					{:else}
-						<div class="mt-5 grid gap-4 md:grid-cols-2">
-							<div
-								class="rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-							>
-								<div class="flex items-center gap-2 text-[var(--black-alpha-48)]">
-									<Navigation class="size-4" strokeWidth={2} />
-									<p class="text-mono-x-small tracking-[0.16em] uppercase">Road distance</p>
-								</div>
-								<p class="text-title-h5 mt-2 text-foreground">
-									{deliveryEstimate.route.readableDistance ||
-										`${(deliveryEstimate.route.distanceMeters / 1000).toFixed(1)} km`}
+						<div class="grid gap-2 sm:grid-cols-2">
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Distance</p>
+								<p class="mt-0.5 text-[14px] font-medium text-foreground">
+									{deliveryEstimate.route.readableDistance || `${(deliveryEstimate.route.distanceMeters / 1000).toFixed(1)} km`}
 								</p>
 							</div>
-							<div
-								class="rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-							>
-								<div class="flex items-center gap-2 text-[var(--black-alpha-48)]">
-									<Clock3 class="size-4" strokeWidth={2} />
-									<p class="text-mono-x-small tracking-[0.16em] uppercase">Route time</p>
-								</div>
-								<p class="text-title-h5 mt-2 text-foreground">
-									{deliveryEstimate.route.readableDuration ||
-										`${Math.ceil(deliveryEstimate.route.durationSeconds / 60)} min`}
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Route time</p>
+								<p class="mt-0.5 text-[14px] font-medium text-foreground">
+									{deliveryEstimate.route.readableDuration || `${Math.ceil(deliveryEstimate.route.durationSeconds / 60)} min`}
 								</p>
 							</div>
 						</div>
 
-						<div class="mt-5 grid gap-3">
+						<div class="mt-3 space-y-2">
 							{#each deliveryEstimate.couriers as courier (courier.quoteId)}
 								<button
 									type="button"
 									aria-pressed={selectedQuoteId === courier.quoteId}
-									class={`motion-card rounded-[18px] border p-4 text-left ${
-										selectedQuoteId === courier.quoteId
-											? 'border-[var(--heat-100)] bg-[var(--heat-4)] shadow-card'
-											: 'border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]'
-									}`}
+									class="w-full rounded-md border p-3 text-left transition-colors
+										{selectedQuoteId === courier.quoteId
+											? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
+											: 'border-[var(--border-faint)] hover:border-[var(--heat-40)]'}"
 									onclick={() => (selectedQuoteId = courier.quoteId)}
 								>
-									<div class="flex flex-wrap items-start justify-between gap-4">
+									<div class="flex items-start justify-between gap-3">
 										<div class="min-w-0">
-											<div class="flex flex-wrap items-center gap-2">
-												<p class="text-label-large text-foreground">{courier.courierName}</p>
+											<div class="flex flex-wrap items-center gap-1.5">
+												<p class="text-[13px] font-medium text-foreground">{courier.courierName}</p>
 												{#if courier.recommended}
-													<span
-														class="text-mono-x-small rounded-full border border-[var(--heat-20)] bg-[var(--heat-8)] px-2 py-1 text-[var(--heat-100)] uppercase"
-													>
-														Recommended
-													</span>
+													<span class="rounded bg-[var(--heat-8)] px-1.5 py-px text-[9px] font-medium text-[var(--heat-100)] uppercase">Best</span>
 												{/if}
 												{#if courier.serviceType === 'quick'}
-													<span
-														class="text-mono-x-small rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700 uppercase"
-													>
-														Quick
-													</span>
+													<span class="rounded bg-[var(--accent-forest)]/8 px-1.5 py-px text-[9px] font-medium text-[var(--accent-forest)] uppercase">Quick</span>
 												{/if}
 											</div>
-											<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
-												{courier.mode} / Expected {courier.etd ||
-													`${courier.estimatedDeliveryDays} day(s)`}
-												{courier.rating ? ` / ${courier.rating} rating` : ''}
+											<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+												{courier.mode} · {courier.etd || `${courier.estimatedDeliveryDays}d`}
+												{courier.rating ? ` · ${courier.rating}★` : ''}
 											</p>
 										</div>
-										<div class="text-left sm:text-right">
-											<p class="text-label-large text-foreground">{formatINR(courier.rate)}</p>
-											<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-												{courier.expectedDeliveryDate ?? 'Date on dispatch'}
-											</p>
+										<div class="shrink-0 text-right">
+											<p class="text-[13px] font-medium text-foreground">{formatINR(courier.rate)}</p>
+											<p class="text-[10px] text-[var(--black-alpha-40)]">{courier.expectedDeliveryDate ?? 'On dispatch'}</p>
 										</div>
 									</div>
 								</button>
@@ -1087,95 +1051,76 @@
 					{/if}
 				</article>
 
-				<article
-					class="rounded-[22px] border border-[var(--border-faint)] bg-white p-5 shadow-card"
-				>
-					<div class="flex gap-3">
-						<div
-							class="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent-black)] text-[var(--heat-100)]"
-						>
-							<CreditCard class="size-5" strokeWidth={2} />
-						</div>
-						<div>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-								Step 3
-							</p>
-							<h2 class="text-title-h5 text-foreground">Payment method</h2>
-							<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-								Payment status is verified server-side before an order is created.
-							</p>
-						</div>
+				<article class="rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:p-4">
+					<div class="flex items-center gap-2 mb-2.5 sm:mb-3">
+						<CreditCard class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+						<h2 class="text-[13px] font-medium text-foreground">Payment method</h2>
 					</div>
 
-					<div class="mt-5 grid gap-3 md:grid-cols-2">
+					<div class="grid gap-2 sm:grid-cols-2">
 						<button
 							type="button"
 							aria-pressed={paymentMode === 'razorpay'}
-							class={`motion-card rounded-[18px] border p-4 text-left ${
-								paymentMode === 'razorpay'
-									? 'border-[var(--heat-100)] bg-[var(--heat-4)] shadow-card'
-									: 'border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]'
-							}`}
+							class="rounded-md border p-3 text-left transition-colors
+								{paymentMode === 'razorpay'
+									? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
+									: 'border-[var(--border-faint)] hover:border-[var(--heat-40)]'}"
 							onclick={() => (paymentMode = 'razorpay')}
 						>
-							<CreditCard class="size-5 text-[var(--heat-100)]" strokeWidth={2} />
-							<p class="text-label-large mt-3 text-foreground">Razorpay</p>
-							<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
-								Card, UPI, netbanking, and wallets through hosted checkout.
+							<div class="flex items-center gap-2">
+								<CreditCard class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+								<p class="text-[13px] font-medium text-foreground">Razorpay</p>
+							</div>
+							<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
+								Card, UPI, netbanking, wallets
 							</p>
 						</button>
 
 						<button
 							type="button"
 							aria-pressed={paymentMode === 'cod'}
-							class={`motion-card rounded-[18px] border p-4 text-left disabled:cursor-not-allowed disabled:opacity-55 ${
-								paymentMode === 'cod'
-									? 'border-[var(--heat-100)] bg-[var(--heat-4)] shadow-card'
-									: 'border-[var(--border-faint)] bg-white hover:border-[var(--heat-40)]'
-							}`}
+							class="rounded-md border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50
+								{paymentMode === 'cod'
+									? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
+									: 'border-[var(--border-faint)] hover:border-[var(--heat-40)]'}"
 							disabled={!codEligibility.eligible}
 							onclick={() => (paymentMode = 'cod')}
 						>
-							<Wallet class="size-5 text-[var(--heat-100)]" strokeWidth={2} />
-							<p class="text-label-large mt-3 text-foreground">Cash on delivery</p>
-							<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
+							<div class="flex items-center gap-2">
+								<Wallet class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+								<p class="text-[13px] font-medium text-foreground">Cash on delivery</p>
+							</div>
+							<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
 								{codEligibility.eligible
-									? `Available up to ${formatINR(codEligibility.cap)} for eligible Chennai-area deliveries.`
-									: (codEligibility.reason ?? 'COD is not available for this order.')}
+									? `Up to ${formatINR(codEligibility.cap)}`
+									: (codEligibility.reason ?? 'Not available for this order.')}
 							</p>
 						</button>
 					</div>
 
 					{#if appliedSummary?.deliveryPromise}
-						<div
-							class="mt-5 flex items-start gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50 p-4"
-						>
-							<CheckCircle2 class="mt-0.5 size-4 shrink-0 text-emerald-700" strokeWidth={2} />
+						<div class="mt-3 flex items-start gap-2 rounded-md border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/6 p-3 text-[12px]">
+							<CheckCircle2 class="mt-0.5 size-3.5 shrink-0 text-[var(--accent-forest)]" strokeWidth={2} />
 							<div>
-								<p class="text-label-medium text-emerald-800">
-									{appliedSummary.deliveryPromise.label}
-								</p>
-								<p class="text-body-small mt-1 text-emerald-700">
-									{appliedSummary.deliveryPromise.detail}
-								</p>
+								<p class="font-medium text-[var(--accent-forest)]">{appliedSummary.deliveryPromise.label}</p>
+								<p class="mt-0.5 text-[var(--accent-forest)]/80">{appliedSummary.deliveryPromise.detail}</p>
 							</div>
 						</div>
 					{/if}
 
 					{#if message}
 						<div
-							class={`text-body-small mt-5 flex items-start gap-3 rounded-[16px] border px-4 py-4 ${
-								message.tone === 'error'
-									? 'border-red-200 bg-red-50 text-red-700'
+							class="mt-3 flex items-start gap-2 rounded-md border p-3 text-[12px]
+								{message.tone === 'error'
+									? 'border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 text-[var(--accent-crimson)]'
 									: message.tone === 'success'
-										? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-										: 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-72)]'
-							}`}
+										? 'border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/6 text-[var(--accent-forest)]'
+										: 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-72)]'}"
 						>
 							{#if message.tone === 'error'}
-								<AlertTriangle class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+								<AlertTriangle class="mt-0.5 size-3.5 shrink-0" strokeWidth={2} />
 							{:else}
-								<CheckCircle2 class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+								<CheckCircle2 class="mt-0.5 size-3.5 shrink-0" strokeWidth={2} />
 							{/if}
 							<span>{message.text}</span>
 						</div>
@@ -1183,31 +1128,21 @@
 				</article>
 			</div>
 
-			<aside
-				class="sticky top-24 h-fit rounded-[22px] border border-[var(--border-faint)] bg-white p-5 shadow-card"
-			>
-				<div class="flex items-start justify-between gap-3">
-					<div>
-						<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-							Order summary
-						</p>
-						<h2 class="text-title-h5 mt-2 text-foreground">
-							{rows.length} item{rows.length === 1 ? '' : 's'}
-						</h2>
-					</div>
-					<div
-						class="flex size-10 items-center justify-center rounded-[14px] bg-[var(--heat-8)] text-[var(--heat-100)]"
-					>
-						<ReceiptText class="size-5" strokeWidth={2} />
+			<aside class="sticky top-24 h-fit rounded-lg border border-[var(--border-faint)] bg-white">
+				<div class="border-b border-[var(--border-faint)] px-4 py-3">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<ReceiptText class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+							<h2 class="text-[13px] font-medium text-foreground">Order summary</h2>
+						</div>
+						<span class="text-[11px] text-[var(--black-alpha-48)]">{rows.length} item{rows.length === 1 ? '' : 's'}</span>
 					</div>
 				</div>
 
-				<div class="motion-list mt-5 space-y-3">
+				<div class="space-y-2 p-4">
 					{#each rows as row (row.item.id)}
-						<div
-							class="flex gap-3 rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
-						>
-							<div class="grid h-18 w-18 shrink-0 place-items-center rounded-[12px] bg-white p-2">
+						<div class="flex gap-3 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-2">
+							<div class="grid size-14 shrink-0 place-items-center rounded bg-white p-1.5">
 								<img
 									src={row.product.images?.[0] ?? row.product.image}
 									alt={row.product.title}
@@ -1215,11 +1150,11 @@
 								/>
 							</div>
 							<div class="min-w-0 flex-1">
-								<p class="text-label-medium line-clamp-2 text-foreground">{row.product.title}</p>
-								<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-									{row.product.brand} / Qty {row.item.qty}
+								<p class="line-clamp-2 text-[12px] font-medium text-foreground">{row.product.title}</p>
+								<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+									{row.product.brand} · Qty {row.item.qty}
 								</p>
-								<p class="text-body-small mt-2 text-[var(--black-alpha-72)]">
+								<p class="mt-1 text-[12px] text-[var(--black-alpha-72)]">
 									{formatINR(row.product.price * row.item.qty)}
 								</p>
 							</div>
@@ -1227,48 +1162,42 @@
 					{/each}
 				</div>
 
-				<div
-					class="text-body-medium mt-5 space-y-3 border-t border-[var(--border-faint)] pt-5 text-[var(--black-alpha-64)]"
-				>
-					<div class="flex items-center justify-between">
+				<div class="space-y-2 border-t border-[var(--border-faint)] px-4 py-3 text-[12px] text-[var(--black-alpha-64)]">
+					<div class="flex justify-between">
 						<span>Subtotal</span>
 						<span class="text-foreground">{formatINR(subtotal)}</span>
 					</div>
-					<div class="flex items-center justify-between">
+					<div class="flex justify-between">
 						<span>Shipping</span>
 						<span class="text-foreground">{shipping === 0 ? 'Free' : formatINR(shipping)}</span>
 					</div>
 					{#if discountTotal > 0}
-						<div class="flex items-center justify-between text-emerald-700">
+						<div class="flex justify-between text-[var(--accent-forest)]">
 							<span>{appliedSummary?.coupon?.code ?? 'Coupon'}</span>
 							<span>-{formatINR(discountTotal)}</span>
 						</div>
 					{/if}
-					<div
-						class="text-label-large flex items-center justify-between border-t border-[var(--border-faint)] pt-3 text-foreground"
-					>
+					<div class="flex justify-between border-t border-[var(--border-faint)] pt-2 text-[14px] font-semibold text-foreground">
 						<span>Total</span>
 						<span>{formatINR(payableTotal)}</span>
 					</div>
 				</div>
 
-				<div
-					class="mt-5 rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4"
-				>
-					<div class="flex items-center gap-2">
-						<Tag class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-						<p class="text-label-medium text-foreground">Coupon</p>
+				<div class="border-t border-[var(--border-faint)] px-4 py-3">
+					<div class="flex items-center gap-2 mb-2">
+						<Tag class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
+						<p class="text-[12px] font-medium text-foreground">Coupon</p>
 					</div>
-					<div class="mt-3 flex gap-2">
+					<div class="flex gap-2">
 						<input
 							bind:value={couponCode}
-							class="input-field min-w-0 flex-1 uppercase"
+							class="input-field min-w-0 flex-1 text-[12px] uppercase"
 							maxlength="40"
 							placeholder="SAVE10"
 						/>
 						<button
 							type="button"
-							class="motion-press text-label-medium inline-flex h-12 shrink-0 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-60"
+							class="inline-flex h-10 shrink-0 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-50"
 							disabled={couponBusy || !couponCode.trim()}
 							onclick={applyCoupon}
 						>
@@ -1277,13 +1206,13 @@
 					</div>
 
 					{#if appliedSummary?.coupon}
-						<div class="text-body-small mt-3 flex items-center justify-between gap-3">
-							<span class="text-emerald-700">
+						<div class="mt-2 flex items-center justify-between text-[11px]">
+							<span class="text-[var(--accent-forest)]">
 								{appliedSummary.coupon.code} saved {formatINR(discountTotal)}
 							</span>
 							<button
 								type="button"
-								class="motion-soft-link text-[var(--heat-100)]"
+								class="text-[var(--heat-100)] hover:underline"
 								onclick={removeAppliedCoupon}
 							>
 								Remove
@@ -1293,51 +1222,49 @@
 				</div>
 
 				{#if selectedCourier}
-					<div class="mt-5 rounded-[16px] border border-[var(--heat-20)] bg-[var(--heat-4)] p-4">
+					<div class="border-t border-[var(--border-faint)] px-4 py-3">
 						<div class="flex items-center gap-2">
-							<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-							<p class="text-label-medium text-foreground">{selectedCourier.courierName}</p>
+							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
+							<p class="text-[12px] font-medium text-foreground">{selectedCourier.courierName}</p>
 						</div>
-						<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
-							{selectedCourier.serviceType === 'quick' ? 'Quick' : 'Standard'} / Expected {selectedCourier.etd ||
-								`${selectedCourier.estimatedDeliveryDays} day(s)`}
-						</p>
-						<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
-							{deliveryEstimate?.route.readableDistance || '-'} / {deliveryEstimate?.route
-								.readableDuration || '-'}
+						<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
+							{selectedCourier.serviceType === 'quick' ? 'Quick' : 'Standard'} · {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays}d`}
+							· {deliveryEstimate?.route.readableDistance || '-'}
 						</p>
 					</div>
 				{/if}
 
-				<button
-					type="button"
-					class="button button-primary text-label-medium mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md text-white disabled:cursor-not-allowed disabled:opacity-60"
-					disabled={busy ||
-						rows.length === 0 ||
-						estimateLoading ||
-						!selectedCourier ||
-						Boolean(orderId)}
-					onclick={pay}
-				>
-					{#if busy}
-						<LoaderCircle class="size-4 animate-spin" strokeWidth={2} />
-						Working
-					{:else if orderId}
-						<CheckCircle2 class="size-4" strokeWidth={2} />
-						Order placed
-					{:else if paymentMode === 'cod'}
-						Place COD order for {formatINR(payableTotal)}
-					{:else}
-						Pay {formatINR(payableTotal)}
-					{/if}
-				</button>
+				<div class="border-t border-[var(--border-faint)] p-4 space-y-2">
+					<button
+						type="button"
+						class="button button-primary inline-flex h-11 w-full items-center justify-center gap-2 rounded-md text-[13px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+						disabled={busy ||
+							rows.length === 0 ||
+							estimateLoading ||
+							!selectedCourier ||
+							Boolean(orderId)}
+						onclick={pay}
+					>
+						{#if busy}
+							<LoaderCircle class="size-4 animate-spin" strokeWidth={2} />
+							Working
+						{:else if orderId}
+							<CheckCircle2 class="size-4" strokeWidth={2} />
+							Order placed
+						{:else if paymentMode === 'cod'}
+							Place COD order for {formatINR(payableTotal)}
+						{:else}
+							Pay {formatINR(payableTotal)}
+						{/if}
+					</button>
 
-				<a
-					href={resolve('/orders')}
-					class="motion-soft-link text-label-medium mt-3 inline-flex h-11 w-full items-center justify-center rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-				>
-					Review existing orders
-				</a>
+					<a
+						href={resolve('/orders')}
+						class="inline-flex h-9 w-full items-center justify-center rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+					>
+						Review existing orders
+					</a>
+				</div>
 			</aside>
 		</div>
 	{/if}

@@ -1,6 +1,8 @@
 {
 	"framework": "sveltekit",
 	"env": {
+		"PUBLIC_SUPABASE_URL": "https://jcktbslbbidjqwpgvsid.supabase.co",
+		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_enzwuAXQTLfL4S2ABmgGdg_J23hy6s0",
 		"VITE_API_BASE_URL": "https://jcktbslbbidjqwpgvsid.supabase.co/functions/v1/api"
 	}
 }

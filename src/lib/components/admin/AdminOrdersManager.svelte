@@ -317,7 +317,7 @@
 			</div>
 			<button
 				type="button"
-				class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 hover:text-foreground disabled:opacity-50"
+				class="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] hover:text-foreground disabled:opacity-50"
 				disabled={loading}
 				onclick={() => void loadOrders()}
 			>
@@ -327,18 +327,18 @@
 
 		<input
 			bind:value={search}
-			class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+			class="flex h-9 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 			placeholder="Search order, customer, email, or city"
 		/>
 
 		<div class="flex max-h-[calc(100vh-240px)] flex-col gap-2 overflow-y-auto pr-2 pb-10">
 			{#if loading && !orders.length}
-				<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-[var(--black-alpha-48)]">
+				<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-4 text-sm text-[var(--black-alpha-48)]">
 					Loading orders...
 				</div>
 			{:else if !filteredOrders.length}
 				<div
-					class="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-[var(--black-alpha-48)]"
+					class="rounded-lg border border-dashed border-[var(--black-alpha-24)] bg-[var(--background-lighter)] p-6 text-center text-sm text-[var(--black-alpha-48)]"
 				>
 					No orders match the current search.
 				</div>
@@ -351,7 +351,7 @@
 								? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
 								: order.status.toLowerCase() === 'cancelled'
 									? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50'
-									: 'border-zinc-200 bg-white shadow-sm hover:border-zinc-300 hover:bg-zinc-50'
+									: 'border-[var(--border-muted)] bg-white shadow-sm hover:border-[var(--black-alpha-24)] hover:bg-[var(--background-lighter)]'
 						}`}
 						onclick={() => selectOrder(order)}
 					>
@@ -363,7 +363,7 @@
 									</p>
 									{#if isTerminalOrder(order)}
 										<span
-											class="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--black-alpha-64)] uppercase"
+											class="rounded bg-[var(--border-muted)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--black-alpha-64)] uppercase"
 											>locked</span
 										>
 									{/if}
@@ -389,7 +389,7 @@
 								{order.status}
 							</span>
 							<span
-								class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${order.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
+								class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${order.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-[var(--border-faint)] text-[var(--black-alpha-64)]'}`}
 							>
 								{order.paymentStatus}
 							</span>
@@ -415,9 +415,9 @@
 	</section>
 
 	<section
-		class="flex flex-col gap-6 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
+		class="flex flex-col gap-6 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
 	>
-		<div class="border-b border-zinc-200 bg-zinc-50/50 p-6">
+		<div class="border-b border-[var(--border-muted)] bg-[var(--background-lighter)]/50 p-6">
 			<h3 class="text-lg font-semibold text-foreground">Order Details</h3>
 		</div>
 
@@ -437,17 +437,17 @@
 				{/if}
 
 				<div class="grid gap-4 sm:grid-cols-3">
-					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+					<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-4">
 						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Order</p>
 						<p class="mt-1 font-medium text-foreground">
 							#{selectedOrder.id.slice(0, 8).toUpperCase()}
 						</p>
 					</div>
-					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+					<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-4">
 						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Customer</p>
 						<p class="mt-1 font-medium text-foreground">{selectedOrder.shippingName || 'Customer'}</p>
 					</div>
-					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+					<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-4">
 						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Total</p>
 						<p class="mt-1 font-medium text-foreground">{formatINR(selectedOrder.total)}</p>
 					</div>
@@ -455,7 +455,7 @@
 
 				<section>
 					<h4 class="mb-4 text-sm font-semibold text-foreground">Current State</h4>
-					<div class="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+					<div class="rounded-lg border border-[var(--border-muted)] bg-white p-5 shadow-sm">
 						<div class="mb-4 flex items-center gap-3">
 							<span
 								class={`rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${selectedOrder.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}
@@ -463,7 +463,7 @@
 								{selectedOrder.status}
 							</span>
 							<span
-								class={`rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${selectedOrder.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
+								class={`rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${selectedOrder.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-[var(--border-faint)] text-[var(--black-alpha-64)]'}`}
 							>
 								{selectedOrder.paymentStatus}
 							</span>
@@ -473,7 +473,7 @@
 							{#if nextOrderStatus}
 								<button
 									type="button"
-									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-zinc-50 disabled:opacity-50"
+									class="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 									disabled={selectedOrderLocked}
 									onclick={() => {
 										editor = { ...editor, status: nextOrderStatus };
@@ -498,7 +498,7 @@
 
 							<button
 								type="button"
-								class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-zinc-50 disabled:opacity-50"
+								class="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 								disabled={!canReturnSelectedOrder}
 								onclick={() => {
 									editor = { ...editor, status: 'returned' };
@@ -526,7 +526,7 @@
 								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Order Status</span>
 								<select
 									bind:value={editor.status}
-									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+									class="flex h-9 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 									disabled={selectedOrderLocked}
 									onchange={() => (confirmingManualState = false)}
 								>
@@ -545,7 +545,7 @@
 								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Payment Status</span>
 								<select
 									bind:value={editor.paymentStatus}
-									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+									class="flex h-9 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 									disabled={selectedOrderLocked}
 									onchange={() => (confirmingManualState = false)}
 								>
@@ -562,7 +562,7 @@
 								>
 								<textarea
 									bind:value={editor.reason}
-									class="flex min-h-[80px] w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+									class="flex min-h-[80px] w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 									disabled={selectedOrderLocked}
 									placeholder="Required. Example: Customer requested..."
 								></textarea>
@@ -602,7 +602,7 @@
 							{#if hasManualStateChange}
 								<button
 									type="button"
-									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+									class="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 									disabled={saving}
 									onclick={() => {
 										editor = mapOrderToEditor(selectedOrder);
@@ -663,7 +663,7 @@
 										</button>
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -679,7 +679,7 @@
 									{#if ['approved', 'refund_pending'].includes(selectedOrder.cancellationRequest.status) && !selectedOrder.cancellationRequest.refund_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={refundableAmount <= 0}
 											onclick={() => {
 												if (!selectedOrder.cancellationRequest) return;
@@ -754,7 +754,7 @@
 										</button>
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -770,7 +770,7 @@
 									{#if selectedOrder.returnRequest.status === 'approved' && !selectedOrder.returnRequest.reverse_shipment_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction('return-pickup', '/shipments/shiprocket/return', {
@@ -784,7 +784,7 @@
 									{#if ['approved', 'reverse_pickup_scheduled'].includes(selectedOrder.returnRequest.status)}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -800,7 +800,7 @@
 									{#if ['received', 'refund_pending'].includes(selectedOrder.returnRequest.status) && !selectedOrder.returnRequest.refund_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
 											disabled={refundableAmount <= 0}
 											onclick={() => {
 												if (!selectedOrder.returnRequest) return;
@@ -822,7 +822,7 @@
 
 				<section>
 					<h4 class="mb-4 text-sm font-semibold text-foreground">Refund Handling</h4>
-					<div class="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+					<div class="rounded-lg border border-[var(--border-muted)] bg-white p-5 shadow-sm">
 						<div class="flex flex-wrap items-start justify-between gap-3">
 							<div>
 								<p class="text-xs text-[var(--black-alpha-48)]">
@@ -838,13 +838,13 @@
 						</div>
 
 						<div class="mt-5 grid gap-4 sm:grid-cols-3">
-							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+							<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3">
 								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Paid</p>
 								<p class="mt-1 font-medium text-foreground">
 									{formatINR(selectedOrder.refundSummary.paidAmount)}
 								</p>
 							</div>
-							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+							<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3">
 								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">
 									Refunded
 								</p>
@@ -852,7 +852,7 @@
 									{formatINR(selectedOrder.refundSummary.refundedAmount)}
 								</p>
 							</div>
-							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+							<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3">
 								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">
 									Remaining
 								</p>
@@ -865,7 +865,7 @@
 								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Refund amount</span>
 								<input
 									bind:value={refundEditor.amount}
-									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+									class="flex h-9 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 									disabled={refundSaving || refundableAmount <= 0}
 									inputmode="decimal"
 									type="number"
@@ -875,7 +875,7 @@
 								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Refund speed</span>
 								<select
 									bind:value={refundEditor.speed}
-									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+									class="flex h-9 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 									disabled={refundSaving || refundableAmount <= 0}
 								>
 									<option value="normal">Normal</option>
@@ -888,7 +888,7 @@
 							<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Reason</span>
 							<textarea
 								bind:value={refundEditor.reason}
-								class="flex min-h-[80px] w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+								class="flex min-h-[80px] w-full rounded-md border border-[var(--border-muted)] bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
 								placeholder="Reason for this refund"
 								disabled={refundSaving || refundableAmount <= 0}
 							></textarea>
@@ -911,7 +911,7 @@
 					<div>
 						<h4 class="mb-4 text-sm font-semibold text-foreground">Customer Details</h4>
 						<div
-							class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white shadow-sm"
+							class="divide-y divide-[var(--border-muted)] rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
 						>
 							<div class="flex flex-col gap-1 p-4">
 								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
@@ -969,7 +969,7 @@
 					<div>
 						<h4 class="mb-4 text-sm font-semibold text-foreground">Operational Detail</h4>
 						<div
-							class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white shadow-sm"
+							class="divide-y divide-[var(--border-muted)] rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
 						>
 							<div class="flex flex-col gap-1 p-4">
 								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
@@ -1043,13 +1043,13 @@
 				<section>
 					<h4 class="mb-4 text-sm font-semibold text-foreground">Items</h4>
 					<div
-						class="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
+						class="divide-y divide-[var(--border-muted)] overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
 					>
 						{#each selectedOrder.items as item (item.id)}
 							<div class="flex items-center gap-4 p-4">
 								{#if item.image}
 									<div
-										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 p-2"
+										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2"
 									>
 										<img
 											src={item.image}
@@ -1059,7 +1059,7 @@
 									</div>
 								{:else}
 									<div
-										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-xs text-[var(--black-alpha-32)]"
+										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] text-xs text-[var(--black-alpha-32)]"
 									>
 										No img
 									</div>
@@ -1087,20 +1087,20 @@
 							<h4 class="mb-4 text-sm font-semibold text-foreground">Refund History</h4>
 							{#if !selectedOrder.refunds.length}
 								<div
-									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-[var(--black-alpha-48)]"
+									class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-center text-sm text-[var(--black-alpha-48)]"
 								>
 									No refunds created yet.
 								</div>
 							{:else}
 								<div class="space-y-3">
 									{#each selectedOrder.refunds as refund (refund.id)}
-										<div class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+										<div class="rounded-lg border border-[var(--border-muted)] bg-white p-4 shadow-sm">
 											<div class="flex items-center justify-between gap-3">
 												<p class="text-sm font-semibold text-foreground">
 													{formatINR(refund.amount)}
 												</p>
 												<span
-													class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${refund.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
+													class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${refund.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-[var(--border-faint)] text-[var(--black-alpha-64)]'}`}
 												>
 													{refund.status}
 												</span>
@@ -1121,14 +1121,14 @@
 							<h4 class="mb-4 text-sm font-semibold text-foreground">Admin History</h4>
 							{#if !selectedOrder.adminEvents.length}
 								<div
-									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-[var(--black-alpha-48)]"
+									class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-center text-sm text-[var(--black-alpha-48)]"
 								>
 									No admin events logged yet.
 								</div>
 							{:else}
 								<div class="space-y-3">
 									{#each selectedOrder.adminEvents as event (event.id)}
-										<div class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+										<div class="rounded-lg border border-[var(--border-muted)] bg-white p-4 shadow-sm">
 											<div class="flex items-center justify-between gap-3">
 												<p class="text-sm font-medium text-foreground">
 													{event.eventType.replaceAll('_', ' ')}
@@ -1152,7 +1152,7 @@
 				{/if}
 			{:else}
 				<div
-					class="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-center text-sm text-[var(--black-alpha-48)]"
+					class="mt-6 rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-6 text-center text-sm text-[var(--black-alpha-48)]"
 				>
 					Select an order to manage its workflow.
 				</div>

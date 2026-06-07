@@ -12,8 +12,7 @@
 <a
 	href={resolve(`/product/${product.id}`)}
 	aria-label={`${product.title} by ${product.brand}`}
-	class="group relative flex w-full flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white"
-	style="transition:border-color 200ms ease,box-shadow 200ms ease"
+	class="product-card group relative flex w-full flex-col overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white"
 >
 	{#if discount >= 30}
 		<span
@@ -84,5 +83,14 @@
 		.product-card-image {
 			padding: 20px;
 		}
+	}
+
+	.product-card {
+		transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+	}
+	.product-card:hover {
+		border-color: var(--heat-20);
+		box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08);
+		transform: translateY(-2px);
 	}
 </style>

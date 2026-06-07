@@ -14,6 +14,7 @@
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
+	const isAdminRoute = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
 	const routePath = $derived(page.url.pathname);
 
 	const auth = {
@@ -103,15 +104,18 @@
 </svelte:head>
 
 <div
-	class="flex min-h-screen w-full flex-col bg-[var(--background-base)] pb-[calc(82px+env(safe-area-inset-bottom))] text-foreground md:pb-0"
+	class={[
+		'flex min-h-screen w-full flex-col bg-[var(--background-base)] text-foreground',
+		isAdminRoute ? 'pb-0' : 'pb-[calc(82px+env(safe-area-inset-bottom))] md:pb-0'
+	]}
 >
-	{#if !isLoginRoute}
+	{#if !isLoginRoute && !isAdminRoute}
 		<Header />
 	{/if}
 	{#key routePath}
 		<main class="motion-page flex min-w-0 w-full flex-1 flex-col">{@render children()}</main>
 	{/key}
-	{#if !isLoginRoute}
+	{#if !isLoginRoute && !isAdminRoute}
 		<div class="hidden md:block">
 			<Footer />
 		</div>

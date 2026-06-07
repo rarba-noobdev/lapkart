@@ -4,8 +4,8 @@ import type { Actions, PageServerLoad } from './$types';
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function sanitizeRedirect(value: string | null) {
-	if (!value) return '/dashboard';
-	return value.startsWith('/') && !value.startsWith('//') ? value : '/dashboard';
+	if (!value) return '/profile';
+	return value.startsWith('/') && !value.startsWith('//') ? value : '/profile';
 }
 
 async function getRoleForUser(locals: App.Locals, userId: string) {

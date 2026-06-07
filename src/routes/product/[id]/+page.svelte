@@ -127,7 +127,7 @@
 <!-- ─── Product layout: two-panel card ─── -->
 <section class="container mx-auto px-4 pb-36 md:pb-14 lg:pb-14">
 	<div
-		class="motion-section mt-3 overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white shadow-[0_12px_40px_-32px_rgba(0,0,0,0.35)] md:mt-4"
+		class="motion-section mt-3 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)] md:mt-4"
 	>
 		<div class="grid lg:grid-cols-2">
 			<!-- ── LEFT PANEL: Gallery ── -->
@@ -360,7 +360,7 @@
 
 	<!-- ─── Specifications table (below the card) ─── -->
 	<div
-		class="mt-4 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
+		class="mt-4 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
 	>
 		<div class="border-b border-[var(--border-faint)] px-5 py-4 sm:px-6 md:px-8">
 			<h2 class="text-label-large text-foreground">Specifications</h2>

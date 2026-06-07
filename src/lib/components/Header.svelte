@@ -157,7 +157,7 @@
 									My orders
 								</a>
 								<a
-									href={resolve('/dashboard')}
+									href={resolve('/profile')}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<User class="size-[15px] text-[var(--black-alpha-48)]" />

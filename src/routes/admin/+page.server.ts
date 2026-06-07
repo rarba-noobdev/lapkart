@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 	}
 
 	if (role !== 'admin') {
-		redirect(307, '/dashboard');
+		redirect(307, '/profile');
 	}
 
 	return {};

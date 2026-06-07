@@ -85,7 +85,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
 	const isCustomerRoute =
 		pathname === '/checkout' ||
-		pathname === '/dashboard' ||
+		pathname === '/profile' ||
 		pathname === '/orders' ||
 		pathname.startsWith('/order/');
 
@@ -99,7 +99,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const role = await event.locals.getRole();
 
 		if (isAdminRoute && role !== 'admin') {
-			redirect(307, '/dashboard');
+			redirect(307, '/profile');
 		}
 
 		if (isCustomerRoute && role === 'admin') {

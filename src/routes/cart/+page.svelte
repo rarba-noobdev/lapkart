@@ -1,9 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from '@lucide/svelte';
+	import { fly, fade } from 'svelte/transition';
+	import {
+		ArrowLeft,
+		ArrowRight,
+		Minus,
+		Package,
+		Plus,
+		ShoppingBag,
+		Trash2,
+		Truck
+	} from '@lucide/svelte';
 	import { cartState, hydrateCart, removeFromCart, setCartQty, type CartItem } from '$lib/cart';
-	import { formatINR, type Product } from '$lib/catalog';
+	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
 
 	let loading = $state(true);
@@ -53,76 +63,103 @@
 	const savings = $derived(mrp - subtotal);
 	const shipping = $derived(subtotal > 999 || subtotal === 0 ? 0 : 49);
 	const total = $derived(subtotal + shipping);
+	const freeShippingGap = $derived(subtotal < 999 && subtotal > 0 ? 999 - subtotal : 0);
+	const freeShippingProgress = $derived(Math.min(100, (subtotal / 999) * 100));
 </script>
 
 <svelte:head>
-	<title>Your cart - lapkart</title>
+	<title>Cart ({rows.length}) - LapKart</title>
 </svelte:head>
 
-<section class="min-h-screen bg-[var(--background-base)]">
+<section class="min-h-[60vh]">
 	{#if !$cartState.hydrated || loading}
-		<div class="container mx-auto px-4 py-10">
-			<div class="grid gap-8 lg:grid-cols-[1fr_400px]">
-				<div class="rounded-lg border border-[var(--border-muted)] bg-white">
-					{#each ['cart-line-1', 'cart-line-2', 'cart-line-3'] as skeleton (skeleton)}
-						<div
-							class="h-[136px] animate-pulse border-b border-[var(--border-faint)] last:border-0"
-						>
-							<div class="m-5 h-24 rounded-md bg-[var(--background-lighter)]"></div>
-						</div>
+		<!-- Skeleton -->
+		<div class="container mx-auto px-4 py-8">
+			<div class="grid gap-6 lg:grid-cols-[1fr_360px]">
+				<div class="space-y-2">
+					{#each [1, 2, 3] as i (i)}
+						<div class="h-[100px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
 					{/each}
 				</div>
-				<div
-					class="h-[260px] animate-pulse rounded-lg border border-[var(--border-muted)] bg-white"
-				></div>
+				<div class="h-[240px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
 			</div>
 		</div>
 	{:else if error}
-		<div class="container mx-auto px-4 py-10">
-			<div
-				class="rounded-lg border border-[var(--accent-crimson)]/20 bg-white p-6 text-[var(--accent-crimson)]"
-			>
+		<div class="container mx-auto px-4 py-8">
+			<div class="rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-5 text-[13px] text-[var(--accent-crimson)]">
 				{error}
 			</div>
 		</div>
 	{:else if rows.length === 0}
-		<div class="container mx-auto flex flex-col items-center justify-center px-4 py-32 text-center">
-			<div
-				class="grid size-20 place-items-center rounded-full border border-[var(--border-muted)] bg-white text-[var(--heat-100)]"
-			>
-				<ShoppingBag class="size-9" strokeWidth={1.8} />
+		<!-- Empty cart -->
+		<div class="container mx-auto flex flex-col items-center justify-center px-4 py-24 text-center sm:py-32">
+			<div class="grid size-16 place-items-center rounded-lg border border-[var(--border-muted)] bg-white text-[var(--heat-100)]">
+				<ShoppingBag class="size-7" strokeWidth={1.5} />
 			</div>
-			<h1 class="text-title-h3 mt-2 font-display text-foreground">Your cart is empty</h1>
-			<p class="text-body-medium mt-4 text-[var(--black-alpha-56)]">
-				Add laptop parts to get started.
+			<h1 class="mt-4 text-[20px] font-medium text-foreground sm:text-[24px]">Cart is empty</h1>
+			<p class="mt-1 text-[13px] text-[var(--black-alpha-48)]">
+				Browse laptop parts and add them here.
 			</p>
 			<a
 				href={resolve('/products')}
-				class="button button-primary text-label-medium mt-8 inline-flex h-12 items-center gap-2 rounded-md px-6"
+				class="button button-primary mt-6 inline-flex h-10 items-center gap-2 rounded-md px-5 text-[13px] text-white"
 			>
-				Shop components <ArrowRight class="size-4" />
+				Browse catalog <ArrowRight class="size-4" />
 			</a>
 		</div>
 	{:else}
-		<div class="container mx-auto px-4 py-10">
-			<div class="mb-8">
-				<span class="text-label-small text-[var(--heat-100)]">Cart</span>
-				<h1 class="text-title-h3 mt-2 font-display text-foreground">
-					Your selection <span class="text-[var(--black-alpha-40)]">({rows.length})</span>
-				</h1>
+		<!-- Cart with items -->
+		<div class="container mx-auto px-4 py-6 sm:py-8">
+			<!-- Header -->
+			<div class="mb-5 flex items-center justify-between sm:mb-6">
+				<div class="flex items-center gap-3">
+					<a
+						href={resolve('/products')}
+						class="grid size-8 place-items-center rounded-md border border-[var(--border-faint)] text-[var(--black-alpha-48)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+						aria-label="Back to shop"
+					>
+						<ArrowLeft class="size-3.5" />
+					</a>
+					<div>
+						<h1 class="text-[18px] font-medium text-foreground sm:text-[22px]">Cart</h1>
+						<p class="text-[12px] text-[var(--black-alpha-48)]">{rows.length} item{rows.length === 1 ? '' : 's'}</p>
+					</div>
+				</div>
 			</div>
 
-			<div class="grid gap-8 lg:grid-cols-[1fr_400px]">
-				<div class="rounded-lg border border-[var(--border-muted)] bg-white">
-					<ul>
-						{#each rows as row (row.item.id)}
-							<li
-								class="flex flex-col gap-5 border-b border-[var(--border-faint)] p-5 last:border-0 sm:flex-row"
-							>
+			<!-- Free shipping progress -->
+			{#if freeShippingGap > 0}
+				<div class="mb-4 rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:mb-5" in:fade={{ duration: 160 }}>
+					<div class="flex items-center justify-between text-[12px]">
+						<span class="flex items-center gap-1.5 text-[var(--black-alpha-56)]">
+							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
+							Add {formatINR(freeShippingGap)} more for free shipping
+						</span>
+						<span class="text-[11px] font-medium text-[var(--heat-100)]">{Math.round(freeShippingProgress)}%</span>
+					</div>
+					<div class="mt-2 h-1 overflow-hidden rounded-full bg-[var(--background-lighter)]">
+						<div
+							class="h-full rounded-full bg-[var(--heat-100)] transition-all duration-500"
+							style:width="{freeShippingProgress}%"
+						></div>
+					</div>
+				</div>
+			{/if}
+
+			<div class="grid gap-6 lg:grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px]">
+				<!-- Item list -->
+				<div class="space-y-2">
+					{#each rows as row, idx (row.item.id)}
+						<div
+							class="group rounded-lg border border-[var(--border-faint)] bg-white p-3 transition-all hover:border-[var(--heat-20)] sm:p-4"
+							in:fly={{ y: 12, duration: 200, delay: idx * 40 }}
+						>
+							<div class="flex gap-3 sm:gap-4">
+								<!-- Product image -->
 								<a
 									href={resolve(`/product/${row.product.id}`)}
 									aria-label={`View ${row.product.title}`}
-									class="size-24 shrink-0 overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)]"
+									class="size-20 shrink-0 overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] sm:size-24"
 								>
 									<img
 										src={row.product.images?.[0] ?? row.product.image}
@@ -130,111 +167,145 @@
 										class="size-full object-contain p-2"
 									/>
 								</a>
+
+								<!-- Product info -->
 								<div class="min-w-0 flex-1">
-									<p
-										class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
-										{row.product.brand}
-									</p>
-									<a
-										href={resolve(`/product/${row.product.id}`)}
-										class="text-label-medium mt-0.5 line-clamp-2 block text-foreground transition-colors hover:text-[var(--heat-100)]"
-									>
-										{row.product.title}
-									</a>
-									<div class="mt-3 flex items-center justify-between gap-4">
-										<div
-											class="flex items-center rounded-md border border-[var(--border-muted)] bg-white"
-										>
-											<button
-												type="button"
-												class="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
-												aria-label={`Decrease quantity for ${row.product.title}`}
-												onclick={() => setCartQty(row.item.id, row.item.qty - 1)}
-											>
-												<Minus class="size-3.5" />
-											</button>
-											<span class="text-mono-small w-8 text-center font-medium text-foreground">
-												{row.item.qty}
-											</span>
-											<button
-												type="button"
-												class="grid size-11 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
-												aria-label={`Increase quantity for ${row.product.title}`}
-												onclick={() => setCartQty(row.item.id, row.item.qty + 1)}
-											>
-												<Plus class="size-3.5" />
-											</button>
-										</div>
-										<div class="text-right">
-											<span class="text-label-large font-medium text-foreground">
-												{formatINR(row.product.price * row.item.qty)}
-											</span>
-											<p class="text-mono-x-small text-[var(--black-alpha-40)] line-through">
-												{formatINR(row.product.mrp * row.item.qty)}
+									<div class="flex items-start justify-between gap-2">
+										<div class="min-w-0">
+											<p class="text-[10px] tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
+												{row.product.brand}
 											</p>
+											<a
+												href={resolve(`/product/${row.product.id}`)}
+												class="mt-0.5 line-clamp-2 block text-[13px] font-medium leading-snug text-foreground transition-colors hover:text-[var(--heat-100)] sm:text-[14px]"
+											>
+												{row.product.title}
+											</a>
+										</div>
+										<!-- Price (desktop) -->
+										<div class="hidden shrink-0 text-right sm:block">
+											<p class="text-[15px] font-semibold text-foreground">{formatINR(row.product.price * row.item.qty)}</p>
+											{#if discountPct(row.product) > 0}
+												<p class="text-[11px] text-[var(--black-alpha-32)] line-through">{formatINR(row.product.mrp * row.item.qty)}</p>
+											{/if}
 										</div>
 									</div>
-									<button
-										type="button"
-										aria-label={`Remove ${row.product.title} from cart`}
-										class="text-mono-x-small mt-3 inline-flex items-center gap-1.5 tracking-wider text-[var(--accent-crimson)] uppercase hover:underline"
-										onclick={() => removeFromCart(row.item.id)}
-									>
-										<Trash2 class="size-3" /> Remove
-									</button>
+
+									<!-- Bottom row: qty + price(mobile) + remove -->
+									<div class="mt-2.5 flex items-center gap-3 sm:mt-3">
+										<!-- Quantity control -->
+										<div class="flex items-center rounded-md border border-[var(--border-muted)]">
+											<button
+												type="button"
+												class="grid size-8 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)] disabled:opacity-30"
+												aria-label="Decrease quantity"
+												disabled={row.item.qty <= 1}
+												onclick={() => setCartQty(row.item.id, row.item.qty - 1)}
+											>
+												<Minus class="size-3" />
+											</button>
+											<span class="w-7 text-center text-[12px] font-medium text-foreground">{row.item.qty}</span>
+											<button
+												type="button"
+												class="grid size-8 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
+												aria-label="Increase quantity"
+												onclick={() => setCartQty(row.item.id, row.item.qty + 1)}
+											>
+												<Plus class="size-3" />
+											</button>
+										</div>
+
+										<!-- Price (mobile) -->
+										<div class="sm:hidden">
+											<p class="text-[13px] font-semibold text-foreground">{formatINR(row.product.price * row.item.qty)}</p>
+										</div>
+
+										<!-- Remove -->
+										<button
+											type="button"
+											aria-label={`Remove ${row.product.title}`}
+											class="ml-auto inline-flex items-center gap-1 text-[11px] text-[var(--black-alpha-40)] transition-colors hover:text-[var(--accent-crimson)]"
+											onclick={() => removeFromCart(row.item.id)}
+										>
+											<Trash2 class="size-3" />
+											<span class="hidden sm:inline">Remove</span>
+										</button>
+									</div>
 								</div>
-							</li>
-						{/each}
-					</ul>
+							</div>
+						</div>
+					{/each}
 				</div>
 
-				<aside class="h-fit space-y-4 lg:sticky lg:top-28">
-					<div class="rounded-lg border border-[var(--border-muted)] bg-white p-6">
-						<h2 class="text-label-medium mb-5 text-foreground">Order summary</h2>
-						<dl class="text-body-medium space-y-3">
-							<div class="flex justify-between">
-								<dt class="text-[var(--black-alpha-72)]">Subtotal ({rows.length} items)</dt>
-								<dd class="text-foreground">{formatINR(mrp)}</dd>
+				<!-- Order summary sidebar -->
+				<aside class="h-fit lg:sticky lg:top-24">
+					<div class="rounded-lg border border-[var(--border-faint)] bg-white">
+						<div class="border-b border-[var(--border-faint)] px-4 py-3">
+							<h2 class="text-[13px] font-medium text-foreground">Order summary</h2>
+						</div>
+
+						<div class="space-y-2.5 px-4 py-4 text-[13px]">
+							<div class="flex justify-between text-[var(--black-alpha-64)]">
+								<span>Subtotal ({rows.length} items)</span>
+								<span class="text-foreground">{formatINR(mrp)}</span>
 							</div>
-							<div class="flex justify-between">
-								<dt class="text-[var(--black-alpha-72)]">Discount</dt>
-								<dd class="text-[var(--accent-forest)]">- {formatINR(savings)}</dd>
-							</div>
-							<div class="flex justify-between">
-								<dt class="text-[var(--black-alpha-72)]">Delivery</dt>
-								<dd class={shipping === 0 ? 'text-[var(--accent-forest)]' : 'text-foreground'}>
+							{#if savings > 0}
+								<div class="flex justify-between">
+									<span class="text-[var(--accent-forest)]">Discount</span>
+									<span class="text-[var(--accent-forest)]">- {formatINR(savings)}</span>
+								</div>
+							{/if}
+							<div class="flex justify-between text-[var(--black-alpha-64)]">
+								<span>Delivery</span>
+								<span class={shipping === 0 ? 'text-[var(--accent-forest)]' : 'text-foreground'}>
 									{shipping === 0 ? 'FREE' : formatINR(shipping)}
-								</dd>
+								</span>
 							</div>
-							<div class="mt-3 border-t border-dashed border-[var(--border-muted)] pt-3">
+							<div class="border-t border-dashed border-[var(--border-muted)] pt-2.5">
 								<div class="flex items-baseline justify-between">
-									<dt class="text-label-large text-foreground">Total</dt>
-									<dd class="text-title-h4 font-display text-foreground">{formatINR(total)}</dd>
+									<span class="text-[14px] font-medium text-foreground">Total</span>
+									<span class="text-[20px] font-semibold text-foreground">{formatINR(total)}</span>
 								</div>
 							</div>
-						</dl>
+						</div>
+
 						{#if savings > 0}
-							<div
-								class="text-mono-small mt-4 rounded-md bg-[var(--accent-forest)]/8 px-3 py-2 text-[var(--accent-forest)]"
-							>
+							<div class="mx-4 mb-3 rounded-md bg-[var(--accent-forest)]/8 px-3 py-2 text-[12px] font-medium text-[var(--accent-forest)]">
 								You save {formatINR(savings)} on this order
 							</div>
 						{/if}
-						<a
-							href={resolve('/checkout')}
-							class="button button-primary text-label-medium mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-md"
-						>
-							Proceed to checkout <ArrowRight class="size-4" />
-						</a>
-						<p
-							class="text-mono-x-small mt-3 text-center tracking-wider text-[var(--black-alpha-40)] uppercase"
-						>
-							Safe payments / Clear returns
-						</p>
+
+						<div class="border-t border-[var(--border-faint)] p-4 space-y-2">
+							<a
+								href={resolve('/checkout')}
+								class="button button-primary flex h-11 w-full items-center justify-center gap-2 rounded-md text-[13px] font-medium text-white"
+							>
+								Proceed to checkout <ArrowRight class="size-4" />
+							</a>
+							<a
+								href={resolve('/products')}
+								class="flex h-9 w-full items-center justify-center rounded-md text-[12px] font-medium text-[var(--black-alpha-56)] transition-colors hover:text-[var(--heat-100)]"
+							>
+								<ArrowLeft class="mr-1.5 size-3" /> Continue shopping
+							</a>
+						</div>
+					</div>
+
+					<!-- Trust note -->
+					<div class="mt-3 flex items-center justify-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white px-4 py-3">
+						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-40)]">
+							<Package class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Genuine parts
+						</span>
+						<span class="text-[var(--border-muted)]">|</span>
+						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-40)]">
+							<Truck class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Fast dispatch
+						</span>
 					</div>
 				</aside>
 			</div>
 		</div>
 	{/if}
 </section>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>
