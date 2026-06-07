@@ -35,7 +35,15 @@ dist-ssr
 # MCP (contains API keys)
 .mcp.json
 .codex/
+.claude/
+.firecrawl/
+.impeccable/
+.od/
+.od-skills/
 supabase/.temp/
+android/local.properties
+android/.gradle/
+android/**/build/
 
 # Local secrets and generated runtime artifacts
 .env

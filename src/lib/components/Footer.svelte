@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import type { RouteId } from '$app/types';
 	import { ArrowUpRight, Flame } from '@lucide/svelte';
 	import { getAuthContext } from '$lib/auth-context';
 
@@ -8,7 +7,7 @@
 		title: string;
 		items: {
 			label: string;
-			to: RouteId;
+			to: string;
 		}[];
 	};
 
@@ -21,7 +20,7 @@
 						title: 'Operations',
 						items: [
 							{ label: 'Admin dashboard', to: '/admin' },
-							{ label: 'Fulfillment queue', to: '/admin/fulfillment' }
+							{ label: 'Fulfillment queue', to: '/admin?section=fulfillment' }
 						]
 					},
 					{

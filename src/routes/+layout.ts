@@ -19,11 +19,8 @@ export const load: LayoutLoad = async ({ data, depends, fetch }) => {
 				}
 			});
 
-	const { data: claimsData, error } = await supabase.auth.getClaims();
-
 	return {
 		...data,
-		supabase,
-		claims: error ? null : (claimsData?.claims ?? null)
+		supabase
 	};
 };

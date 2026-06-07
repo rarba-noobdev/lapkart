@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowUpRight, Star } from '@lucide/svelte';
+	import { Star } from '@lucide/svelte';
 	import type { Product } from '$lib/catalog';
 	import { discountPct, formatINR } from '$lib/catalog';
 
-	let { product } = $props<{ product: Product }>();
+	let { product, eager = false } = $props<{ product: Product; eager?: boolean }>();
 
 	const discount = $derived(discountPct(product));
 </script>
@@ -12,55 +12,77 @@
 <a
 	href={resolve(`/product/${product.id}`)}
 	aria-label={`${product.title} by ${product.brand}`}
-	class="motion-card motion-image-parent group relative flex flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white hover:border-[var(--heat-20)] hover:shadow-[0_24px_56px_-24px_var(--heat-40),0_4px_12px_-4px_rgba(0,0,0,0.06)]"
+	class="group relative flex w-full flex-col overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white"
+	style="transition:border-color 200ms ease,box-shadow 200ms ease"
 >
 	{#if discount >= 30}
 		<span
-			class="text-mono-x-small absolute top-3 left-3 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2 py-0.5 font-medium tracking-wide text-white shadow-[0_2px_8px_0_var(--heat-40)]"
+			class="absolute top-1.5 left-1.5 z-10 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white sm:top-3 sm:left-3 sm:px-2 sm:text-[11px]"
+			style="background:var(--heat-100);box-shadow:0 2px 8px 0 var(--heat-40)"
 		>
 			-{discount}%
 		</span>
 	{/if}
 
-	<div class="relative aspect-square overflow-hidden bg-[var(--background-lighter)]">
+	<div class="product-card-media">
 		<img
 			src={product.images?.[0] ?? product.image}
 			alt={product.title}
-			width="640"
-			height="640"
-			class="motion-image size-full object-contain p-6"
-			loading="lazy"
+			width="400"
+			height="400"
+			class="product-card-image"
+			loading={eager ? 'eager' : 'lazy'}
+			fetchpriority={eager ? 'high' : 'auto'}
+			decoding="async"
 		/>
-		<span class="pointer-events-none absolute inset-0 border-b border-[var(--border-faint)]"></span>
-		<ArrowUpRight
-			aria-hidden="true"
-			class="absolute top-3 right-3 size-4 text-[var(--black-alpha-32)] transition-[transform,color] duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[var(--heat-100)]"
-		/>
+		<span class="pointer-events-none absolute inset-0" style="border-bottom:1px solid var(--border-faint)"></span>
 	</div>
 
-	<div class="flex flex-1 flex-col gap-1.5 px-4 py-4">
-		<p class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
+	<div class="flex flex-1 flex-col px-2.5 py-2 sm:px-4 sm:py-3">
+		<p class="truncate font-mono text-[10px] uppercase tracking-[0.12em] sm:text-[11px]" style="color:var(--black-alpha-48)">
 			{product.brand}
 		</p>
-		<h3 class="text-label-small line-clamp-2 min-h-[40px] leading-snug text-foreground">
+		<h3 class="mt-0.5 line-clamp-2 text-[12px] font-medium leading-snug sm:text-[13px]" style="color:var(--foreground);min-height:2.6em">
 			{product.title}
 		</h3>
 
-		<div class="mt-1 flex items-center gap-2">
-			<span class="text-body-small inline-flex items-center gap-0.5 text-foreground">
-				<Star class="size-3 fill-[var(--accent-honey)] text-[var(--accent-honey)]" />
-				{product.rating.toFixed(1)}
-			</span>
-			<span class="text-mono-x-small text-[var(--black-alpha-40)]">
-				({product.reviews.toLocaleString('en-IN')})
-			</span>
+		<div class="mt-1 flex items-center gap-1 sm:gap-1.5">
+			<Star class="size-3 sm:size-3.5" style="fill:var(--accent-honey);color:var(--accent-honey)" />
+			<span class="text-[11px] sm:text-[12px]" style="color:var(--foreground)">{product.rating.toFixed(1)}</span>
+			<span class="text-[10px] sm:text-[11px]" style="color:var(--black-alpha-40)">({product.reviews.toLocaleString('en-IN')})</span>
 		</div>
 
-		<div class="mt-auto flex items-baseline gap-2 border-t border-[var(--border-faint)] pt-3">
-			<span class="text-label-large font-medium text-foreground">{formatINR(product.price)}</span>
-			<span class="text-body-small text-[var(--black-alpha-40)] line-through">
-				{formatINR(product.mrp)}
-			</span>
+		<div class="mt-auto flex items-baseline gap-1.5 pt-2 sm:gap-2 sm:pt-3" style="border-top:1px solid var(--border-faint)">
+			<span class="text-[13px] font-semibold sm:text-[15px]" style="color:var(--foreground)">{formatINR(product.price)}</span>
+			<span class="text-[11px] line-through sm:text-[12px]" style="color:var(--black-alpha-40)">{formatINR(product.mrp)}</span>
 		</div>
 	</div>
 </a>
+
+<style>
+	.product-card-media {
+		position: relative;
+		width: 100%;
+		overflow: hidden;
+		aspect-ratio: 16 / 9;
+		background: var(--background-lighter);
+	}
+
+	.product-card-image {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		padding: 12px;
+	}
+
+	@media (min-width: 640px) {
+		.product-card-media {
+			aspect-ratio: 1 / 1;
+		}
+
+		.product-card-image {
+			padding: 20px;
+		}
+	}
+</style>

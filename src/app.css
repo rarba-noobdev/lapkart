@@ -1,11 +1,57 @@
 /* ===== LapKart × Firecrawl Design System ===== */
-/* Heat-orange brand, Geist typography, P3 colors, refined utilities. */
+/* Heat-orange brand, Firecrawl typography, P3 colors, refined utilities. */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;450;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+@utility container {
+	width: 100%;
+	max-width: min(calc(100% - 32px), var(--container-width));
+	margin-inline: auto;
+}
+
 @custom-variant dark (&:is(.dark *));
+
+/* Open Scouts / Firecrawl font faces */
+@font-face {
+	font-family: 'SuisseIntl';
+	src: url('/fonts/SuisseIntl/400.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'SuisseIntl';
+	src: url('/fonts/SuisseIntl/450.woff2') format('woff2');
+	font-weight: 450;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'SuisseIntl';
+	src: url('/fonts/SuisseIntl/500.woff2') format('woff2');
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'SuisseIntl';
+	src: url('/fonts/SuisseIntl/600.woff2') format('woff2');
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'SuisseIntl';
+	src: url('/fonts/SuisseIntl/700.woff2') format('woff2');
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
 
 /* ----- Design tokens (sRGB base) ----- */
 :root {
@@ -73,6 +119,10 @@
 	/* Foreground */
 	--fg-strong: #262626;
 	--fg-dim: rgba(38, 38, 38, 0.722);
+
+	/* Open Scouts layout baseline */
+	--container-width: 1112px;
+	--container-width-padding: 1144px;
 }
 
 /* P3 enhancement */
@@ -163,9 +213,11 @@
 
 /* ----- Tailwind v4 theme inline ----- */
 @theme inline {
-	--font-display: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	--font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	--font-mono: 'Geist Mono', 'Roboto Mono', ui-monospace, monospace;
+	--font-display:
+		'SuisseIntl', 'Suisse', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	--font-sans:
+		'SuisseIntl', 'Suisse', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	--font-mono: 'SuisseIntl', 'Roboto Mono', ui-monospace, monospace;
 
 	--radius-sm: 4px;
 	--radius-md: 6px;
@@ -241,6 +293,7 @@
 	html {
 		scroll-behavior: smooth;
 		scroll-padding-top: 90px;
+		-webkit-text-size-adjust: 100%;
 	}
 	body {
 		min-height: 100dvh;
@@ -249,6 +302,27 @@
 		font-family: var(--font-sans);
 		font-feature-settings: 'ss01', 'cv11';
 		line-height: 1.5;
+		overflow-x: hidden;
+		overflow-anchor: none;
+		overscroll-behavior-y: none;
+	}
+	button,
+	a,
+	input,
+	select,
+	textarea {
+		-webkit-tap-highlight-color: transparent;
+	}
+	img,
+	video {
+		user-select: none;
+		-webkit-user-drag: none;
+		max-width: 100%;
+		height: auto;
+	}
+	canvas,
+	svg {
+		max-width: 100%;
 	}
 	h1,
 	h2,
@@ -394,7 +468,7 @@
 		line-height: 16px;
 	}
 
-	@media (max-width: 768px) {
+	@media (max-width: 1024px) {
 		.text-title-h1 {
 			font-size: 44px;
 			line-height: 48px;
@@ -425,6 +499,39 @@
 	}
 	.text-pretty {
 		text-wrap: pretty;
+	}
+
+	/* container defined via @utility above — do not duplicate here */
+
+	.mask-intersect {
+		-webkit-mask-composite: source-in;
+		mask-composite: intersect;
+	}
+
+	.glass {
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.7);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
+	.dark .glass {
+		border-color: rgba(255, 255, 255, 0.1);
+		background: rgba(0, 0, 0, 0.5);
+	}
+
+	.gradient-border {
+		border: 2px solid transparent;
+		background:
+			linear-gradient(var(--background), var(--background)) padding-box,
+			linear-gradient(135deg, var(--heat-100), var(--heat-200)) border-box;
+	}
+
+	.gradient-text {
+		background: linear-gradient(135deg, var(--heat-100), var(--heat-200));
+		background-clip: text;
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
 	}
 
 	/* Inside-border overlay (Firecrawl signature) */
@@ -510,7 +617,14 @@
 		-ms-overflow-style: none;
 		scrollbar-width: none;
 	}
+	.hide-scrollbar {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
 	.scrollbar-hide::-webkit-scrollbar {
+		display: none;
+	}
+	.hide-scrollbar::-webkit-scrollbar {
 		display: none;
 	}
 }
@@ -519,11 +633,11 @@
 @layer components {
 	.button {
 		transition:
-			transform 0.16s cubic-bezier(0.23, 1, 0.32, 1),
-			background-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			border-color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			color 0.2s cubic-bezier(0.25, 0.1, 0.25, 1),
-			box-shadow 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+			transform var(--motion-fast) var(--motion-ease-out),
+			background-color var(--motion-standard) var(--motion-ease),
+			border-color var(--motion-standard) var(--motion-ease),
+			color var(--motion-standard) var(--motion-ease),
+			box-shadow 100ms var(--motion-ease);
 	}
 	.button:active {
 		transform: scale(0.98);
@@ -678,11 +792,9 @@
 	@keyframes motion-page-enter {
 		from {
 			opacity: 0;
-			transform: translateY(10px);
 		}
 		to {
 			opacity: 1;
-			transform: translateY(0);
 		}
 	}
 
@@ -903,6 +1015,199 @@
 	}
 }
 
+/* ----- Admin console motion / decor (Firecrawl-inspired) ----- */
+@layer utilities {
+	/* Heat ember orb — slowly drifts inside the hero */
+	@keyframes ember-drift {
+		0% {
+			transform: translate(0, 0) scale(1);
+			opacity: 0.55;
+		}
+		33% {
+			transform: translate(28px, -18px) scale(1.08);
+			opacity: 0.85;
+		}
+		66% {
+			transform: translate(-22px, 22px) scale(0.94);
+			opacity: 0.7;
+		}
+		100% {
+			transform: translate(0, 0) scale(1);
+			opacity: 0.55;
+		}
+	}
+	.ember-orb {
+		animation: ember-drift 11s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+		will-change: transform, opacity;
+	}
+
+	/* Subtle horizontal sweep across hero */
+	@keyframes hero-sweep {
+		0% {
+			transform: translateX(-120%);
+			opacity: 0;
+		}
+		50% {
+			opacity: 0.6;
+		}
+		100% {
+			transform: translateX(120%);
+			opacity: 0;
+		}
+	}
+	.hero-sweep {
+		animation: hero-sweep 6.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+	}
+
+	/* Heat-glow ring around the live-pulse dot */
+	@keyframes live-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 rgba(66, 195, 102, 0.55);
+		}
+		70% {
+			box-shadow: 0 0 0 8px rgba(66, 195, 102, 0);
+		}
+	}
+	.live-pulse {
+		animation: live-pulse 2s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+	}
+
+	/* Number count-up — handled by CSS via opacity translate-in. */
+	@keyframes count-pop {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+			filter: blur(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+			filter: blur(0);
+		}
+	}
+	.count-pop {
+		animation: count-pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	/* Sparkline mini-chart — grows from baseline */
+	@keyframes sparkbar-rise {
+		from {
+			transform: scaleY(0);
+			opacity: 0;
+		}
+		to {
+			transform: scaleY(1);
+			opacity: 1;
+		}
+	}
+	.sparkbar {
+		transform-origin: bottom;
+		animation: sparkbar-rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	/* Glow-on-hover for stat cards */
+	.stat-glow {
+		position: relative;
+		isolation: isolate;
+	}
+	.stat-glow::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: radial-gradient(
+			180px 140px at var(--mx, 50%) var(--my, 50%),
+			rgba(250, 93, 25, 0.13),
+			transparent 70%
+		);
+		opacity: 0;
+		transition: opacity 280ms var(--motion-ease-out);
+		z-index: 0;
+		pointer-events: none;
+	}
+	.stat-glow:hover::before {
+		opacity: 1;
+	}
+
+	/* Animated grid pattern (background) */
+	.grid-pattern {
+		background-image:
+			linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+		background-size: 32px 32px;
+		background-position: -1px -1px;
+		mask-image: radial-gradient(ellipse at 30% 40%, black 35%, transparent 75%);
+	}
+
+	/* Marquee ticker for stat values */
+	@keyframes marquee-left {
+		from {
+			transform: translateX(0);
+		}
+		to {
+			transform: translateX(-50%);
+		}
+	}
+	.marquee-track {
+		animation: marquee-left 28s linear infinite;
+	}
+
+	/* Stagger reveal helper — different from motion-list (bigger delay window) */
+	.reveal-stagger > * {
+		opacity: 0;
+		animation: motion-section-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+	}
+	.reveal-stagger > *:nth-child(1) {
+		animation-delay: 60ms;
+	}
+	.reveal-stagger > *:nth-child(2) {
+		animation-delay: 120ms;
+	}
+	.reveal-stagger > *:nth-child(3) {
+		animation-delay: 180ms;
+	}
+	.reveal-stagger > *:nth-child(4) {
+		animation-delay: 240ms;
+	}
+	.reveal-stagger > *:nth-child(5) {
+		animation-delay: 300ms;
+	}
+	.reveal-stagger > *:nth-child(n + 6) {
+		animation-delay: 360ms;
+	}
+
+	/* Tab icon micro-bounce on active */
+	@keyframes tab-pop {
+		0% {
+			transform: scale(0.88);
+		}
+		60% {
+			transform: scale(1.08);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+	.tab-pop {
+		animation: tab-pop 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	/* Heat ring border that shimmers on focus */
+	@keyframes heat-ring {
+		0%,
+		100% {
+			box-shadow: 0 0 0 1px var(--heat-20);
+		}
+		50% {
+			box-shadow: 0 0 0 1px var(--heat-40);
+		}
+	}
+	.heat-ring {
+		animation: heat-ring 2.4s ease-in-out infinite;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;
@@ -924,8 +1229,18 @@
 	.motion-popover,
 	.motion-dialog,
 	.motion-backdrop,
-	.motion-list > * {
+	.motion-list > *,
+	.ember-orb,
+	.hero-sweep,
+	.live-pulse,
+	.count-pop,
+	.sparkbar,
+	.marquee-track,
+	.reveal-stagger > *,
+	.tab-pop,
+	.heat-ring {
 		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
 		transform: none !important;
 	}
 }

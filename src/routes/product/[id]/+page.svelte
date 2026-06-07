@@ -12,6 +12,8 @@
 		Star,
 		Truck
 	} from '@lucide/svelte';
+	import { flip } from 'svelte/animate';
+	import { fade, fly, scale } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
@@ -123,9 +125,9 @@
 </nav>
 
 <!-- ─── Product layout: two-panel card ─── -->
-<section class="container mx-auto px-4 pb-20 md:pb-14 lg:pb-14">
+<section class="container mx-auto px-4 pb-36 md:pb-14 lg:pb-14">
 	<div
-		class="mt-3 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] md:mt-4"
+		class="motion-section mt-3 overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white shadow-[0_12px_40px_-32px_rgba(0,0,0,0.35)] md:mt-4"
 	>
 		<div class="grid lg:grid-cols-2">
 			<!-- ── LEFT PANEL: Gallery ── -->
@@ -143,13 +145,17 @@
 					{/if}
 
 					<!-- Main image -->
-					<div class="flex aspect-square items-center justify-center sm:aspect-[5/4]">
-						<img
-							src={activeImage}
-							alt={product.title}
-							class="max-h-full max-w-full object-contain transition-opacity duration-300"
-							fetchpriority="high"
-						/>
+					<div class="flex aspect-[16/10] items-center justify-center sm:aspect-[5/4]">
+						{#key activeImage}
+							<img
+								src={activeImage}
+								alt={product.title}
+								class="max-h-full max-w-full object-contain"
+								fetchpriority="high"
+								decoding="async"
+								in:fade={{ duration: 160 }}
+							/>
+						{/key}
 					</div>
 
 					<!-- Thumbnail row -->
@@ -166,7 +172,7 @@
 										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
 									onclick={() => (selectedImage = image)}
 								>
-									<img src={image} alt="" class="size-full object-contain" />
+									<img src={image} alt="" class="size-full object-contain" loading="lazy" decoding="async" />
 								</button>
 							{/each}
 						</div>
@@ -280,14 +286,16 @@
 				</div>
 
 				<!-- ── Add-to-cart action ── -->
-				<div class="mt-8 flex flex-wrap items-center gap-12">
+				<div class="mt-7 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
 					<!-- Quantity controls -->
-					<div class="flex h-12 items-center rounded-lg border border-[var(--border-muted)]">
+					<div
+						class="grid h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-lg border border-[var(--border-muted)] sm:w-36"
+					>
 						<button
 							type="button"
 							aria-label="Decrease quantity"
 							disabled={qty <= 1}
-							class="grid size-12 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground disabled:opacity-30"
+							class="grid place-items-center text-[var(--black-alpha-48)] transition-colors hover:bg-[var(--black-alpha-2)] hover:text-foreground disabled:opacity-30"
 							onclick={decrement}
 						>
 							<Minus class="size-4" />
@@ -296,12 +304,12 @@
 							type="number"
 							min="1"
 							bind:value={qty}
-							class="text-label-medium h-full w-12 [appearance:textfield] bg-transparent text-center text-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+							class="text-label-medium h-full min-w-0 border-x border-[var(--border-faint)] bg-transparent text-center text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 						/>
 						<button
 							type="button"
 							aria-label="Increase quantity"
-							class="grid size-12 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-foreground"
+							class="grid place-items-center text-[var(--black-alpha-48)] transition-colors hover:bg-[var(--black-alpha-2)] hover:text-foreground"
 							onclick={increment}
 						>
 							<Plus class="size-4" />
@@ -313,7 +321,7 @@
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
-						class="text-label-small inline-flex h-12 w-fit items-center justify-center gap-2 rounded-lg bg-[var(--heat-100)] px-8 text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+						class="button button-primary text-label-small inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg px-8 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit"
 						onclick={handleAddToCart}
 					>
 						{#if added}
@@ -329,7 +337,8 @@
 					{#if added}
 						<a
 							href={resolve('/cart')}
-							class="text-label-small inline-flex h-12 w-fit items-center justify-center gap-2 rounded-lg border border-[var(--border-muted)] bg-transparent px-8 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+							class="text-label-small inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-muted)] bg-transparent px-8 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:w-fit"
+							transition:scale={{ duration: 140, start: 0.96 }}
 						>
 							Review cart
 							<ChevronRight class="size-4" />
@@ -338,8 +347,11 @@
 				</div>
 
 				{#if added}
-					<p class="text-body-small mt-2 text-[var(--accent-forest)]">
-						✓ {quantity} item{quantity === 1 ? '' : 's'} added to cart
+					<p
+						class="text-body-small mt-3 rounded-lg border border-[rgba(66,195,102,0.18)] bg-[rgba(66,195,102,0.06)] px-3 py-2 text-[var(--accent-forest)]"
+						transition:fly={{ y: 6, duration: 160 }}
+					>
+						Added {quantity} item{quantity === 1 ? '' : 's'} to cart
 					</p>
 				{/if}
 			</div>
@@ -385,9 +397,11 @@
 					/>
 				</a>
 			</div>
-			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
 				{#each related as item (item.id)}
-					<ProductCard product={item} />
+					<div animate:flip={{ duration: 180 }}>
+						<ProductCard product={item} />
+					</div>
 				{/each}
 			</div>
 		</section>
@@ -396,7 +410,7 @@
 
 <!-- ─── Sticky mobile CTA ─── -->
 <div
-	class="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border-faint)] bg-white/95 backdrop-blur-md lg:hidden"
+	class="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-faint)] bg-white/95 backdrop-blur-md lg:hidden"
 >
 	<div class="container mx-auto flex items-center gap-3 px-4 py-2.5">
 		<div class="min-w-0 flex-1">

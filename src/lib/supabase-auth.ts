@@ -1,13 +1,33 @@
 import { supabase } from '$lib/supabase/client';
 
+function isStaleSessionError(error: unknown) {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: string }).code === 'refresh_token_not_found'
+	);
+}
+
+async function clearLocalSession() {
+	try {
+		await supabase.auth.signOut({ scope: 'local' });
+	} catch {
+		// The session is already invalid locally; callers can continue unauthenticated.
+	}
+}
+
 export async function getAccessToken() {
 	const { data, error } = await supabase.auth.getSession();
-	if (error) throw error;
-	if (data.session?.access_token) return data.session.access_token;
+	if (error) {
+		if (isStaleSessionError(error)) {
+			await clearLocalSession();
+			return null;
+		}
+		throw error;
+	}
 
-	const refreshed = await supabase.auth.refreshSession();
-	if (refreshed.error) throw refreshed.error;
-	return refreshed.data.session?.access_token ?? null;
+	return data.session?.access_token ?? null;
 }
 
 export async function getAuthorizationHeaders() {

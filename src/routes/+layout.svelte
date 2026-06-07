@@ -8,6 +8,7 @@
 	import type { LayoutProps } from './$types';
 	import Footer from '$lib/components/Footer.svelte';
 	import Header from '$lib/components/Header.svelte';
+	import MobileTabBar from '$lib/components/MobileTabBar.svelte';
 	import { hydrateCart } from '$lib/cart';
 
 	let { data, children }: LayoutProps = $props();
@@ -101,14 +102,19 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="flex min-h-screen flex-col bg-[var(--background-base)] text-foreground">
+<div
+	class="flex min-h-screen w-full flex-col bg-[var(--background-base)] pb-[calc(82px+env(safe-area-inset-bottom))] text-foreground md:pb-0"
+>
 	{#if !isLoginRoute}
 		<Header />
 	{/if}
 	{#key routePath}
-		<main class="motion-page flex flex-1 flex-col">{@render children()}</main>
+		<main class="motion-page flex min-w-0 w-full flex-1 flex-col">{@render children()}</main>
 	{/key}
 	{#if !isLoginRoute}
-		<Footer />
+		<div class="hidden md:block">
+			<Footer />
+		</div>
+		<MobileTabBar />
 	{/if}
 </div>

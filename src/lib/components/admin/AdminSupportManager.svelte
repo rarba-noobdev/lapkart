@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { getAuthContext } from '$lib/auth-context';
 	import {
 		requestAdmin,
 		toneClasses,
@@ -7,16 +8,19 @@
 		type AdminStockNotificationEvent
 	} from '$lib/admin';
 
+	const auth = getAuthContext();
+
 	let questions = $state<AdminProductQuestion[]>([]);
 	let events = $state<AdminStockNotificationEvent[]>([]);
 	let answers = $state<Record<string, string>>({});
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let activeAction = $state<string | null>(null);
+	let realtimeRefreshTimer: number | null = null;
 
-	async function loadSupport() {
+	async function loadSupport(showLoading = questions.length === 0 && events.length === 0) {
 		try {
-			loading = true;
+			if (showLoading) loading = true;
 			error = null;
 
 			const [questionResponse, eventResponse] = await Promise.all([
@@ -36,8 +40,15 @@
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not load support';
 		} finally {
-			loading = false;
+			if (showLoading) loading = false;
 		}
+	}
+
+	function scheduleSupportRefresh() {
+		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+		realtimeRefreshTimer = window.setTimeout(() => {
+			void loadSupport(false);
+		}, 350);
 	}
 
 	async function updateQuestion(questionId: string, status: AdminProductQuestion['status']) {
@@ -50,7 +61,7 @@
 					answer: answers[questionId]?.trim() || undefined
 				})
 			});
-			await loadSupport();
+			await loadSupport(false);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not update question';
 		} finally {
@@ -65,7 +76,7 @@
 				method: 'PATCH',
 				body: JSON.stringify({ status })
 			});
-			await loadSupport();
+			await loadSupport(false);
 		} catch (requestError) {
 			error =
 				requestError instanceof Error ? requestError.message : 'Could not update notification';
@@ -80,7 +91,7 @@
 			await requestAdmin(`/admin/stock-notification-events/${eventId}/send`, {
 				method: 'POST'
 			});
-			await loadSupport();
+			await loadSupport(false);
 		} catch (requestError) {
 			error =
 				requestError instanceof Error
@@ -102,6 +113,22 @@
 
 	onMount(() => {
 		void loadSupport();
+		const channel = auth.supabase
+			.channel('admin-support-manager')
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'product_questions' }, scheduleSupportRefresh)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'stock_notification_events' },
+				scheduleSupportRefresh
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_notifications' }, scheduleSupportRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, scheduleSupportRefresh)
+			.subscribe();
+
+		return () => {
+			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			void auth.supabase.removeChannel(channel);
+		};
 	});
 </script>
 
@@ -129,7 +156,7 @@
 
 		{#if error}
 			<div
-				class="text-body-small mt-5 rounded-[16px] border border-red-200 bg-red-50 p-4 text-red-700"
+				class="text-body-small mt-5 rounded-[16px] border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-4 text-[var(--accent-crimson)]"
 			>
 				{error}
 			</div>

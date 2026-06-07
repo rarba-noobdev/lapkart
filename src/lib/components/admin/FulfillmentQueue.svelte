@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatINR } from '$lib/catalog';
+	import { getAuthContext } from '$lib/auth-context';
 	import {
 		orderCanCreateShipment,
 		postJson,
@@ -11,6 +12,8 @@
 		type ShiprocketAccount
 	} from '$lib/admin';
 
+	const auth = getAuthContext();
+
 	let orders = $state<FulfillmentOrder[]>([]);
 	let account = $state<ShiprocketAccount | null>(null);
 	let loading = $state(true);
@@ -19,6 +22,7 @@
 	let detailOrderId = $state<string | null>(null);
 	let detailModalOpen = $state(false);
 	let selectedOrderIds = $state<string[]>([]);
+	let realtimeRefreshTimer: number | null = null;
 
 	const detailOrder = $derived(orders.find((order) => order.id === detailOrderId) ?? null);
 	const selectedOrderSet = $derived(new Set(selectedOrderIds));
@@ -53,9 +57,9 @@
 		);
 	}
 
-	async function refresh() {
+	async function refresh(showLoading = orders.length === 0) {
 		try {
-			loading = true;
+			if (showLoading) loading = true;
 			error = null;
 			const [accountResponse, queueResponse] = await Promise.all([
 				requestAdmin<ShiprocketAccount>('/shiprocket/account'),
@@ -71,8 +75,15 @@
 					? requestError.message
 					: 'Could not load Shiprocket fulfillment';
 		} finally {
-			loading = false;
+			if (showLoading) loading = false;
 		}
+	}
+
+	function scheduleFulfillmentRefresh() {
+		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+		realtimeRefreshTimer = window.setTimeout(() => {
+			void refresh(false);
+		}, 350);
 	}
 
 	async function runAction(key: string, path: string, init?: RequestInit) {
@@ -80,7 +91,7 @@
 			activeAction = key;
 			error = null;
 			await requestAdmin(path, init);
-			await refresh();
+			await refresh(false);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Fulfillment action failed';
 		} finally {
@@ -164,6 +175,22 @@
 
 	onMount(() => {
 		void refresh();
+		const channel = auth.supabase
+			.channel('admin-fulfillment-queue')
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_events' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_packages' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_batches' }, scheduleFulfillmentRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_batch_items' }, scheduleFulfillmentRefresh)
+			.subscribe();
+
+		return () => {
+			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			void auth.supabase.removeChannel(channel);
+		};
 	});
 </script>
 

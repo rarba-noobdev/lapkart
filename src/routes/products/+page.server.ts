@@ -48,6 +48,16 @@ export const load: PageServerLoad = async ({ depends, locals, url }) => {
 	return {
 		products: result.products,
 		productTotal: result.total,
+		filters: {
+			category,
+			q: query,
+			brand,
+			sort,
+			inStock,
+			minPrice: minPrice?.toString() ?? '',
+			maxPrice: maxPrice?.toString() ?? '',
+			minRating: minRating?.toString() ?? ''
+		},
 		searchSource: result.source
 	};
 };

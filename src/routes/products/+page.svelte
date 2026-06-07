@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { SlidersHorizontal, X } from '@lucide/svelte';
+	import { SlidersHorizontal, X, ChevronDown } from '@lucide/svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { categories, formatINR, type Product } from '$lib/catalog';
@@ -29,19 +29,35 @@
 	let {
 		data
 	}: {
-		data: { products: Product[]; productTotal: number };
+		data: {
+			products: Product[];
+			productTotal: number;
+			filters: {
+				category: string;
+				q: string;
+				brand: string;
+				sort: string;
+				inStock: boolean;
+				minPrice: string;
+				maxPrice: string;
+				minRating: string;
+			};
+		};
 	} = $props();
 	let products = $derived(data.products);
 	let productTotal = $derived(data.productTotal);
+	let filters = $derived(data.filters);
 
-	const category = $derived(page.url.searchParams.get('category') ?? '');
-	const q = $derived(page.url.searchParams.get('q') ?? '');
-	const brand = $derived(page.url.searchParams.get('brand') ?? '');
-	const minPrice = $derived(page.url.searchParams.get('minPrice') ?? '');
-	const maxPrice = $derived(page.url.searchParams.get('maxPrice') ?? '');
-	const inStock = $derived(page.url.searchParams.get('inStock') ?? '');
-	const minRating = $derived(page.url.searchParams.get('minRating') ?? '');
-	const sort = $derived(page.url.searchParams.get('sort') ?? 'relevance');
+	let mobileFiltersOpen = $state(false);
+
+	const category = $derived(filters.category);
+	const q = $derived(filters.q);
+	const brand = $derived(filters.brand);
+	const minPrice = $derived(filters.minPrice);
+	const maxPrice = $derived(filters.maxPrice);
+	const inStock = $derived(filters.inStock);
+	const minRating = $derived(filters.minRating);
+	const sort = $derived(filters.sort);
 
 	const activeSort = $derived(
 		sortOptions.some((option) => option.value === sort) ? sort : 'relevance'
@@ -64,7 +80,7 @@
 		if (brand) filters.push({ key: 'brand', label: brand });
 		if (minPrice) filters.push({ key: 'minPrice', label: `Min ${formatINR(Number(minPrice))}` });
 		if (maxPrice) filters.push({ key: 'maxPrice', label: `Max ${formatINR(Number(maxPrice))}` });
-		if (inStock === 'true') filters.push({ key: 'inStock', label: 'In stock' });
+		if (inStock) filters.push({ key: 'inStock', label: 'In stock' });
 		if (minRating) filters.push({ key: 'minRating', label: `${minRating}+ rating` });
 		if (activeSort !== 'relevance') {
 			filters.push({
@@ -104,8 +120,8 @@
 </svelte:head>
 
 <div class="border-b border-[var(--border-faint)] bg-white">
-	<div class="container mx-auto px-4 py-10">
-		<nav class="text-mono-x-small tracking-[0.18em] text-[var(--black-alpha-48)] uppercase">
+	<div class="container mx-auto px-4 py-3 sm:py-10">
+		<nav class="text-mono-x-small hidden tracking-[0.18em] text-[var(--black-alpha-48)] uppercase sm:block">
 			<a href={resolve('/')} class="transition-colors hover:text-[var(--heat-100)]">home</a>
 			<span class="mx-2 text-[var(--black-alpha-24)]">/</span>
 			<a href={resolve('/products')} class="transition-colors hover:text-[var(--heat-100)]"
@@ -117,9 +133,9 @@
 			{/if}
 		</nav>
 
-		<div class="mt-4 flex flex-wrap items-end justify-between gap-6">
-			<div>
-				<h1 class="text-title-h3 font-display text-foreground">
+		<div class="flex flex-wrap items-end justify-between gap-2 sm:mt-4 sm:gap-6">
+			<div class="min-w-0 flex-1">
+				<h1 class="text-[18px] font-medium leading-tight text-foreground sm:text-title-h3">
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
@@ -128,32 +144,27 @@
 						All components
 					{/if}
 				</h1>
-				<p class="text-body-medium mt-1 text-[var(--black-alpha-56)]">
+				<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)] sm:mt-1 sm:text-body-medium">
 					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
 						: ''}
 				</p>
 			</div>
 
-			<label class="flex min-w-[220px] flex-col gap-2">
-				<span class="text-mono-x-small tracking-[0.18em] text-[var(--black-alpha-48)] uppercase">
-					Sort
-				</span>
-				<select
-					value={activeSort}
-					class="text-body-medium h-11 rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
-					onchange={(event) =>
-						updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
-				>
-					{#each sortOptions as option (option.value)}
-						<option value={option.value}>{option.label}</option>
-					{/each}
-				</select>
-			</label>
+			<select
+				value={activeSort}
+				class="h-8 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground sm:h-11 sm:px-3 sm:text-body-medium"
+				onchange={(event) =>
+					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
+			>
+				{#each sortOptions as option (option.value)}
+					<option value={option.value}>{option.label}</option>
+				{/each}
+			</select>
 		</div>
 
 		{#if appliedFilters.length > 0}
-			<div class="mt-6 flex flex-wrap gap-2">
+			<div class="mt-3 flex flex-wrap gap-1.5 sm:mt-6 sm:gap-2">
 				{#each appliedFilters as filter (filter.key)}
 					<button
 						type="button"
@@ -178,19 +189,19 @@
 	</div>
 </div>
 
-<div class="container mx-auto grid gap-8 px-4 py-10 lg:grid-cols-[240px_1fr]">
-	<div class="lg:hidden">
-		<div class="scrollbar-hide flex gap-2 overflow-x-auto pb-2">
+<div class="products-layout container mx-auto grid min-w-0 gap-3 overflow-hidden px-4 py-3 sm:gap-8 sm:py-10 lg:grid-cols-[240px_1fr]">
+	<div class="min-w-0 lg:hidden">
+		<div class="scrollbar-hide -mx-4 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-4 pb-1.5 sm:gap-2 sm:pb-2">
 			<a
 				href={resolve(q ? `/products?q=${encodeURIComponent(q)}` : '/products')}
 				aria-current={!category ? 'page' : undefined}
-				class={`text-label-small shrink-0 rounded-full border px-4 py-2 transition-colors ${
+				class={`shrink-0 snap-start rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
 					!category
 						? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 						: 'border-[var(--border-muted)] bg-white text-foreground'
 				}`}
 			>
-				All products
+				All
 			</a>
 			{#each categories as item (item.slug)}
 				<a
@@ -200,7 +211,7 @@
 							: `/products?category=${item.slug}`
 					)}
 					aria-current={category === item.slug ? 'page' : undefined}
-					class={`text-label-small shrink-0 rounded-full border px-4 py-2 transition-colors ${
+					class={`shrink-0 snap-start rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
 						category === item.slug
 							? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 							: 'border-[var(--border-muted)] bg-white text-foreground'
@@ -211,104 +222,126 @@
 			{/each}
 		</div>
 
-		<div class="mt-4 grid gap-4 rounded-lg border border-[var(--border-faint)] bg-white p-4">
-			<div
+		<!-- Collapsible mobile filter -->
+		<button
+			type="button"
+			class="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--border-faint)] bg-white px-3 py-2 text-left transition-colors hover:border-[var(--heat-20)] sm:mt-3 sm:px-4 sm:py-3"
+			onclick={() => (mobileFiltersOpen = !mobileFiltersOpen)}
+			aria-expanded={mobileFiltersOpen}
+		>
+			<span
 				class="text-mono-x-small flex items-center gap-2 tracking-[0.18em] text-[var(--black-alpha-48)] uppercase"
 			>
 				<SlidersHorizontal class="size-3" /> Refine Results
-			</div>
-			<div class="grid gap-3 sm:grid-cols-2">
-				<label>
-					<span
-						class="text-mono-x-small mb-1.5 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Brand
+				{#if appliedFilters.length > 0}
+					<span class="rounded-full bg-[var(--heat-100)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+						{appliedFilters.length}
 					</span>
-					<select
-						value={brand}
-						class="text-body-small h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
-						onchange={(event) =>
-							updateSearch({
-								brand: (event.currentTarget as HTMLSelectElement).value || undefined
-							})}
-					>
-						<option value="">Any brand</option>
-						{#each brandOptions as item (item)}
-							<option value={item}>{item}</option>
-						{/each}
-					</select>
-				</label>
-				<label>
-					<span
-						class="text-mono-x-small mb-1.5 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Rating
-					</span>
-					<select
-						value={minRating}
-						class="text-body-small h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
-						onchange={(event) =>
-							updateSearch({
-								minRating: (event.currentTarget as HTMLSelectElement).value || undefined
-							})}
-					>
-						<option value="">Any rating</option>
-						<option value="4.5">4.5 and above</option>
-						<option value="4">4.0 and above</option>
-						<option value="3.5">3.5 and above</option>
-					</select>
-				</label>
-				<div>
-					<span
-						class="text-mono-x-small mb-1.5 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						Price
-					</span>
-					<div class="grid grid-cols-2 gap-2">
-						<input
-							value={minPrice}
-							type="number"
-							min="0"
-							inputmode="numeric"
-							aria-label="Minimum price"
-							placeholder="Min"
-							class="text-body-small h-10 rounded-md border border-[var(--border-muted)] bg-white px-3"
+				{/if}
+			</span>
+			<span
+				class="inline-flex transition-transform duration-200"
+				style:transform={mobileFiltersOpen ? 'rotate(180deg)' : 'rotate(0)'}
+			>
+				<ChevronDown class="size-4 text-[var(--black-alpha-40)]" />
+			</span>
+		</button>
+
+		{#if mobileFiltersOpen}
+			<div class="mt-1 grid gap-3 rounded-b-lg border border-t-0 border-[var(--border-faint)] bg-white p-4">
+				<div class="grid grid-cols-2 gap-3">
+					<label>
+						<span
+							class="text-mono-x-small mb-1 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>
+							Brand
+						</span>
+						<select
+							value={brand}
+							class="text-body-small h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-foreground"
 							onchange={(event) =>
 								updateSearch({
-									minPrice: (event.currentTarget as HTMLInputElement).value || undefined
+									brand: (event.currentTarget as HTMLSelectElement).value || undefined
 								})}
-						/>
-						<input
-							value={maxPrice}
-							type="number"
-							min="0"
-							inputmode="numeric"
-							aria-label="Maximum price"
-							placeholder="Max"
-							class="text-body-small h-10 rounded-md border border-[var(--border-muted)] bg-white px-3"
+						>
+							<option value="">Any brand</option>
+							{#each brandOptions as item (item)}
+								<option value={item}>{item}</option>
+							{/each}
+						</select>
+					</label>
+					<label>
+						<span
+							class="text-mono-x-small mb-1 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>
+							Rating
+						</span>
+						<select
+							value={minRating}
+							class="text-body-small h-10 w-full rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-foreground"
 							onchange={(event) =>
 								updateSearch({
-									maxPrice: (event.currentTarget as HTMLInputElement).value || undefined
+									minRating: (event.currentTarget as HTMLSelectElement).value || undefined
 								})}
-						/>
+						>
+							<option value="">Any rating</option>
+							<option value="4.5">4.5+</option>
+							<option value="4">4.0+</option>
+							<option value="3.5">3.5+</option>
+						</select>
+					</label>
+					<div>
+						<span
+							class="text-mono-x-small mb-1 block tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>
+							Price
+						</span>
+						<div class="grid grid-cols-2 gap-1.5">
+							<input
+								value={minPrice}
+								type="number"
+								min="0"
+								inputmode="numeric"
+								aria-label="Minimum price"
+								placeholder="Min"
+								class="text-body-small h-10 rounded-md border border-[var(--border-muted)] bg-white px-2.5"
+								onchange={(event) =>
+									updateSearch({
+										minPrice: (event.currentTarget as HTMLInputElement).value || undefined
+									})}
+							/>
+							<input
+								value={maxPrice}
+								type="number"
+								min="0"
+								inputmode="numeric"
+								aria-label="Maximum price"
+								placeholder="Max"
+								class="text-body-small h-10 rounded-md border border-[var(--border-muted)] bg-white px-2.5"
+								onchange={(event) =>
+									updateSearch({
+										maxPrice: (event.currentTarget as HTMLInputElement).value || undefined
+									})}
+							/>
+						</div>
 					</div>
+					<label
+						class="text-label-small flex h-10 cursor-pointer items-center gap-3 self-end rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
+					>
+						<input
+							type="checkbox"
+							checked={inStock}
+							class="size-4 accent-[var(--heat-100)]"
+							onchange={(event) =>
+								updateSearch({
+									inStock: (event.currentTarget as HTMLInputElement).checked ? 'true' : undefined
+								})}
+						/>
+						In stock only
+					</label>
 				</div>
-				<label
-					class="text-label-small flex h-10 cursor-pointer items-center gap-3 rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
-				>
-					<input
-						type="checkbox"
-						checked={inStock === 'true'}
-						class="size-4 accent-[var(--heat-100)]"
-						onchange={(event) =>
-							updateSearch({
-								inStock: (event.currentTarget as HTMLInputElement).checked ? 'true' : undefined
-							})}
-					/>
-					In stock only
-				</label>
 			</div>
-		</div>
+		{/if}
 	</div>
 
 	<aside class="hidden h-fit space-y-7 lg:sticky lg:top-24 lg:block">
@@ -419,7 +452,7 @@
 			>
 				<input
 					type="checkbox"
-					checked={inStock === 'true'}
+					checked={inStock}
 					class="size-4 accent-[var(--heat-100)]"
 					onchange={(event) =>
 						updateSearch({
@@ -450,7 +483,7 @@
 		</section>
 	</aside>
 
-	<main>
+	<main class="min-w-0 w-full">
 		{#if sorted.length === 0}
 			<div
 				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center"
@@ -469,13 +502,45 @@
 				</button>
 			</div>
 		{:else}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+			<div class="product-grid">
 				{#each sorted as product, index (product.id)}
-					<div class="animate-fade-up" style:animation-delay={`${Math.min(index * 30, 400)}ms`}>
-						<ProductCard {product} />
+					<div class="min-w-0">
+						<ProductCard {product} eager={index < 2} />
 					</div>
 				{/each}
 			</div>
 		{/if}
 	</main>
 </div>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>
+
+<style>
+	.product-grid {
+		display: grid;
+		min-width: 0;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 12px;
+	}
+
+	@media (min-width: 640px) {
+		.product-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 14px;
+		}
+	}
+
+	@media (min-width: 900px) {
+		.product-grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.product-grid {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			gap: 16px;
+		}
+	}
+</style>

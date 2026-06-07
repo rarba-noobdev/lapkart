@@ -7,10 +7,17 @@ bun.lockb
 
 # Generated and local tooling
 .agents/
+.claude/
 .codex/
+.firecrawl/
+.impeccable/
+.od/
+.od-skills/
 .svelte-kit/
 .vercel/
 .wrangler/
+android/.gradle/
+android/**/build/
 dist/
 node_modules/
 

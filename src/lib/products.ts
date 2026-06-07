@@ -36,6 +36,9 @@ export type ProductRow = {
 export const productSelectFields =
 	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
+export const productCardSelectFields =
+	'id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
+
 type ProductClient = SupabaseClient<Database>;
 
 export type ListProductsOptions = {
@@ -74,7 +77,7 @@ export function normalizeProductRow(row: ProductRow): Product {
 		authenticity_grade: row.authenticity_grade ?? 'compatible',
 		condition_grade: row.condition_grade ?? 'new',
 		hsn_code: row.hsn_code ?? undefined,
-		gst_rate: row.gst_rate === null ? undefined : Number(row.gst_rate),
+		gst_rate: row.gst_rate === null || row.gst_rate === undefined ? undefined : Number(row.gst_rate),
 		doa_policy_days: row.doa_policy_days ?? undefined,
 		local_delivery_eligible: row.local_delivery_eligible ?? undefined,
 		cod_eligible: row.cod_eligible ?? undefined
@@ -116,7 +119,7 @@ export async function listCatalogProducts(
 	options: ListProductsOptions = {},
 	client?: ProductClient
 ) {
-	let query = getClient(client).from('products').select(productSelectFields);
+	let query = getClient(client).from('products').select(productCardSelectFields);
 
 	if (options.category) {
 		query = query.eq('category', options.category);
@@ -178,7 +181,7 @@ export async function listRelatedProducts(
 ) {
 	const { data, error } = await getClient(client)
 		.from('products')
-		.select(productSelectFields)
+		.select(productCardSelectFields)
 		.eq('category', category)
 		.neq('id', excludeId)
 		.order('rating', { ascending: false })

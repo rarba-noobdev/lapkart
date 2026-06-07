@@ -3,13 +3,22 @@ import { createServerClient } from '@supabase/ssr';
 import { redirect, type Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
+	const clearSupabaseAuthCookies = () => {
+		for (const cookie of event.cookies.getAll()) {
+			if (cookie.name.startsWith('sb-') && cookie.name.includes('auth-token')) {
+				event.cookies.delete(cookie.name, { path: '/' });
+			}
+		}
+	};
+
 	event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
 		cookies: {
 			getAll: () => event.cookies.getAll(),
-			setAll: (cookiesToSet) => {
+			setAll: (cookiesToSet, headers) => {
 				cookiesToSet.forEach(({ name, value, options }) => {
 					event.cookies.set(name, value, { ...options, path: '/' });
 				});
+				if (headers && Object.keys(headers).length > 0) event.setHeaders(headers);
 			}
 		},
 		global: {
@@ -23,17 +32,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.safeGetSession = async () => {
 		if (cachedSession) return cachedSession;
 
-		const {
-			data: { user },
+		const result = await event.locals.supabase.auth.getUser().catch((error: unknown) => ({
+			data: { user: null },
 			error
-		} = await event.locals.supabase.auth.getUser();
+		}));
 
-		if (error || !user) {
+		if (result.error || !result.data.user) {
+			clearSupabaseAuthCookies();
 			cachedSession = { session: null, user: null };
 			return cachedSession;
 		}
 
-		cachedSession = { session: null, user };
+		cachedSession = { session: null, user: result.data.user };
 		return cachedSession;
 	};
 
@@ -58,6 +68,20 @@ export const handle: Handle = async ({ event, resolve }) => {
 	};
 
 	const pathname = event.url.pathname;
+	const legacyAdminSections: Record<string, string> = {
+		'/admin/catalog': 'catalog',
+		'/admin/products': 'catalog',
+		'/admin/orders': 'orders',
+		'/admin/fulfillment': 'fulfillment',
+		'/admin/users': 'users',
+		'/admin/promos': 'promos',
+		'/admin/support': 'support'
+	};
+	const legacyAdminSection = legacyAdminSections[pathname];
+	if (legacyAdminSection) {
+		redirect(307, `/admin?section=${legacyAdminSection}`);
+	}
+
 	const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
 	const isCustomerRoute =
 		pathname === '/checkout' ||

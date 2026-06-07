@@ -11,9 +11,18 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"cap:sync": "cap sync",
+		"android:add": "cap add android",
+		"android:open": "cap open android",
+		"android:run": "cap run android",
+		"android:sync": "cap sync android",
+		"open-design": "open-design-ade",
+		"open-design:mcp": "open-design-mcp"
 	},
 	"dependencies": {
+		"@capacitor/android": "^8.4.0",
+		"@capacitor/core": "^8.4.0",
 		"@lucide/svelte": "^1.17.0",
 		"@supabase/ssr": "^0.10.3",
 		"@supabase/supabase-js": "^2.107.0",
@@ -21,6 +30,7 @@
 		"typesense": "^3.0.6"
 	},
 	"devDependencies": {
+		"@capacitor/cli": "^8.4.0",
 		"@eslint/js": "^10.0.1",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-vercel": "^6.3.3",
@@ -33,6 +43,8 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^17.4.0",
+		"open-design-ade": "^0.4.2",
+		"open-design-mcp": "^0.16.1",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",
 		"prettier-plugin-tailwindcss": "^0.7.2",

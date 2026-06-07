@@ -4,8 +4,10 @@
 	import { page } from '$app/state';
 	import AdminOrdersManager from '$lib/components/admin/AdminOrdersManager.svelte';
 	import AdminSupportManager from '$lib/components/admin/AdminSupportManager.svelte';
+	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
 	import { apiBase } from '$lib/api-base';
 	import { categories, formatINR } from '$lib/catalog';
+	import { getAuthContext } from '$lib/auth-context';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 	import {
 		Activity,
@@ -23,8 +25,15 @@
 		Users
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import { fade, fly, crossfade } from 'svelte/transition';
+	import { quintOut } from 'svelte/easing';
 
-	type AdminView = 'overview' | 'catalog' | 'orders' | 'users' | 'promos' | 'support';
+	const [send, receive] = crossfade({
+		duration: 350,
+		easing: quintOut
+	});
+
+	type AdminView = 'overview' | 'catalog' | 'orders' | 'fulfillment' | 'users' | 'promos' | 'support';
 
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
@@ -198,6 +207,7 @@
 		{ id: 'overview', label: 'Overview', icon: LayoutDashboard },
 		{ id: 'catalog', label: 'Catalog', icon: Boxes },
 		{ id: 'orders', label: 'Orders', icon: Package },
+		{ id: 'fulfillment', label: 'Fulfillment', icon: Truck },
 		{ id: 'users', label: 'Users', icon: Users },
 		{ id: 'promos', label: 'Promos', icon: Tag },
 		{ id: 'support', label: 'Support', icon: LifeBuoy }
@@ -219,11 +229,17 @@
 	const categoryNameBySlug = new Map(categories.map((category) => [category.slug, category.name]));
 	const currentUser = $derived(page.data.user ?? null);
 	const currentRole = $derived(page.data.role ?? null);
+	const auth = getAuthContext();
 
-	let view = $state<AdminView>('overview');
 	let booting = $state(true);
 	let loading = $state(false);
 	let initializedForUserId: string | null = null;
+	const initialView = viewFromSearch(page.url.searchParams.get('section'));
+	let view = $state<AdminView>(initialView);
+	let mountedViews = $state<AdminView[]>(
+		initialView === 'overview' ? ['overview'] : ['overview', initialView]
+	);
+	let realtimeRefreshTimer: number | null = null;
 	let productsLoaded = $state(false);
 	let usersLoaded = $state(false);
 	let couponsLoaded = $state(false);
@@ -572,15 +588,43 @@
 		booting = false;
 	}
 
-	function ensureViewData(nextView: AdminView) {
+	function isAdminView(value: string): value is AdminView {
+		return tabs.some((tab) => tab.id === value);
+	}
+
+	function viewFromSearch(section: string | null): AdminView {
+		return section && isAdminView(section) ? section : 'overview';
+	}
+
+	function panelHidden(panel: AdminView) {
+		return view === panel ? '' : 'hidden';
+	}
+
+	function loadSectionData(nextView: AdminView) {
 		if (nextView === 'catalog') void loadProducts();
 		if (nextView === 'users') void loadUsers();
 		if (nextView === 'promos') void loadCoupons();
 	}
 
-	function setAdminView(nextView: AdminView) {
+	function setView(nextView: AdminView) {
 		view = nextView;
-		ensureViewData(nextView);
+		if (!mountedViews.includes(nextView)) mountedViews = [...mountedViews, nextView];
+		loadSectionData(nextView);
+
+		const nextUrl = new URL(window.location.href);
+		if (nextView === 'overview') nextUrl.searchParams.delete('section');
+		else nextUrl.searchParams.set('section', nextView);
+		window.history.replaceState(window.history.state, '', nextUrl);
+	}
+
+	function scheduleAdminRealtimeRefresh() {
+		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+		realtimeRefreshTimer = window.setTimeout(() => {
+			void loadAnalytics();
+			if (productsLoaded) void loadProducts(true);
+			if (usersLoaded) void loadUsers(true);
+			if (couponsLoaded) void loadCoupons(true);
+		}, 300);
 	}
 
 	function beginCreateProduct() {
@@ -801,7 +845,24 @@
 		if (initializedForUserId === currentUser.id) return;
 
 		initializedForUserId = currentUser.id;
-		void loadAdmin();
+		void loadAdmin().then(() => loadSectionData(view));
+
+		const channel = auth.supabase
+			.channel(`admin-shell:${currentUser.id}`)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupon_redemptions' }, scheduleAdminRealtimeRefresh)
+			.subscribe();
+
+		return () => {
+			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			void auth.supabase.removeChannel(channel);
+		};
 	});
 </script>
 
@@ -809,259 +870,212 @@
 	<title>Admin - lapkart</title>
 </svelte:head>
 
-<section class="admin-page mx-auto max-w-[1400px] px-6 py-8 animate-fade-up">
-	<div
-		class="relative mb-6 overflow-hidden rounded-xl border border-white/10 bg-[var(--accent-black)] text-white shadow-lg"
-	>
-		<div class="grain absolute inset-0 opacity-10 pointer-events-none"></div>
-		<!-- Spotlight overlay -->
-		<div class="absolute -top-24 -left-24 w-72 h-72 bg-radial from-[var(--heat-100)]/15 to-transparent blur-3xl pointer-events-none"></div>
-		
-		<div class="relative z-10 flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
-			<div class="flex items-start gap-4">
-				<div
-					class="flex w-11 h-11 shrink-0 items-center justify-center rounded-lg bg-white/10 border border-white/10 text-[var(--heat-100)] shadow-inner"
-				>
-					<LayoutDashboard class="w-5 h-5" strokeWidth={2.2} />
+<section class="mx-auto max-w-[1400px] px-4 py-5 sm:px-6 sm:py-8">
+	<!-- Header -->
+	<header class="admin-header mb-6 rounded-xl bg-[var(--accent-black)] px-5 py-5 sm:px-8 sm:py-6">
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<div class="flex items-center gap-3">
+				<div class="flex size-10 items-center justify-center rounded-lg bg-white/[0.08] text-[var(--heat-100)]">
+					<LayoutDashboard class="size-5" strokeWidth={2} />
 				</div>
 				<div>
-					<nav
-						class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-white/40 uppercase"
-					>
-						<a href={resolve('/')} class="motion-soft-link hover:text-white transition-colors duration-200">home</a>
-						<span class="text-white/20">/</span>
-						<span class="text-white">operations</span>
-					</nav>
-					<h1 class="text-title-h4 mt-1.5 font-display text-white font-medium">Operations workspace</h1>
-					<p class="text-body-small mt-1 text-white/60">
-						Catalog, orders, users, and promotions — all in one dashboard console.
-					</p>
+					<h1 class="text-[18px] font-medium tracking-tight text-white sm:text-[22px]">Admin</h1>
+					{#if currentUser?.email}
+						<p class="font-mono text-[11px] tracking-tight text-white/40">{currentUser.email}</p>
+					{/if}
 				</div>
 			</div>
-
-			<div class="flex flex-wrap items-center gap-2">
-				{#if currentUser?.email}
-					<div
-						class="text-label-small flex h-10 items-center gap-2 rounded-lg border border-white/8 bg-white/5 px-3 text-white/80"
-					>
-						<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-forest)] animate-pulse"></span>
-						<span class="max-w-[200px] truncate">{currentUser.email}</span>
+			<div class="flex items-center gap-3">
+				<div class="grid grid-cols-3 gap-2 text-center">
+					<div class="rounded-md bg-white/[0.06] px-3 py-1.5">
+						<p class="text-[10px] tracking-[0.1em] text-white/35 uppercase">Orders</p>
+						<p class="text-[15px] font-medium text-white">{analytics?.orders ?? '—'}</p>
 					</div>
-				{/if}
-				<a
-					href={resolve('/admin/fulfillment')}
-					class="button button-primary text-label-small inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-white hover:opacity-95"
+					<div class="rounded-md bg-white/[0.06] px-3 py-1.5">
+						<p class="text-[10px] tracking-[0.1em] text-white/35 uppercase">Pending</p>
+						<p class="text-[15px] font-medium text-[var(--heat-100)]">{analytics?.pendingFulfillment ?? '—'}</p>
+					</div>
+					<div class="rounded-md bg-white/[0.06] px-3 py-1.5">
+						<p class="text-[10px] tracking-[0.1em] text-white/35 uppercase">Revenue</p>
+						<p class="text-[15px] font-medium text-white">{formatINR(analytics?.revenue ?? 0)}</p>
+					</div>
+				</div>
+				<button
+					type="button"
+					class="button button-primary text-label-small inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-white"
+					onclick={() => setView('fulfillment')}
 				>
-					<Truck class="w-4 h-4" strokeWidth={2} />
-					Fulfillment queue
-					<ArrowUpRight class="w-3.5 h-3.5" strokeWidth={2.2} />
-				</a>
+					<Truck class="size-4" strokeWidth={2} />
+					<span class="hidden sm:inline">Fulfillment</span>
+				</button>
 			</div>
 		</div>
-	</div>
+	</header>
 
 	{#if booting}
-		<div class="grid gap-3 md:grid-cols-4">
+		<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 			{#each loadingSkeletons as skeleton (skeleton)}
-				<div
-					class="h-[120px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)]"
-				></div>
+				<div class="h-[100px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white p-4">
+					<div class="h-3 w-16 rounded bg-[var(--background-lighter)]"></div>
+					<div class="mt-3 h-6 w-24 rounded bg-[var(--background-lighter)]"></div>
+				</div>
 			{/each}
 		</div>
 	{:else}
-		<div
-			class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto rounded-xl border border-[var(--border-faint)] bg-white p-1.5 shadow-sm"
-			aria-label="Tabs"
+		<!-- Tab navigation -->
+		<nav
+			class="admin-tabs scrollbar-hide mb-5 flex w-full items-center gap-0.5 overflow-x-auto border-b border-[var(--border-faint)]"
+			aria-label="Admin sections"
 		>
 			{#each tabs as tab (tab.id)}
 				<button
 					type="button"
-					class={`text-label-small motion-press flex h-9 items-center gap-2 rounded-lg px-4 whitespace-nowrap transition-all duration-300 font-medium cursor-pointer ${
-						view === tab.id
-							? 'bg-[var(--accent-black)] text-white shadow-md scale-[1.02]'
-							: 'text-[var(--black-alpha-56)] hover:bg-[var(--background-lighter)] hover:text-foreground'
-					}`}
-					onclick={() => setAdminView(tab.id)}
+					class="admin-tab group relative flex h-10 items-center gap-1.5 px-3 text-[13px] font-medium whitespace-nowrap sm:px-4
+						{view === tab.id
+							? 'text-[var(--heat-100)]'
+							: 'text-[var(--black-alpha-48)] hover:text-[var(--black-alpha-72)]'}"
+					aria-current={view === tab.id ? 'page' : undefined}
+					onclick={() => setView(tab.id)}
 				>
-					<tab.icon class="w-4 h-4" strokeWidth={2} />
-					{tab.label}
+					<tab.icon class="size-4" strokeWidth={2} />
+					<span>{tab.label}</span>
+					{#if view === tab.id}
+						<span
+							class="absolute inset-x-0 -bottom-px h-[2px] bg-[var(--heat-100)]"
+							in:receive={{ key: 'active-tab' }}
+							out:send={{ key: 'active-tab' }}
+						></span>
+					{/if}
 				</button>
 			{/each}
-		</div>
+		</nav>
 
-		{#if view === 'overview'}
-			<div class="flex flex-col gap-6">
+		<!-- Content area -->
+		<div class="relative grid">
+				<div
+					class="col-start-1 row-start-1 w-full"
+					in:fly={{ y: 12, duration: 250, delay: 120 }}
+					out:fade={{ duration: 120 }}
+				>
+					{#if view === 'overview'}
+			<div class="flex flex-col gap-5">
 				{#if overviewError}
-					<div
-						class="text-body-small flex items-start gap-3 rounded-md border border-[var(--accent-crimson)]/30 bg-[var(--accent-crimson)]/8 p-4 text-[var(--accent-crimson)]"
-					>
-						<ShieldAlert class="mt-2 size-4 shrink-0" strokeWidth={2} />
+					<div class="flex items-start gap-2 rounded-md border border-[var(--accent-crimson)]/30 bg-[var(--accent-crimson)]/6 p-3 text-[13px] text-[var(--accent-crimson)]">
+						<ShieldAlert class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
 						<span>{overviewError}</span>
 					</div>
 				{/if}
 
-				<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+				<!-- KPI cards -->
+				<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					{#each overviewCards as card (card.id)}
 						{@const Icon = overviewIcons[card.id] ?? TrendingUp}
-						<div
-							class="group motion-card relative overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white p-5 shadow-[0_4px_12px_rgba(0,0,0,0.02)] hover:border-[var(--heat-100)]/30 hover:shadow-md transition-all duration-300"
-						>
-							<div class="inside-border group-hover:border-[var(--heat-100)]/12"></div>
-							<div class="relative z-10 flex items-start justify-between gap-3">
-								<div>
-									<p
-										class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase font-semibold"
-									>
-										{card.label}
-									</p>
-									<p class="text-title-h4 mt-3 font-display text-foreground font-semibold tracking-tight">{card.value}</p>
-								</div>
-								<div
-									class="flex w-9 h-9 items-center justify-center rounded-lg bg-[var(--heat-8)] text-[var(--heat-100)] group-hover:scale-110 transition-transform duration-300 shadow-xs"
-								>
-									<Icon class="w-4 h-4" strokeWidth={2} />
-								</div>
+						<div class="group flex items-start justify-between rounded-lg border border-[var(--border-faint)] bg-white p-4 transition-shadow hover:shadow-sm">
+							<div>
+								<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">{card.label}</p>
+								<p class="mt-1.5 text-[22px] font-semibold tracking-tight text-foreground">{card.value}</p>
+							</div>
+							<div class="flex size-9 items-center justify-center rounded-lg bg-[var(--heat-8)] text-[var(--heat-100)] transition-transform duration-200 group-hover:scale-105">
+								<Icon class="size-4" strokeWidth={2} />
 							</div>
 						</div>
 					{/each}
 				</div>
 
-				<div class="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-					<div
-						class="overflow-hidden rounded-xl border border-[var(--border-faint)] bg-white shadow-[0_4px_12px_rgba(0,0,0,0.02)]"
-					>
-						<div
-							class="flex items-center justify-between gap-3 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-5 py-4"
-						>
-							<div class="flex items-center gap-3">
-								<div
-									class="flex w-8 h-8 items-center justify-center rounded-lg bg-[var(--accent-black)] text-[var(--heat-100)]"
-								>
-									<Activity class="w-4 h-4" strokeWidth={2.2} />
-								</div>
-								<div>
-									<p class="text-label-medium text-foreground font-semibold">Recent orders</p>
-									<p class="text-body-small text-[var(--black-alpha-56)]">
-										Latest order activity across the store
-									</p>
-								</div>
+				<!-- Orders + sidebar -->
+				<div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+					<!-- Recent orders -->
+					<div class="overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white">
+						<div class="flex items-center justify-between border-b border-[var(--border-faint)] px-4 py-3">
+							<div class="flex items-center gap-2">
+								<Activity class="size-4 text-[var(--black-alpha-48)]" strokeWidth={2} />
+								<p class="text-[13px] font-medium text-foreground">Recent orders</p>
 							</div>
 							{#if loading}
-								<span
-									class="text-mono-x-small flex items-center gap-1.5 tracking-[0.16em] text-[var(--heat-100)] uppercase font-semibold animate-pulse"
-								>
-									<span class="w-1.5 h-1.5 rounded-full bg-[var(--heat-100)]"></span>
-									Syncing Live
+								<span class="flex items-center gap-1 text-[10px] tracking-[0.12em] text-[var(--heat-100)] uppercase">
+									<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"></span>
+									Syncing
 								</span>
 							{/if}
 						</div>
-
-						<div class="divide-y-1 divide-[var(--border-faint)]">
+						<div class="divide-y divide-[var(--border-faint)]">
 							{#each analytics?.recentOrders ?? [] as order (order.id)}
-								<div class="flex items-center justify-between gap-3 px-5 py-4">
-									<div class="flex items-center gap-3">
-										<div
-											class="text-mono-small flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] font-medium text-[var(--black-alpha-72)]"
-										>
+								<div class="flex items-center justify-between px-4 py-3">
+									<div class="flex items-center gap-2.5">
+										<div class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-56)]">
 											{order.id.slice(0, 2).toUpperCase()}
 										</div>
 										<div>
-											<p class="text-mono-small text-foreground">
-												#{order.id.slice(0, 8).toUpperCase()}
-											</p>
-											<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
-												{order.shippingName || 'Customer'}
-											</p>
+											<p class="font-mono text-[12px] text-foreground">#{order.id.slice(0, 8).toUpperCase()}</p>
+											<p class="text-[11px] text-[var(--black-alpha-48)]">{order.shippingName || 'Customer'}</p>
 										</div>
 									</div>
-									<div class="flex items-center gap-3">
+									<div class="flex items-center gap-2">
 										<span
-											class={`text-mono-x-small rounded-sm border px-1.5 py-2 tracking-[0.16em] uppercase ${
-												order.status === 'cancelled'
-													? 'border-[var(--accent-crimson)]/30 bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
+											class="rounded-sm px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase
+												{order.status === 'cancelled'
+													? 'bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
 													: order.status === 'delivered'
-														? 'border-[var(--accent-forest)]/30 bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-														: 'border-[var(--border-muted)] bg-[var(--background-lighter)] text-[var(--black-alpha-72)]'
-											}`}
+														? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
+														: 'bg-[var(--background-lighter)] text-[var(--black-alpha-56)]'}"
 										>
 											{order.status}
 										</span>
-										<p class="text-label-small text-foreground">{formatINR(order.total)}</p>
+										<span class="text-[12px] font-medium text-foreground">{formatINR(order.total)}</span>
 									</div>
 								</div>
 							{/each}
-
 							{#if (analytics?.recentOrders ?? []).length === 0}
-								<div class="px-5 py-8 text-center">
-									<p class="text-body-small text-[var(--black-alpha-48)]">
-										No order history is available yet.
-									</p>
+								<div class="px-4 py-8 text-center text-[12px] text-[var(--black-alpha-40)]">
+									No order history yet.
 								</div>
 							{/if}
 						</div>
 					</div>
 
+					<!-- Sidebar cards -->
 					<div class="flex flex-col gap-3">
-						<div class="rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-5">
-							<div class="flex items-start justify-between gap-3">
+						<div class="rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-4">
+							<div class="flex items-start justify-between">
 								<div>
-									<p class="text-mono-x-small tracking-[0.16em] text-[var(--heat-100)] uppercase">
-										Pending fulfillment
-									</p>
-									<p class="text-title-h4 mt-2 font-display text-foreground">
-										{analytics?.pendingFulfillment ?? 0}
-									</p>
-									<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-										Orders awaiting Shiprocket dispatch
-									</p>
+									<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase">Pending fulfillment</p>
+									<p class="mt-1 text-[22px] font-semibold text-foreground">{analytics?.pendingFulfillment ?? 0}</p>
+									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">Awaiting Shiprocket dispatch</p>
 								</div>
-								<div
-									class="flex size-9 items-center justify-center rounded-md bg-white text-[var(--heat-100)]"
-								>
-									<Truck class="size-4" strokeWidth={2} />
-								</div>
+								<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
 							</div>
-							<a
-								href={resolve('/admin/fulfillment')}
-								class="text-label-small motion-soft-link mt-4 inline-flex items-center gap-1.5 text-[var(--heat-100)]"
+							<button
+								type="button"
+								class="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[var(--heat-100)] hover:underline"
+								onclick={() => setView('fulfillment')}
 							>
-								Open queue
-								<ArrowUpRight class="size-3.5" strokeWidth={2.2} />
-							</a>
+								Open queue <ArrowUpRight class="size-3" strokeWidth={2} />
+							</button>
 						</div>
 
-						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-5 shadow-card">
-							<p class="text-label-medium text-foreground">Service health</p>
-							<div class="mt-4 space-y-12">
-								<div class="flex items-center justify-between gap-3">
+						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
+							<p class="text-[13px] font-medium text-foreground">Service health</p>
+							<div class="mt-3 space-y-2.5">
+								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
-										<span class="size-2 rounded-full bg-[var(--accent-forest)]"></span>
-										<span class="text-body-small text-[var(--black-alpha-72)]">Delivered</span>
+										<span class="size-1.5 rounded-full bg-[var(--accent-forest)]"></span>
+										<span class="text-[12px] text-[var(--black-alpha-64)]">Delivered</span>
 									</div>
-									<span class="text-label-small text-foreground"
-										>{analytics?.deliveredOrders ?? 0}</span
-									>
+									<span class="text-[12px] font-medium text-foreground">{analytics?.deliveredOrders ?? 0}</span>
 								</div>
-								<div class="flex items-center justify-between gap-3">
+								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
-										<span class="size-2 rounded-full bg-[var(--accent-honey)]"></span>
-										<span class="text-body-small text-[var(--black-alpha-72)]"
-											>Cancellation queue</span
-										>
+										<span class="size-1.5 rounded-full bg-[var(--accent-honey)]"></span>
+										<span class="text-[12px] text-[var(--black-alpha-64)]">Cancellation queue</span>
 									</div>
-									<span class="text-label-small text-foreground"
-										>{analytics?.cancellationReport.total ?? 0}</span
-									>
+									<span class="text-[12px] font-medium text-foreground">{analytics?.cancellationReport.total ?? 0}</span>
 								</div>
-								<div class="flex items-center justify-between gap-3">
+								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
-										<span class="size-2 rounded-full bg-[var(--accent-crimson)]"></span>
-										<span class="text-body-small text-[var(--black-alpha-72)]">Awaiting review</span
-										>
+										<span class="size-1.5 rounded-full bg-[var(--accent-crimson)]"></span>
+										<span class="text-[12px] text-[var(--black-alpha-64)]">Awaiting review</span>
 									</div>
-									<span class="text-label-small text-foreground"
-										>{analytics?.cancellationReport.pending ?? 0}</span
-									>
+									<span class="text-[12px] font-medium text-foreground">{analytics?.cancellationReport.pending ?? 0}</span>
 								</div>
 							</div>
 						</div>
@@ -1069,67 +1083,50 @@
 				</div>
 			</div>
 		{:else if view === 'catalog'}
-			<div class="grid items-start gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
-				<aside
-					class="flex flex-col gap-3 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-card xl:sticky xl:top-24 xl:self-start"
-				>
-					<div class="border-b-1 border-[var(--border-faint)] bg-[var(--background-lighter)] p-4">
-						<div class="flex items-center justify-between gap-3">
+			<div class="grid items-start gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+				<!-- Product list sidebar -->
+				<aside class="flex flex-col overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white xl:sticky xl:top-24 xl:self-start">
+					<div class="border-b border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+						<div class="flex items-center justify-between gap-2 mb-2">
 							<div class="flex items-center gap-2">
-								<div
-									class="flex size-8 items-center justify-center rounded-md bg-[var(--accent-black)] text-[var(--heat-100)]"
-								>
-									<Boxes class="size-3.5" strokeWidth={2} />
-								</div>
-								<div>
-									<p class="text-label-medium text-foreground">Catalog</p>
-									<p class="text-body-small text-[var(--black-alpha-56)]">
-										{filteredProducts.length} of {products.length}
-									</p>
-								</div>
+								<Boxes class="size-4 text-[var(--black-alpha-48)]" strokeWidth={2} />
+								<span class="text-[13px] font-medium text-foreground">Catalog</span>
+								<span class="text-[11px] text-[var(--black-alpha-40)]">{filteredProducts.length}/{products.length}</span>
 							</div>
 							<button
 								type="button"
-								class="button button-primary text-label-small inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-white"
+								class="button button-primary text-[12px] inline-flex h-7 items-center gap-1 rounded px-2.5 text-white"
 								onclick={beginCreateProduct}
 							>
-								<Plus class="size-3.5" strokeWidth={2.2} />
+								<Plus class="size-3.5" strokeWidth={2} />
 								New
 							</button>
 						</div>
-
 						<input
 							bind:value={productSearch}
-							class="input-field mt-3"
+							class="input-field h-8 text-[12px]"
 							placeholder="Search title, brand, SKU..."
 						/>
 					</div>
 
-					<div class="max-h-[calc(100vh-280px)] space-y-8 overflow-y-auto px-3 pb-4">
+					<div class="max-h-[calc(100vh-280px)] space-y-0.5 overflow-y-auto p-1.5">
 						{#if productsLoading && !products.length}
-							<div
-								class="text-body-small rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-center text-[var(--black-alpha-56)]"
-							>
-								Loading catalog...
-							</div>
+							<div class="p-4 text-center text-[12px] text-[var(--black-alpha-40)]">Loading catalog...</div>
 						{:else}
 							{#each filteredProducts as product (product.id)}
 								<button
 									type="button"
-									class={`motion-press flex w-full items-start gap-3 rounded-md border p-3 text-left transition-all ${
-										product.id === selectedProductId
-											? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
-											: 'border-transparent bg-white hover:border-[var(--border-muted)] hover:bg-[var(--background-lighter)]'
-									}`}
+									class="flex w-full items-start gap-2.5 rounded-md p-2 text-left transition-colors
+										{product.id === selectedProductId
+											? 'bg-[var(--heat-4)] ring-1 ring-[var(--heat-100)]/30'
+											: 'hover:bg-[var(--background-lighter)]'}"
 									onclick={() => {
 										selectedProductId = product.id;
 										productEditor = mapProductToEditor(product);
 										productNotice = null;
 									}}
 								>
-									<div
-										class="flex size-11 shrink-0 items-center justify-center rounded-md border border-[var(--border-faint)] bg-white p-1"
-									>
+									<div class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5">
 										<img
 											src={product.image || 'https://placehold.co/100x100?text=%20'}
 											alt={product.title}
@@ -1137,30 +1134,23 @@
 										/>
 									</div>
 									<div class="min-w-0 flex-1">
-										<div class="flex items-start justify-between gap-2">
-											<p class="text-label-small line-clamp-1 text-foreground">{product.title}</p>
-											<p class="text-label-small shrink-0 text-foreground">
-												{formatINR(product.price)}
-											</p>
+										<div class="flex items-start justify-between gap-1">
+											<p class="line-clamp-1 text-[12px] font-medium text-foreground">{product.title}</p>
+											<p class="shrink-0 text-[11px] font-medium text-foreground">{formatINR(product.price)}</p>
 										</div>
-										<p class="text-body-small mt-2 truncate text-[var(--black-alpha-56)]">
-											{product.brand} · {categoryNameBySlug.get(product.category) ??
-												product.category}
+										<p class="mt-0.5 truncate text-[10px] text-[var(--black-alpha-48)]">
+											{product.brand} · {categoryNameBySlug.get(product.category) ?? product.category}
 										</p>
-										<div class="mt-2 flex flex-wrap items-center gap-1.5">
+										<div class="mt-1 flex items-center gap-1">
 											<span
-												class={`text-mono-x-small rounded-sm border px-1.5 py-2 tracking-[0.14em] uppercase ${
-													product.status === 'active'
-														? 'border-[var(--accent-forest)]/30 bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
+												class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
+													{product.status === 'active'
+														? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
 														: product.status === 'archived'
-															? 'border-[var(--border-muted)] bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'
-															: 'border-[var(--accent-honey)]/30 bg-[var(--accent-honey)]/8 text-[var(--accent-honey)]'
-												}`}>{product.status}</span
-											>
-											<span
-												class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
-												>Stock {product.stock}</span
-											>
+															? 'bg-[var(--background-lighter)] text-[var(--black-alpha-40)]'
+															: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
+											>{product.status}</span>
+											<span class="text-[9px] text-[var(--black-alpha-40)]">Stock {product.stock}</span>
 										</div>
 									</div>
 								</button>
@@ -1168,123 +1158,87 @@
 						{/if}
 
 						{#if !productsLoading && !filteredProducts.length}
-							<div
-								class="text-body-small rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-4 text-center text-[var(--black-alpha-56)]"
-							>
-								{productsError || 'No products match the current search.'}
+							<div class="p-4 text-center text-[12px] text-[var(--black-alpha-40)]">
+								{productsError || 'No products match.'}
 							</div>
 						{/if}
 					</div>
 				</aside>
 
-				<div
-					class="flex flex-col overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-card"
-				>
-					<div class="border-b border-[var(--border-faint)] p-8">
-						<div class="flex flex-col gap-8 sm:flex-row sm:items-start">
-							<div
-								class="flex size-32 shrink-0 items-center justify-center rounded-lg bg-[var(--background-lighter)] p-4 mix-blend-multiply"
-							>
+				<!-- Product editor -->
+				<div class="flex flex-col overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white">
+					<div class="border-b border-[var(--border-faint)] p-5">
+						<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+							<div class="flex size-24 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] p-3">
 								{#if productEditor.image}
-									<img
-										src={productEditor.image}
-										alt={productEditor.title || 'Product preview'}
-										class="max-h-full max-w-full object-contain"
-									/>
+									<img src={productEditor.image} alt={productEditor.title || 'Preview'} class="max-h-full max-w-full object-contain" />
 								{:else}
-									<Boxes class="size-6 text-[var(--black-alpha-32)]" strokeWidth={1.5} />
+									<Boxes class="size-5 text-[var(--black-alpha-24)]" strokeWidth={1.5} />
 								{/if}
 							</div>
-
 							<div class="min-w-0 flex-1">
-								<div class="mb-1.5 flex flex-wrap items-center gap-1.5">
+								<div class="flex flex-wrap items-center gap-1.5">
 									<span
-										class={`text-mono-x-small rounded-sm border px-2 py-2 tracking-[0.16em] uppercase ${
-											selectedProductId === 'new'
-												? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
+										class="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase
+											{selectedProductId === 'new'
+												? 'bg-[var(--heat-100)] text-white'
 												: productEditor.status === 'active'
-													? 'border-[var(--accent-forest)]/30 bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-													: 'border-[var(--border-muted)] bg-white text-[var(--black-alpha-72)]'
-										}`}
+													? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
+													: 'bg-[var(--background-lighter)] text-[var(--black-alpha-56)]'}"
 									>
 										{selectedProductId === 'new' ? 'new' : productEditor.status}
 									</span>
-									<span
-										class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
-									>
+									<span class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">
 										{categoryNameBySlug.get(productEditor.category) ?? 'Category pending'}
 									</span>
 								</div>
-								<h2 class="text-title-h5 truncate font-display text-foreground">
+								<h2 class="mt-1 truncate text-[16px] font-medium text-foreground">
 									{productEditor.title || 'Untitled product'}
 								</h2>
-								<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
+								<p class="text-[12px] text-[var(--black-alpha-48)]">
 									{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku || '—'}
 								</p>
 							</div>
-
-							<div class="mt-6 flex shrink-0 gap-8 sm:mt-0">
-								<div class="px-4 py-2">
-									<p
-										class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
-										Price
-									</p>
-									<p class="text-label-large mt-2 text-foreground">
-										{formatINR(Number(productEditor.price || 0))}
-									</p>
+							<div class="flex shrink-0 gap-5">
+								<div>
+									<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Price</p>
+									<p class="mt-0.5 text-[14px] font-medium text-foreground">{formatINR(Number(productEditor.price || 0))}</p>
 								</div>
-								<div class="px-4 py-2">
-									<p
-										class="text-mono-x-small tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
-										Stock
-									</p>
-									<p class="text-label-large mt-2 text-foreground">
-										{productEditor.stock || '0'}
-									</p>
+								<div>
+									<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Stock</p>
+									<p class="mt-0.5 text-[14px] font-medium text-foreground">{productEditor.stock || '0'}</p>
 								</div>
 							</div>
 						</div>
 					</div>
 
 					{#if productsLoading && !productEditor.id && selectedProductId !== 'new'}
-						<div
-							class="text-body-small m-6 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-4 py-3 text-[var(--black-alpha-56)]"
-						>
-							Preparing product editor...
+						<div class="m-5 rounded-md bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
+							Preparing editor...
 						</div>
 					{/if}
 
 					{#if productNotice}
-						<div
-							class={`text-body-small m-6 mb-0 flex items-start gap-2 rounded-md border px-3 py-3 ${noticeClasses(productNotice.tone)}`}
-						>
-							<span class="mt-2 size-1.5 shrink-0 rounded-full bg-current"></span>
+						<div class="m-5 mb-0 flex items-start gap-2 rounded-md border px-3 py-2.5 text-[12px] {noticeClasses(productNotice.tone)}">
+							<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
 							<span>{productNotice.text}</span>
 						</div>
 					{/if}
 
-					<div class="space-y-10 p-8">
+					<div class="space-y-6 p-5">
 						<section>
-							<h3 class="text-label-medium text-foreground">Product identity</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2">
+							<h3 class="text-[13px] font-medium text-foreground">Product identity</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Title</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Title</span>
 									<input bind:value={productEditor.title} class="input-field" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Brand</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Brand</span>
 									<input bind:value={productEditor.brand} class="input-field" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Category</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Category</span>
 									<select bind:value={productEditor.category} class="input-field">
 										{#each categoryOptions as option (option.value)}
 											<option value={option.value}>{option.label}</option>
@@ -1292,55 +1246,39 @@
 									</select>
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]">SKU</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">SKU</span>
 									<input bind:value={productEditor.sku} class="input-field" />
 								</label>
 								<label class="sm:col-span-2">
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Description</span
-									>
-									<textarea
-										bind:value={productEditor.description}
-										class="input-field min-h-[100px] py-3"
-										style="height: auto;"
-									></textarea>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Description</span>
+									<textarea bind:value={productEditor.description} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
 								</label>
 								<label class="sm:col-span-2">
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Compatibility</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Compatibility</span>
 									<input bind:value={productEditor.compatibility} class="input-field" />
 								</label>
 							</div>
 						</section>
 
-						<div class="border-t-1 border-[var(--border-faint)]"></div>
+						<hr class="border-[var(--border-faint)]" />
 
 						<section>
-							<h3 class="text-label-medium text-foreground">Pricing &amp; availability</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							<h3 class="text-[13px] font-medium text-foreground">Pricing &amp; availability</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Price</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Price</span>
 									<input bind:value={productEditor.price} class="input-field" inputmode="decimal" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]">MRP</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">MRP</span>
 									<input bind:value={productEditor.mrp} class="input-field" inputmode="decimal" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Stock</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Stock</span>
 									<input bind:value={productEditor.stock} class="input-field" inputmode="numeric" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Status</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Status</span>
 									<select bind:value={productEditor.status} class="input-field">
 										<option value="active">Active</option>
 										<option value="draft">Draft</option>
@@ -1350,15 +1288,13 @@
 							</div>
 						</section>
 
-						<div class="border-t-1 border-[var(--border-faint)]"></div>
+						<hr class="border-[var(--border-faint)]" />
 
 						<section>
-							<h3 class="text-label-medium text-foreground">Trust, tax &amp; checkout rules</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							<h3 class="text-[13px] font-medium text-foreground">Trust, tax &amp; checkout</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Authenticity</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Authenticity</span>
 									<select bind:value={productEditor.authenticityGrade} class="input-field">
 										<option value="oem">OEM</option>
 										<option value="compatible">Compatible</option>
@@ -1367,9 +1303,7 @@
 									</select>
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Condition</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Condition</span>
 									<select bind:value={productEditor.conditionGrade} class="input-field">
 										<option value="new">New</option>
 										<option value="open_box">Open box</option>
@@ -1378,172 +1312,96 @@
 									</select>
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>HSN code</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">HSN code</span>
 									<input bind:value={productEditor.hsnCode} class="input-field" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>GST rate (%)</span
-									>
-									<input
-										bind:value={productEditor.gstRate}
-										class="input-field"
-										inputmode="numeric"
-									/>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">GST rate (%)</span>
+									<input bind:value={productEditor.gstRate} class="input-field" inputmode="numeric" />
 								</label>
 							</div>
 						</section>
 
-						<div class="border-t-1 border-[var(--border-faint)]"></div>
+						<hr class="border-[var(--border-faint)]" />
 
 						<section>
-							<h3 class="text-label-medium text-foreground">Delivery &amp; policies</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							<h3 class="text-[13px] font-medium text-foreground">Delivery &amp; policies</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>DOA window (days)</span
-									>
-									<input
-										bind:value={productEditor.doaPolicyDays}
-										class="input-field"
-										inputmode="numeric"
-									/>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">DOA window (days)</span>
+									<input bind:value={productEditor.doaPolicyDays} class="input-field" inputmode="numeric" />
 								</label>
-								<label
-									class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3"
-								>
-									<input
-										type="checkbox"
-										bind:checked={productEditor.localDeliveryEligible}
-										class="size-4 accent-[var(--heat-100)]"
-									/>
-									<span class="text-label-small text-[var(--black-alpha-72)]"
-										>Local delivery eligible</span
-									>
+								<label class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2">
+									<input type="checkbox" bind:checked={productEditor.localDeliveryEligible} class="size-3.5 accent-[var(--heat-100)]" />
+									<span class="text-[11px] text-[var(--black-alpha-64)]">Local delivery</span>
 								</label>
-								<label
-									class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3"
-								>
-									<input
-										type="checkbox"
-										bind:checked={productEditor.codEligible}
-										class="size-4 accent-[var(--heat-100)]"
-									/>
-									<span class="text-label-small text-[var(--black-alpha-72)]">COD eligible</span>
+								<label class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2">
+									<input type="checkbox" bind:checked={productEditor.codEligible} class="size-3.5 accent-[var(--heat-100)]" />
+									<span class="text-[11px] text-[var(--black-alpha-64)]">COD eligible</span>
 								</label>
 							</div>
 						</section>
 
-						<div class="border-t-1 border-[var(--border-faint)]"></div>
+						<hr class="border-[var(--border-faint)]" />
 
 						<section>
-							<h3 class="text-label-medium text-foreground">Imagery &amp; dimensions</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2">
+							<h3 class="text-[13px] font-medium text-foreground">Imagery &amp; dimensions</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Primary image URL</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Primary image URL</span>
 									<input bind:value={productEditor.image} class="input-field" />
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Source URL</span
-									>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Source URL</span>
 									<input bind:value={productEditor.sourceUrl} class="input-field" />
 								</label>
 								<label class="sm:col-span-2">
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Additional images (one URL per line)</span
-									>
-									<textarea
-										bind:value={productEditor.imagesText}
-										class="input-field min-h-[100px] py-3 font-mono"
-										style="height: auto;"
-									></textarea>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Additional images (one URL per line)</span>
+									<textarea bind:value={productEditor.imagesText} class="input-field min-h-[80px] py-2 font-mono" style="height:auto"></textarea>
 								</label>
-
-								<div class="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-4">
+								<div class="grid grid-cols-2 gap-2.5 sm:col-span-2 sm:grid-cols-4">
 									<label>
-										<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-											>Weight (kg)</span
-										>
-										<input
-											bind:value={productEditor.weightKg}
-											class="input-field"
-											inputmode="decimal"
-										/>
+										<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Weight (kg)</span>
+										<input bind:value={productEditor.weightKg} class="input-field" inputmode="decimal" />
 									</label>
 									<label>
-										<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-											>Length (cm)</span
-										>
-										<input
-											bind:value={productEditor.lengthCm}
-											class="input-field"
-											inputmode="decimal"
-										/>
+										<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Length (cm)</span>
+										<input bind:value={productEditor.lengthCm} class="input-field" inputmode="decimal" />
 									</label>
 									<label>
-										<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-											>Breadth (cm)</span
-										>
-										<input
-											bind:value={productEditor.breadthCm}
-											class="input-field"
-											inputmode="decimal"
-										/>
+										<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Breadth (cm)</span>
+										<input bind:value={productEditor.breadthCm} class="input-field" inputmode="decimal" />
 									</label>
 									<label>
-										<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-											>Height (cm)</span
-										>
-										<input
-											bind:value={productEditor.heightCm}
-											class="input-field"
-											inputmode="decimal"
-										/>
+										<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Height (cm)</span>
+										<input bind:value={productEditor.heightCm} class="input-field" inputmode="decimal" />
 									</label>
 								</div>
 							</div>
 						</section>
 
-						<div class="border-t-1 border-[var(--border-faint)]"></div>
+						<hr class="border-[var(--border-faint)]" />
 
 						<section>
-							<h3 class="text-label-medium text-foreground">Merchandising</h3>
-							<div class="mt-3 grid gap-3 sm:grid-cols-2">
+							<h3 class="text-[13px] font-medium text-foreground">Merchandising</h3>
+							<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Highlights (one per line)</span
-									>
-									<textarea
-										bind:value={productEditor.highlightsText}
-										class="input-field min-h-[100px] py-3"
-										style="height: auto;"
-									></textarea>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Highlights (one per line)</span>
+									<textarea bind:value={productEditor.highlightsText} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
 								</label>
 								<label>
-									<span class="text-label-small mb-1.5 block text-[var(--black-alpha-72)]"
-										>Search keywords (one per line)</span
-									>
-									<textarea
-										bind:value={productEditor.searchKeywordsText}
-										class="input-field min-h-[100px] py-3"
-										style="height: auto;"
-									></textarea>
+									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Search keywords (one per line)</span>
+									<textarea bind:value={productEditor.searchKeywordsText} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
 								</label>
 							</div>
 						</section>
 					</div>
 
-					<div
-						class="flex flex-wrap items-center gap-3 border-t-1 border-[var(--border-faint)] bg-[var(--background-lighter)] p-6"
-					>
+					<!-- Save bar -->
+					<div class="flex flex-wrap items-center gap-2.5 border-t border-[var(--border-faint)] bg-[var(--background-lighter)] px-5 py-4">
 						<button
 							type="button"
-							class="button button-primary text-label-medium inline-flex h-10 items-center justify-center rounded-md px-6 text-white disabled:opacity-50"
+							class="button button-primary text-[13px] inline-flex h-9 items-center rounded-md px-5 font-medium text-white disabled:opacity-50"
 							disabled={productSaving}
 							onclick={saveProduct}
 						>
@@ -1552,7 +1410,7 @@
 						{#if selectedProductId !== 'new'}
 							<button
 								type="button"
-								class="text-label-small motion-press inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-4 text-[var(--accent-crimson)] transition-colors hover:border-[var(--accent-crimson)] hover:bg-[var(--accent-crimson)]/4 disabled:opacity-50"
+								class="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--accent-crimson)] transition-colors hover:border-[var(--accent-crimson)] hover:bg-[var(--accent-crimson)]/4 disabled:opacity-50"
 								disabled={productDeleting}
 								onclick={deleteProduct}
 							>
@@ -1564,196 +1422,126 @@
 				</div>
 			</div>
 		{:else if view === 'users'}
-			<div class="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-				<div class="bg-background-base rounded-lg border border-border-muted p-5">
+			<div class="grid gap-4 lg:grid-cols-[1fr_1fr]">
+				<!-- User list -->
+				<div class="overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white p-4">
 					<input
 						bind:value={userSearch}
-						class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+						class="input-field mb-3"
 						placeholder="Search name, email, or phone"
 					/>
-
-					<div class="mt-6 overflow-x-auto">
-						<table class="w-full min-w-[760px] border-collapse text-left">
+					<div class="overflow-x-auto">
+						<table class="w-full min-w-[600px] border-collapse text-left">
 							<thead>
-								<tr
-									class="text-mono-x-small border-b-1 border-border-muted tracking-[0.16em] text-[var(--black-alpha-56)] uppercase"
-								>
-									<th class="px-3 py-3 font-medium">User</th>
-									<th class="px-3 py-3 font-medium">Role</th>
-									<th class="px-3 py-3 font-medium">Orders</th>
-									<th class="px-3 py-3 font-medium">Value</th>
+								<tr class="border-b border-[var(--border-muted)] text-[10px] font-medium tracking-[0.12em] text-[var(--black-alpha-48)] uppercase">
+									<th class="px-2 py-2">User</th>
+									<th class="px-2 py-2">Role</th>
+									<th class="px-2 py-2">Orders</th>
+									<th class="px-2 py-2">Value</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#if usersLoading && !users.length}
-									<tr>
-										<td
-											class="text-body-small px-3 py-6 text-center text-[var(--black-alpha-56)]"
-											colspan="4"
-										>
-											Loading customer accounts...
-										</td>
-									</tr>
+									<tr><td class="px-2 py-6 text-center text-[12px] text-[var(--black-alpha-40)]" colspan="4">Loading accounts...</td></tr>
 								{:else}
 									{#each filteredUsers as user (user.id)}
 										<tr
-											class={`hover:bg-background-lighter cursor-pointer border-b-1 border-border-faint align-top transition-colors ${
-												user.id === selectedUserId ? 'bg-[var(--heat-4)]' : ''
-											}`}
+											class="admin-table-row cursor-pointer border-b border-[var(--border-faint)] transition-colors hover:bg-[var(--background-lighter)]
+												{user.id === selectedUserId ? 'bg-[var(--heat-4)]' : ''}"
 											onclick={() => {
 												selectedUserId = user.id;
 												userEditor = mapUserToEditor(user);
 												userNotice = null;
 											}}
 										>
-											<td class="px-3 py-4">
-												<p class="text-label-small text-foreground">
-													{user.fullName || user.email || 'Unnamed account'}
-												</p>
-												<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-													{user.email || 'No email'}
-												</p>
-												<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-													{user.phone || 'No phone'}
-												</p>
+											<td class="px-2 py-3">
+												<p class="text-[12px] font-medium text-foreground">{user.fullName || user.email || 'Unnamed'}</p>
+												<p class="text-[10px] text-[var(--black-alpha-40)]">{user.email || 'No email'}</p>
 											</td>
-											<td class="px-3 py-4">
-												<span
-													class={`text-mono-x-small rounded-sm px-1.5 py-2 tracking-[0.16em] uppercase ${
-														user.role === 'admin'
-															? 'border border-amber-200 bg-amber-50 text-amber-700'
-															: 'bg-background-lighter border border-border-muted text-[var(--black-alpha-56)]'
-													}`}
-												>
-													{user.role}
-												</span>
+											<td class="px-2 py-3">
+												<span class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
+													{user.role === 'admin'
+														? 'bg-amber-50 text-amber-700'
+														: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
+												>{user.role}</span>
 											</td>
-											<td class="text-label-small px-3 py-4 text-foreground">{user.orderCount}</td>
-											<td class="text-label-small px-3 py-4 text-foreground"
-												>{formatINR(user.totalSpent)}</td
-											>
+											<td class="px-2 py-3 text-[12px] text-foreground">{user.orderCount}</td>
+											<td class="px-2 py-3 text-[12px] text-foreground">{formatINR(user.totalSpent)}</td>
 										</tr>
 									{/each}
 								{/if}
 							</tbody>
 						</table>
 					</div>
-
 					{#if usersError}
-						<div
-							class="text-body-small bg-background-lighter mt-4 rounded-md border border-accent-crimson p-4 text-accent-crimson"
-						>
-							{usersError}
-						</div>
+						<div class="mt-3 rounded-md border border-[var(--accent-crimson)]/30 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">{usersError}</div>
 					{:else if !usersLoading && !filteredUsers.length}
-						<div
-							class="text-body-small bg-background-lighter mt-4 rounded-md border border-border-muted p-4 text-[var(--black-alpha-56)]"
-						>
-							No users match the current search.
-						</div>
+						<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-40)]">No users match.</div>
 					{/if}
 				</div>
 
-				<div class="bg-background-base rounded-lg border border-border-muted p-5">
-					<p class="text-label-medium text-foreground">Edit account</p>
+				<!-- User editor -->
+				<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
+					<p class="text-[13px] font-medium text-foreground">Edit account</p>
 
 					{#if userNotice}
-						<div
-							class={`text-body-small mt-6 rounded-md border px-4 py-3 ${noticeClasses(userNotice.tone)}`}
-						>
-							{userNotice.text}
-						</div>
+						<div class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(userNotice.tone)}">{userNotice.text}</div>
 					{/if}
 
 					{#if selectedUser}
-						<div class="mt-6 grid gap-4 sm:grid-cols-2">
+						<div class="mt-4 grid gap-3 sm:grid-cols-2">
 							<label>
-								<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Role</span>
+								<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Role</span>
 								<select
 									bind:value={userEditor.role}
-									class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+									class="input-field"
 									disabled={selectedUserIsCurrentAdmin}
 								>
 									<option value="user">User</option>
 									<option value="admin">Admin</option>
 								</select>
 								{#if selectedUserIsCurrentAdmin}
-									<span class="text-body-small mt-2 block text-[var(--black-alpha-56)]">
-										Use another admin account before changing your own role.
-									</span>
+									<span class="mt-1 block text-[10px] text-[var(--black-alpha-40)]">Use another admin account first.</span>
 								{/if}
 							</label>
 							<label>
-								<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-									>Full name</span
-								>
-								<input
-									bind:value={userEditor.fullName}
-									class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								/>
+								<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Full name</span>
+								<input bind:value={userEditor.fullName} class="input-field" />
 							</label>
 							<label class="sm:col-span-2">
-								<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Phone</span>
-								<input
-									bind:value={userEditor.phone}
-									class="bg-background-base text-body-input disabled:bg-background-lighter flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--black-alpha-48)]"
-									disabled={selectedUserPhoneLocked}
-								/>
+								<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Phone</span>
+								<input bind:value={userEditor.phone} class="input-field disabled:opacity-50" disabled={selectedUserPhoneLocked} />
 								{#if selectedUserPhoneLocked}
-									<span class="text-body-small mt-2 block text-[var(--black-alpha-56)]">
-										Phone is locked because this account has order history.
-									</span>
+									<span class="mt-1 block text-[10px] text-[var(--black-alpha-40)]">Locked — account has order history.</span>
 								{/if}
 							</label>
 						</div>
 
-						<div class="mt-6 grid gap-3 sm:grid-cols-2">
-							<div class="bg-background-lighter rounded-md border border-border-faint p-4">
-								<p
-									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									Email
-								</p>
-								<p class="text-label-small mt-2 text-foreground">
-									{selectedUser.email || 'No email'}
+						<div class="mt-4 grid gap-2 sm:grid-cols-2">
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Email</p>
+								<p class="mt-0.5 text-[12px] font-medium text-foreground">{selectedUser.email || 'No email'}</p>
+							</div>
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Joined</p>
+								<p class="mt-0.5 text-[12px] font-medium text-foreground">
+									{selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleString('en-IN') : 'Unknown'}
 								</p>
 							</div>
-							<div class="bg-background-lighter rounded-md border border-border-faint p-4">
-								<p
-									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									Joined
-								</p>
-								<p class="text-label-small mt-2 text-foreground">
-									{selectedUser.createdAt
-										? new Date(selectedUser.createdAt).toLocaleString('en-IN')
-										: 'Unknown'}
-								</p>
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Orders</p>
+								<p class="mt-0.5 text-[12px] font-medium text-foreground">{selectedUser.orderCount}</p>
 							</div>
-							<div class="bg-background-lighter rounded-md border border-border-faint p-4">
-								<p
-									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									Orders
-								</p>
-								<p class="text-label-small mt-2 text-foreground">{selectedUser.orderCount}</p>
-							</div>
-							<div class="bg-background-lighter rounded-md border border-border-faint p-4">
-								<p
-									class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
-								>
-									Total spent
-								</p>
-								<p class="text-label-small mt-2 text-foreground">
-									{formatINR(selectedUser.totalSpent)}
-								</p>
+							<div class="rounded-md bg-[var(--background-lighter)] p-3">
+								<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Total spent</p>
+								<p class="mt-0.5 text-[12px] font-medium text-foreground">{formatINR(selectedUser.totalSpent)}</p>
 							</div>
 						</div>
 
-						<div class="mt-6">
+						<div class="mt-4">
 							<button
 								type="button"
-								class="text-label-small text-accent-white inline-flex h-10 items-center justify-center rounded-md bg-heat-100 px-4 transition-colors hover:opacity-90 disabled:opacity-50"
+								class="button button-primary text-[12px] inline-flex h-9 items-center rounded-md px-4 font-medium disabled:opacity-50"
 								disabled={userSaving}
 								onclick={saveUser}
 							>
@@ -1761,59 +1549,47 @@
 							</button>
 						</div>
 					{:else}
-						<div
-							class="text-body-small bg-background-lighter mt-6 rounded-md border border-border-muted p-4 text-[var(--black-alpha-56)]"
-						>
-							Select a user to edit it.
+						<div class="mt-4 rounded-md bg-[var(--background-lighter)] p-4 text-center text-[12px] text-[var(--black-alpha-40)]">
+							Select a user to edit.
 						</div>
 					{/if}
 				</div>
 			</div>
 		{:else if view === 'promos'}
 			<div class="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-				<div class="bg-background-base rounded-lg border border-border-muted p-5">
-					<div class="flex items-center justify-between gap-3">
+				<!-- Coupon list -->
+				<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
+					<div class="flex items-center justify-between gap-2 mb-3">
 						<div>
-							<p class="text-label-large text-foreground">Promotions</p>
-							<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-								Manage coupon codes, limits, and redemption windows.
-							</p>
+							<p class="text-[13px] font-medium text-foreground">Promotions</p>
+							<p class="text-[11px] text-[var(--black-alpha-48)]">Coupon codes &amp; limits.</p>
 						</div>
 						<button
 							type="button"
-							class="text-label-small text-accent-white inline-flex h-10 items-center justify-center rounded-md bg-heat-100 px-4 transition-colors hover:opacity-90"
+							class="button button-primary text-[12px] inline-flex h-8 items-center rounded-md px-3 font-medium"
 							onclick={beginCreateCoupon}
 						>
 							New coupon
 						</button>
 					</div>
 
-					<div
-						class="bg-background-lighter mt-6 overflow-hidden rounded-lg border border-border-muted"
-					>
-						<div
-							class="text-mono-x-small grid grid-cols-[1fr_auto_auto] border-b-1 border-border-muted px-4 py-3 tracking-[0.16em] text-[var(--black-alpha-56)] uppercase"
-						>
+					<div class="overflow-hidden rounded-md border border-[var(--border-faint)]">
+						<div class="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2 text-[9px] font-medium tracking-[0.12em] text-[var(--black-alpha-48)] uppercase">
 							<span>Code</span>
 							<span>Used</span>
 							<span>Status</span>
 						</div>
 
 						{#if couponsLoading && !coupons.length}
-							<div
-								class="text-body-small bg-background-base px-4 py-6 text-center text-[var(--black-alpha-56)]"
-							>
-								Loading promotions...
-							</div>
+							<div class="px-3 py-6 text-center text-[12px] text-[var(--black-alpha-40)]">Loading...</div>
 						{:else}
 							{#each coupons as coupon (coupon.id)}
 								<button
 									type="button"
-									class={`grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-b-1 border-border-faint px-4 py-3 text-left transition-colors last:border-b-0 ${
-										selectedCouponId === coupon.id
-											? 'bg-[var(--heat-4)] text-[var(--heat-100)]'
-											: 'bg-background-base hover:bg-background-lighter text-foreground'
-									}`}
+									class="grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-[var(--border-faint)] px-3 py-2.5 text-left transition-colors last:border-b-0
+										{selectedCouponId === coupon.id
+											? 'bg-[var(--heat-4)]'
+											: 'hover:bg-[var(--background-lighter)]'}"
 									onclick={() => {
 										selectedCouponId = coupon.id;
 										couponEditor = mapCouponToEditor(coupon);
@@ -1821,20 +1597,16 @@
 									}}
 								>
 									<span>
-										<span class="text-label-small">{coupon.code}</span>
-										<span class="text-body-small mt-1 block text-[var(--black-alpha-56)]">
-											{coupon.discountType === 'percent'
-												? `${coupon.discountValue}% off`
-												: `${formatINR(coupon.discountValue)} off`}
+										<span class="text-[12px] font-medium text-foreground">{coupon.code}</span>
+										<span class="mt-0.5 block text-[10px] text-[var(--black-alpha-40)]">
+											{coupon.discountType === 'percent' ? `${coupon.discountValue}% off` : `${formatINR(coupon.discountValue)} off`}
 										</span>
 									</span>
-									<span class="text-label-small">{coupon.usedCount}</span>
-									<span
-										class={`text-mono-x-small rounded-sm px-1.5 py-2 tracking-[0.16em] uppercase ${
-											coupon.active
-												? 'border border-emerald-200 bg-emerald-100 text-emerald-700'
-												: 'bg-background-lighter border border-border-muted text-[var(--black-alpha-56)]'
-										}`}
+									<span class="text-[12px] font-medium text-foreground">{coupon.usedCount}</span>
+									<span class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
+										{coupon.active
+											? 'bg-emerald-50 text-emerald-700'
+											: 'bg-[var(--background-lighter)] text-[var(--black-alpha-40)]'}"
 									>
 										{coupon.active ? 'Active' : 'Off'}
 									</span>
@@ -1844,32 +1616,23 @@
 					</div>
 
 					{#if couponsError}
-						<div
-							class="text-body-small bg-background-lighter mt-4 rounded-md border border-accent-crimson p-4 text-accent-crimson"
-						>
-							{couponsError}
-						</div>
+						<div class="mt-3 rounded-md border border-[var(--accent-crimson)]/30 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">{couponsError}</div>
 					{:else if !couponsLoading && !coupons.length}
-						<div
-							class="text-body-small bg-background-lighter mt-4 rounded-md border border-border-muted p-4 text-[var(--black-alpha-56)]"
-						>
-							No coupons have been created yet.
-						</div>
+						<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-40)]">No coupons yet.</div>
 					{/if}
 				</div>
 
-				<div class="bg-background-base rounded-lg border border-border-muted p-5">
-					<div class="flex items-start justify-between gap-4">
+				<!-- Coupon editor -->
+				<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
+					<div class="flex items-start justify-between gap-3">
 						<div>
-							<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-56)] uppercase">
+							<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">
 								{couponEditor.id ? 'Edit coupon' : 'Create coupon'}
 							</p>
-							<h3 class="text-title-h5 mt-2 text-foreground">
-								{couponEditor.code || 'New campaign'}
-							</h3>
+							<h3 class="mt-0.5 text-[16px] font-medium text-foreground">{couponEditor.code || 'New campaign'}</h3>
 						</div>
 						{#if selectedCoupon}
-							<div class="text-body-small text-right text-[var(--black-alpha-56)]">
+							<div class="text-right text-[11px] text-[var(--black-alpha-48)]">
 								<p>{selectedCoupon.usedCount} redemptions</p>
 								<p>{formatINR(selectedCoupon.discountGiven)} discounts</p>
 							</div>
@@ -1877,139 +1640,86 @@
 					</div>
 
 					{#if couponNotice}
-						<div
-							class={`text-body-small mt-6 rounded-md border px-4 py-3 ${noticeClasses(couponNotice.tone)}`}
-						>
-							{couponNotice.text}
-						</div>
+						<div class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(couponNotice.tone)}">{couponNotice.text}</div>
 					{/if}
 
-					<div class="mt-6 grid gap-4 md:grid-cols-2">
+					<div class="mt-4 grid gap-3 md:grid-cols-2">
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Code</span>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Code</span>
 							<input
 								bind:value={couponEditor.code}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 uppercase transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+								class="input-field uppercase"
 								oninput={() => (couponEditor.code = couponEditor.code.toUpperCase())}
 							/>
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-								>Discount type</span
-							>
-							<select
-								bind:value={couponEditor.discountType}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-							>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Discount type</span>
+							<select bind:value={couponEditor.discountType} class="input-field">
 								<option value="percent">Percent</option>
 								<option value="fixed">Fixed amount</option>
 							</select>
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">
 								{couponEditor.discountType === 'percent' ? 'Discount percent' : 'Discount amount'}
 							</span>
-							<input
-								bind:value={couponEditor.discountValue}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								inputmode="decimal"
-							/>
+							<input bind:value={couponEditor.discountValue} class="input-field" inputmode="decimal" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-								>Minimum subtotal</span
-							>
-							<input
-								bind:value={couponEditor.minimumSubtotal}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								inputmode="decimal"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Minimum subtotal</span>
+							<input bind:value={couponEditor.minimumSubtotal} class="input-field" inputmode="decimal" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-								>Max discount</span
-							>
-							<input
-								bind:value={couponEditor.maxDiscount}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								inputmode="decimal"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Max discount</span>
+							<input bind:value={couponEditor.maxDiscount} class="input-field" inputmode="decimal" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-								>Total usage limit</span
-							>
-							<input
-								bind:value={couponEditor.usageLimit}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								inputmode="numeric"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Total usage limit</span>
+							<input bind:value={couponEditor.usageLimit} class="input-field" inputmode="numeric" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]"
-								>Per user limit</span
-							>
-							<input
-								bind:value={couponEditor.perUserLimit}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								inputmode="numeric"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Per user limit</span>
+							<input bind:value={couponEditor.perUserLimit} class="input-field" inputmode="numeric" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Status</span>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Status</span>
 							<select
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
+								class="input-field"
 								value={couponEditor.active ? 'active' : 'inactive'}
-								onchange={(event) =>
-									(couponEditor.active =
-										(event.currentTarget as HTMLSelectElement).value === 'active')}
+								onchange={(event) => (couponEditor.active = (event.currentTarget as HTMLSelectElement).value === 'active')}
 							>
 								<option value="active">Active</option>
 								<option value="inactive">Inactive</option>
 							</select>
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Starts at</span
-							>
-							<input
-								bind:value={couponEditor.startsAt}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								type="datetime-local"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Starts at</span>
+							<input bind:value={couponEditor.startsAt} class="input-field" type="datetime-local" />
 						</label>
 						<label>
-							<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Ends at</span>
-							<input
-								bind:value={couponEditor.endsAt}
-								class="bg-background-base text-body-input flex h-10 w-full rounded-md border border-border-muted px-3 py-2 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-								type="datetime-local"
-							/>
+							<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Ends at</span>
+							<input bind:value={couponEditor.endsAt} class="input-field" type="datetime-local" />
 						</label>
 					</div>
 
-					<label class="mt-4 block">
-						<span class="text-label-small mb-2 block text-[var(--black-alpha-72)]">Description</span
-						>
-						<textarea
-							bind:value={couponEditor.description}
-							class="bg-background-base text-body-input flex min-h-[100px] w-full rounded-md border border-border-muted px-3 py-3 transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
-						></textarea>
+					<label class="mt-3 block">
+						<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Description</span>
+						<textarea bind:value={couponEditor.description} class="input-field min-h-[80px] py-2"></textarea>
 					</label>
 
-					<div class="mt-6 flex flex-wrap gap-3">
+					<div class="mt-4 flex flex-wrap gap-2">
 						<button
 							type="button"
-							class="text-label-small text-accent-white inline-flex h-10 items-center justify-center rounded-md bg-heat-100 px-4 transition-colors hover:opacity-90 disabled:opacity-50"
+							class="button button-primary text-[12px] inline-flex h-9 items-center rounded-md px-4 font-medium disabled:opacity-50"
 							disabled={couponSaving}
 							onclick={saveCoupon}
 						>
 							{couponSaving ? 'Saving...' : 'Save coupon'}
 						</button>
-
 						{#if couponEditor.id}
 							<button
 								type="button"
-								class="bg-background-base text-label-small hover:bg-background-lighter inline-flex h-10 items-center justify-center rounded-md border border-border-faint px-4 text-accent-crimson transition-colors hover:border-accent-crimson disabled:opacity-50"
+								class="inline-flex h-9 items-center rounded-md border border-[var(--border-faint)] bg-white px-3 text-[12px] font-medium text-[var(--accent-crimson)] transition-colors hover:border-[var(--accent-crimson)] disabled:opacity-50"
 								disabled={couponDeleting}
 								onclick={deleteCoupon}
 							>
@@ -2019,10 +1729,53 @@
 					</div>
 				</div>
 			</div>
-		{:else if view === 'orders'}
-			<AdminOrdersManager />
-		{:else if view === 'support'}
-			<AdminSupportManager />
-		{/if}
+					{/if}
+				</div>
+
+			{#if mountedViews.includes('orders')}
+				<div class="col-start-1 row-start-1 w-full {panelHidden('orders')}">
+					<AdminOrdersManager />
+				</div>
+			{/if}
+
+			{#if mountedViews.includes('fulfillment')}
+				<div class="col-start-1 row-start-1 w-full {panelHidden('fulfillment')}">
+					<FulfillmentQueue />
+				</div>
+			{/if}
+
+			{#if mountedViews.includes('support')}
+				<div class="col-start-1 row-start-1 w-full {panelHidden('support')}">
+					<AdminSupportManager />
+				</div>
+			{/if}
+		</div>
 	{/if}
 </section>
+
+<style>
+	.admin-header {
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+	}
+
+	.admin-tabs {
+		position: sticky;
+		top: 74px;
+		z-index: 15;
+		background: var(--background-base);
+	}
+
+	.admin-tab {
+		transition: color 180ms ease;
+	}
+
+	.admin-table-row {
+		transition: background-color 140ms ease;
+	}
+
+	@media (max-width: 767px) {
+		.admin-tabs {
+			top: 62px;
+		}
+	}
+</style>

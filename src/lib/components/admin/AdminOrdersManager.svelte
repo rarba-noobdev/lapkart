@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatINR } from '$lib/catalog';
+	import { getAuthContext } from '$lib/auth-context';
 	import {
 		adminReasonRequired,
 		adminShipmentStarted,
@@ -25,6 +26,8 @@
 		type RefundEditorState
 	} from '$lib/admin';
 
+	const auth = getAuthContext();
+
 	let orders = $state<AdminOrderRecord[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -36,6 +39,7 @@
 	let editor = $state<OrderEditorState>(emptyOrderEditor());
 	let refundEditor = $state<RefundEditorState>(emptyRefundEditor());
 	let confirmingManualState = $state(false);
+	let realtimeRefreshTimer: number | null = null;
 
 	const filteredOrders = $derived.by(() =>
 		orders.filter((order) =>
@@ -102,9 +106,9 @@
 		confirmingManualState = false;
 	}
 
-	async function loadOrders() {
+	async function loadOrders(showLoading = orders.length === 0) {
 		try {
-			loading = true;
+			if (showLoading) loading = true;
 			error = null;
 			const response = await requestAdmin<{ orders: AdminOrderRecord[] }>('/admin/orders');
 			const nextOrders = response.orders ?? [];
@@ -113,8 +117,15 @@
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not load orders';
 		} finally {
-			loading = false;
+			if (showLoading) loading = false;
 		}
+	}
+
+	function scheduleOrdersRefresh() {
+		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+		realtimeRefreshTimer = window.setTimeout(() => {
+			void loadOrders(false);
+		}, 350);
 	}
 
 	async function saveOrder() {
@@ -168,7 +179,7 @@
 				body: JSON.stringify(payload)
 			});
 			confirmingManualState = false;
-			await loadOrders();
+			await loadOrders(false);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not update order';
 		} finally {
@@ -190,7 +201,7 @@
 				body: JSON.stringify(body)
 			});
 			if (successReason) error = null;
-			await loadOrders();
+			await loadOrders(false);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Workflow action failed';
 		} finally {
@@ -249,7 +260,7 @@
 					returnRequestId: refundEditor.returnRequestId ?? undefined
 				})
 			});
-			await loadOrders();
+			await loadOrders(false);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not create refund';
 		} finally {
@@ -272,6 +283,28 @@
 
 	onMount(() => {
 		void loadOrders();
+		const channel = auth.supabase
+			.channel('admin-orders-manager')
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_events' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_invoices' }, scheduleOrdersRefresh)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'order_cancellation_requests' },
+				scheduleOrdersRefresh
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'return_requests' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'refunds' }, scheduleOrdersRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'admin_order_events' }, scheduleOrdersRefresh)
+			.subscribe();
+
+		return () => {
+			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			void auth.supabase.removeChannel(channel);
+		};
 	});
 </script>
 
@@ -279,12 +312,12 @@
 	<section class="flex flex-col gap-4 xl:sticky xl:top-8 xl:self-start">
 		<div class="flex items-center justify-between gap-3">
 			<div>
-				<h2 class="text-xl font-semibold text-zinc-900">Orders</h2>
-				<p class="mt-1 text-sm text-zinc-500">Review shipments, returns, and refunds.</p>
+				<h2 class="text-xl font-semibold text-foreground">Orders</h2>
+				<p class="mt-1 text-sm text-[var(--black-alpha-48)]">Review shipments, returns, and refunds.</p>
 			</div>
 			<button
 				type="button"
-				class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-50"
+				class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 hover:text-foreground disabled:opacity-50"
 				disabled={loading}
 				onclick={() => void loadOrders()}
 			>
@@ -300,12 +333,12 @@
 
 		<div class="flex max-h-[calc(100vh-240px)] flex-col gap-2 overflow-y-auto pr-2 pb-10">
 			{#if loading && !orders.length}
-				<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+				<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-[var(--black-alpha-48)]">
 					Loading orders...
 				</div>
 			{:else if !filteredOrders.length}
 				<div
-					class="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-zinc-500"
+					class="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-[var(--black-alpha-48)]"
 				>
 					No orders match the current search.
 				</div>
@@ -325,17 +358,17 @@
 						<div class="flex items-start justify-between gap-2">
 							<div>
 								<div class="flex items-center gap-2">
-									<p class="font-medium text-zinc-900">
+									<p class="font-medium text-foreground">
 										#{order.id.slice(0, 8).toUpperCase()}
 									</p>
 									{#if isTerminalOrder(order)}
 										<span
-											class="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-zinc-700 uppercase"
+											class="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--black-alpha-64)] uppercase"
 											>locked</span
 										>
 									{/if}
 								</div>
-								<p class="mt-0.5 text-xs text-zinc-500">
+								<p class="mt-0.5 text-xs text-[var(--black-alpha-48)]">
 									{new Date(order.createdAt).toLocaleString('en-IN', {
 										month: 'short',
 										day: 'numeric',
@@ -345,7 +378,7 @@
 								</p>
 							</div>
 							<div class="text-right">
-								<p class="font-medium text-zinc-900">{formatINR(order.total)}</p>
+								<p class="font-medium text-foreground">{formatINR(order.total)}</p>
 							</div>
 						</div>
 
@@ -356,7 +389,7 @@
 								{order.status}
 							</span>
 							<span
-								class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${order.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'}`}
+								class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${order.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
 							>
 								{order.paymentStatus}
 							</span>
@@ -368,8 +401,8 @@
 							{/if}
 						</div>
 
-						<div class="mt-1 text-xs text-zinc-500">
-							<span class="font-medium text-zinc-700"
+						<div class="mt-1 text-xs text-[var(--black-alpha-48)]">
+							<span class="font-medium text-[var(--black-alpha-64)]"
 								>{order.shippingName || order.userEmail || 'Customer'}</span
 							>
 							• {[order.shippingCity, order.shippingState].filter(Boolean).join(', ') ||
@@ -385,7 +418,7 @@
 		class="flex flex-col gap-6 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
 	>
 		<div class="border-b border-zinc-200 bg-zinc-50/50 p-6">
-			<h3 class="text-lg font-semibold text-zinc-900">Order Details</h3>
+			<h3 class="text-lg font-semibold text-foreground">Order Details</h3>
 		</div>
 
 		<div class="mt-6 space-y-8 p-6 pt-0">
@@ -405,23 +438,23 @@
 
 				<div class="grid gap-4 sm:grid-cols-3">
 					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-						<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">Order</p>
-						<p class="mt-1 font-medium text-zinc-900">
+						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Order</p>
+						<p class="mt-1 font-medium text-foreground">
 							#{selectedOrder.id.slice(0, 8).toUpperCase()}
 						</p>
 					</div>
 					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-						<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">Customer</p>
-						<p class="mt-1 font-medium text-zinc-900">{selectedOrder.shippingName || 'Customer'}</p>
+						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Customer</p>
+						<p class="mt-1 font-medium text-foreground">{selectedOrder.shippingName || 'Customer'}</p>
 					</div>
 					<div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-						<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">Total</p>
-						<p class="mt-1 font-medium text-zinc-900">{formatINR(selectedOrder.total)}</p>
+						<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Total</p>
+						<p class="mt-1 font-medium text-foreground">{formatINR(selectedOrder.total)}</p>
 					</div>
 				</div>
 
 				<section>
-					<h4 class="mb-4 text-sm font-semibold text-zinc-900">Current State</h4>
+					<h4 class="mb-4 text-sm font-semibold text-foreground">Current State</h4>
 					<div class="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
 						<div class="mb-4 flex items-center gap-3">
 							<span
@@ -430,7 +463,7 @@
 								{selectedOrder.status}
 							</span>
 							<span
-								class={`rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${selectedOrder.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'}`}
+								class={`rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${selectedOrder.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
 							>
 								{selectedOrder.paymentStatus}
 							</span>
@@ -440,7 +473,7 @@
 							{#if nextOrderStatus}
 								<button
 									type="button"
-									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-zinc-50 disabled:opacity-50"
 									disabled={selectedOrderLocked}
 									onclick={() => {
 										editor = { ...editor, status: nextOrderStatus };
@@ -465,7 +498,7 @@
 
 							<button
 								type="button"
-								class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+								class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] transition-colors hover:bg-zinc-50 disabled:opacity-50"
 								disabled={!canReturnSelectedOrder}
 								onclick={() => {
 									editor = { ...editor, status: 'returned' };
@@ -477,7 +510,7 @@
 						</div>
 
 						{#if !canCancelSelectedOrder && !selectedOrderLocked}
-							<p class="mt-4 text-xs text-zinc-500">
+							<p class="mt-4 text-xs text-[var(--black-alpha-48)]">
 								Cancellation is disabled after shipment starts. Use the return workflow for
 								delivered orders.
 							</p>
@@ -486,11 +519,11 @@
 				</section>
 
 				<section>
-					<h4 class="mb-4 text-sm font-semibold text-zinc-900">Manual State Override</h4>
+					<h4 class="mb-4 text-sm font-semibold text-foreground">Manual State Override</h4>
 					<div class="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
 						<div class="grid gap-x-6 gap-y-5 sm:grid-cols-2">
 							<label>
-								<span class="mb-1.5 block text-xs font-medium text-zinc-700">Order Status</span>
+								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Order Status</span>
 								<select
 									bind:value={editor.status}
 									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
@@ -509,7 +542,7 @@
 							</label>
 
 							<label>
-								<span class="mb-1.5 block text-xs font-medium text-zinc-700">Payment Status</span>
+								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Payment Status</span>
 								<select
 									bind:value={editor.paymentStatus}
 									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
@@ -525,7 +558,7 @@
 
 						{#if reasonRequiredForEdit}
 							<label class="mt-4 block">
-								<span class="mb-1.5 block text-xs font-medium text-zinc-700">Reason for change</span
+								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Reason for change</span
 								>
 								<textarea
 									bind:value={editor.reason}
@@ -535,7 +568,7 @@
 								></textarea>
 							</label>
 						{:else}
-							<p class="mt-4 text-xs text-zinc-500">
+							<p class="mt-4 text-xs text-[var(--black-alpha-48)]">
 								Routine order and payment corrections do not require a reason.
 							</p>
 						{/if}
@@ -569,7 +602,7 @@
 							{#if hasManualStateChange}
 								<button
 									type="button"
-									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+									class="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 									disabled={saving}
 									onclick={() => {
 										editor = mapOrderToEditor(selectedOrder);
@@ -585,14 +618,14 @@
 
 				{#if selectedOrder.cancellationRequest}
 					<section>
-						<h4 class="mb-4 text-sm font-semibold text-zinc-900">Cancellation Request</h4>
+						<h4 class="mb-4 text-sm font-semibold text-foreground">Cancellation Request</h4>
 						<div class="rounded-lg border border-red-200 bg-red-50/50 p-5 shadow-sm">
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
-									<p class="text-sm font-medium text-zinc-900">
+									<p class="text-sm font-medium text-foreground">
 										{selectedOrder.cancellationRequest.reason}
 									</p>
-									<div class="mt-2 space-y-1 text-xs text-zinc-500">
+									<div class="mt-2 space-y-1 text-xs text-[var(--black-alpha-48)]">
 										<p>
 											Requested: {new Date(
 												selectedOrder.cancellationRequest.requested_at
@@ -630,7 +663,7 @@
 										</button>
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -646,7 +679,7 @@
 									{#if ['approved', 'refund_pending'].includes(selectedOrder.cancellationRequest.status) && !selectedOrder.cancellationRequest.refund_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={refundableAmount <= 0}
 											onclick={() => {
 												if (!selectedOrder.cancellationRequest) return;
@@ -668,14 +701,14 @@
 
 				{#if selectedOrder.returnRequest}
 					<section>
-						<h4 class="mb-4 text-sm font-semibold text-zinc-900">Return Request</h4>
+						<h4 class="mb-4 text-sm font-semibold text-foreground">Return Request</h4>
 						<div class="rounded-lg border border-amber-200 bg-amber-50/50 p-5 shadow-sm">
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
-									<p class="text-sm font-medium text-zinc-900">
+									<p class="text-sm font-medium text-foreground">
 										{selectedOrder.returnRequest.reason}
 									</p>
-									<div class="mt-2 space-y-1 text-xs text-zinc-500">
+									<div class="mt-2 space-y-1 text-xs text-[var(--black-alpha-48)]">
 										<p>
 											Requested: {new Date(selectedOrder.returnRequest.requested_at).toLocaleString(
 												'en-IN'
@@ -721,7 +754,7 @@
 										</button>
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -737,7 +770,7 @@
 									{#if selectedOrder.returnRequest.status === 'approved' && !selectedOrder.returnRequest.reverse_shipment_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction('return-pickup', '/shipments/shiprocket/return', {
@@ -751,7 +784,7 @@
 									{#if ['approved', 'reverse_pickup_scheduled'].includes(selectedOrder.returnRequest.status)}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={workflowAction !== null}
 											onclick={() =>
 												void runWorkflowAction(
@@ -767,7 +800,7 @@
 									{#if ['received', 'refund_pending'].includes(selectedOrder.returnRequest.status) && !selectedOrder.returnRequest.refund_id}
 										<button
 											type="button"
-											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+											class="inline-flex h-8 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-xs font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
 											disabled={refundableAmount <= 0}
 											onclick={() => {
 												if (!selectedOrder.returnRequest) return;
@@ -788,11 +821,11 @@
 				{/if}
 
 				<section>
-					<h4 class="mb-4 text-sm font-semibold text-zinc-900">Refund Handling</h4>
+					<h4 class="mb-4 text-sm font-semibold text-foreground">Refund Handling</h4>
 					<div class="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
 						<div class="flex flex-wrap items-start justify-between gap-3">
 							<div>
-								<p class="text-xs text-zinc-500">
+								<p class="text-xs text-[var(--black-alpha-48)]">
 									Refunds are created against the captured payment. Partial refunds keep the payment
 									as partially refunded until the balance reaches zero.
 								</p>
@@ -806,30 +839,30 @@
 
 						<div class="mt-5 grid gap-4 sm:grid-cols-3">
 							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-								<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">Paid</p>
-								<p class="mt-1 font-medium text-zinc-900">
+								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Paid</p>
+								<p class="mt-1 font-medium text-foreground">
 									{formatINR(selectedOrder.refundSummary.paidAmount)}
 								</p>
 							</div>
 							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-								<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">
+								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">
 									Refunded
 								</p>
-								<p class="mt-1 font-medium text-zinc-900">
+								<p class="mt-1 font-medium text-foreground">
 									{formatINR(selectedOrder.refundSummary.refundedAmount)}
 								</p>
 							</div>
 							<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-								<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">
+								<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">
 									Remaining
 								</p>
-								<p class="mt-1 font-medium text-zinc-900">{formatINR(refundableAmount)}</p>
+								<p class="mt-1 font-medium text-foreground">{formatINR(refundableAmount)}</p>
 							</div>
 						</div>
 
 						<div class="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2">
 							<label>
-								<span class="mb-1.5 block text-xs font-medium text-zinc-700">Refund amount</span>
+								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Refund amount</span>
 								<input
 									bind:value={refundEditor.amount}
 									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
@@ -839,7 +872,7 @@
 								/>
 							</label>
 							<label>
-								<span class="mb-1.5 block text-xs font-medium text-zinc-700">Refund speed</span>
+								<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Refund speed</span>
 								<select
 									bind:value={refundEditor.speed}
 									class="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
@@ -852,7 +885,7 @@
 						</div>
 
 						<label class="mt-4 block">
-							<span class="mb-1.5 block text-xs font-medium text-zinc-700">Reason</span>
+							<span class="mb-1.5 block text-xs font-medium text-[var(--black-alpha-64)]">Reason</span>
 							<textarea
 								bind:value={refundEditor.reason}
 								class="flex min-h-[80px] w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-[var(--heat-100)] focus-visible:outline-none"
@@ -876,49 +909,49 @@
 
 				<section class="grid gap-6 lg:grid-cols-2">
 					<div>
-						<h4 class="mb-4 text-sm font-semibold text-zinc-900">Customer Details</h4>
+						<h4 class="mb-4 text-sm font-semibold text-foreground">Customer Details</h4>
 						<div
 							class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white shadow-sm"
 						>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Email</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{selectedOrder.shippingEmail || 'Not captured'}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Phone</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{selectedOrder.shippingPhone || 'Not captured'}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Service</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{selectedOrder.shippingServiceType.replaceAll('_', ' ')}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Courier</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{selectedOrder.shipment?.courierName ||
 										selectedOrder.shippingCourierName ||
 										'Not assigned'}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Address</span
 								>
-								<span class="text-sm text-zinc-900">
+								<span class="text-sm text-foreground">
 									{[
 										selectedOrder.shippingLine1,
 										selectedOrder.shippingLine2,
@@ -934,46 +967,46 @@
 					</div>
 
 					<div>
-						<h4 class="mb-4 text-sm font-semibold text-zinc-900">Operational Detail</h4>
+						<h4 class="mb-4 text-sm font-semibold text-foreground">Operational Detail</h4>
 						<div
 							class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white shadow-sm"
 						>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Placed</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{new Date(selectedOrder.createdAt).toLocaleString('en-IN')}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Last updated</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{new Date(selectedOrder.updatedAt).toLocaleString('en-IN')}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Payment method</span
 								>
-								<span class="text-sm text-zinc-900">{selectedOrder.paymentMethod}</span>
+								<span class="text-sm text-foreground">{selectedOrder.paymentMethod}</span>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Shipment</span
 								>
-								<span class="text-sm text-zinc-900"
+								<span class="text-sm text-foreground"
 									>{selectedOrder.shipment?.status || 'Shipment not created'}</span
 								>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Invoice</span
 								>
 								<div class="flex items-center gap-2">
-									<span class="text-sm text-zinc-900"
+									<span class="text-sm text-foreground"
 										>{selectedOrder.invoice?.invoice_number || 'Not generated'}</span
 									>
 									{#if selectedOrder.invoice?.invoice_url}
@@ -988,7 +1021,7 @@
 								</div>
 							</div>
 							<div class="flex flex-col gap-1 p-4">
-								<span class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase"
+								<span class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
 									>Tracking</span
 								>
 								{#if selectedOrder.shipment?.trackingUrl}
@@ -1000,7 +1033,7 @@
 										Open live tracking
 									</button>
 								{:else}
-									<span class="text-sm text-zinc-900">Tracking not available yet</span>
+									<span class="text-sm text-foreground">Tracking not available yet</span>
 								{/if}
 							</div>
 						</div>
@@ -1008,7 +1041,7 @@
 				</section>
 
 				<section>
-					<h4 class="mb-4 text-sm font-semibold text-zinc-900">Items</h4>
+					<h4 class="mb-4 text-sm font-semibold text-foreground">Items</h4>
 					<div
 						class="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
 					>
@@ -1026,22 +1059,22 @@
 									</div>
 								{:else}
 									<div
-										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-xs text-zinc-400"
+										class="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-xs text-[var(--black-alpha-32)]"
 									>
 										No img
 									</div>
 								{/if}
 
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm font-medium text-zinc-900">{item.title}</p>
-									<p class="mt-1 text-xs text-zinc-500">
+									<p class="truncate text-sm font-medium text-foreground">{item.title}</p>
+									<p class="mt-1 text-xs text-[var(--black-alpha-48)]">
 										{item.brand || 'Brand pending'} • {formatINR(item.price)}
 									</p>
 								</div>
 
 								<div class="shrink-0 pr-2 text-right">
-									<p class="text-[10px] font-medium tracking-wider text-zinc-500 uppercase">Qty</p>
-									<p class="mt-0.5 text-sm font-medium text-zinc-900">{item.qty}</p>
+									<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Qty</p>
+									<p class="mt-0.5 text-sm font-medium text-foreground">{item.qty}</p>
 								</div>
 							</div>
 						{/each}
@@ -1051,10 +1084,10 @@
 				{#if selectedOrder.refunds.length || selectedOrder.adminEvents.length}
 					<section class="grid gap-6 pb-10 lg:grid-cols-2">
 						<div>
-							<h4 class="mb-4 text-sm font-semibold text-zinc-900">Refund History</h4>
+							<h4 class="mb-4 text-sm font-semibold text-foreground">Refund History</h4>
 							{#if !selectedOrder.refunds.length}
 								<div
-									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-zinc-500"
+									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-[var(--black-alpha-48)]"
 								>
 									No refunds created yet.
 								</div>
@@ -1063,19 +1096,19 @@
 									{#each selectedOrder.refunds as refund (refund.id)}
 										<div class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
 											<div class="flex items-center justify-between gap-3">
-												<p class="text-sm font-semibold text-zinc-900">
+												<p class="text-sm font-semibold text-foreground">
 													{formatINR(refund.amount)}
 												</p>
 												<span
-													class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${refund.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'}`}
+													class={`rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${refund.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-[var(--black-alpha-64)]'}`}
 												>
 													{refund.status}
 												</span>
 											</div>
-											<p class="mt-2 text-sm text-zinc-700">
+											<p class="mt-2 text-sm text-[var(--black-alpha-64)]">
 												{refund.reason || 'No reason captured'}
 											</p>
-											<p class="mt-2 text-xs text-zinc-500">
+											<p class="mt-2 text-xs text-[var(--black-alpha-48)]">
 												{new Date(refund.createdAt).toLocaleString('en-IN')}
 											</p>
 										</div>
@@ -1085,10 +1118,10 @@
 						</div>
 
 						<div>
-							<h4 class="mb-4 text-sm font-semibold text-zinc-900">Admin History</h4>
+							<h4 class="mb-4 text-sm font-semibold text-foreground">Admin History</h4>
 							{#if !selectedOrder.adminEvents.length}
 								<div
-									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-zinc-500"
+									class="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-center text-sm text-[var(--black-alpha-48)]"
 								>
 									No admin events logged yet.
 								</div>
@@ -1097,16 +1130,16 @@
 									{#each selectedOrder.adminEvents as event (event.id)}
 										<div class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
 											<div class="flex items-center justify-between gap-3">
-												<p class="text-sm font-medium text-zinc-900">
+												<p class="text-sm font-medium text-foreground">
 													{event.eventType.replaceAll('_', ' ')}
 												</p>
-												<p class="text-[10px] text-zinc-500">
+												<p class="text-[10px] text-[var(--black-alpha-48)]">
 													{new Date(event.createdAt).toLocaleString('en-IN')}
 												</p>
 											</div>
-											<p class="mt-2 text-sm text-zinc-700">{event.reason}</p>
+											<p class="mt-2 text-sm text-[var(--black-alpha-64)]">{event.reason}</p>
 											{#if event.adminEmail}
-												<p class="mt-1 text-xs text-zinc-500">
+												<p class="mt-1 text-xs text-[var(--black-alpha-48)]">
 													{event.adminEmail}
 												</p>
 											{/if}
@@ -1119,7 +1152,7 @@
 				{/if}
 			{:else}
 				<div
-					class="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-center text-sm text-zinc-500"
+					class="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-6 text-center text-sm text-[var(--black-alpha-48)]"
 				>
 					Select an order to manage its workflow.
 				</div>
