@@ -15,6 +15,7 @@
 	} from '@lucide/svelte';
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
+	import { isStaffRole } from '$lib/roles';
 
 	const auth = getAuthContext();
 
@@ -24,7 +25,7 @@
 	const cartCount = $derived($cartState.items.reduce((sum, item) => sum + item.qty, 0));
 	const activeUser = $derived(auth.user);
 	const activeRole = $derived(auth.role);
-	const isAdmin = $derived(activeRole === 'admin');
+	const isAdmin = $derived(isStaffRole(activeRole));
 
 	async function submitSearch(event: SubmitEvent) {
 		event.preventDefault();
@@ -34,6 +35,29 @@
 
 	function closeMenu() {
 		menuOpen = false;
+	}
+
+	function closeOnOutside(node: HTMLElement) {
+		const handleDocumentPointerDown = (event: PointerEvent) => {
+			if (!menuOpen) return;
+			const target = event.target;
+			if (target instanceof Node && node.contains(target)) return;
+			closeMenu();
+		};
+
+		const handleDocumentKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') closeMenu();
+		};
+
+		document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+		document.addEventListener('keydown', handleDocumentKeydown);
+
+		return {
+			destroy() {
+				document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+				document.removeEventListener('keydown', handleDocumentKeydown);
+			}
+		};
 	}
 </script>
 
@@ -108,11 +132,12 @@
 			</a>
 
 			{#if activeUser}
-				<div class="relative">
+				<div class="relative" use:closeOnOutside>
 					<button
 						type="button"
 						class="motion-press text-label-small flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 text-foreground transition-colors hover:bg-[var(--black-alpha-4)]"
 						aria-expanded={menuOpen}
+						aria-haspopup="menu"
 						onclick={() => (menuOpen = !menuOpen)}
 					>
 						<div
@@ -143,6 +168,7 @@
 							{#if isAdmin}
 								<a
 									href={resolve('/admin')}
+									onclick={closeMenu}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<ShieldCheck class="size-[15px] text-[var(--black-alpha-48)]" />
@@ -151,6 +177,7 @@
 							{:else}
 								<a
 									href={resolve('/orders')}
+									onclick={closeMenu}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<Package class="size-[15px] text-[var(--black-alpha-48)]" />
@@ -158,6 +185,7 @@
 								</a>
 								<a
 									href={resolve('/profile')}
+									onclick={closeMenu}
 									class="text-label-small flex items-center gap-3 px-4 py-2.5 text-foreground transition-colors hover:bg-[var(--heat-4)] hover:text-[var(--heat-100)]"
 								>
 									<User class="size-[15px] text-[var(--black-alpha-48)]" />

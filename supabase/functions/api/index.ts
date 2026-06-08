@@ -41,6 +41,70 @@ type AuthenticatedUser = {
 	email: string | null;
 };
 
+type StaffRole = 'owner' | 'admin' | 'catalog_manager' | 'order_manager' | 'support' | 'viewer';
+type AppRole = StaffRole | 'user';
+type StaffPermission =
+	| 'read_admin'
+	| 'manage_catalog'
+	| 'manage_orders'
+	| 'manage_fulfillment'
+	| 'manage_support'
+	| 'manage_promos'
+	| 'manage_users'
+	| 'manage_roles'
+	| 'manage_refunds'
+	| 'manage_settings'
+	| 'view_monitoring'
+	| 'import_export';
+
+type AuthenticatedStaff = AuthenticatedUser & {
+	role: StaffRole;
+};
+
+const staffRoleValues = new Set<StaffRole>([
+	'owner',
+	'admin',
+	'catalog_manager',
+	'order_manager',
+	'support',
+	'viewer'
+]);
+
+const staffPermissions: Record<StaffRole, Set<StaffPermission>> = {
+	owner: new Set([
+		'read_admin',
+		'manage_catalog',
+		'manage_orders',
+		'manage_fulfillment',
+		'manage_support',
+		'manage_promos',
+		'manage_users',
+		'manage_roles',
+		'manage_refunds',
+		'manage_settings',
+		'view_monitoring',
+		'import_export'
+	]),
+	admin: new Set([
+		'read_admin',
+		'manage_catalog',
+		'manage_orders',
+		'manage_fulfillment',
+		'manage_support',
+		'manage_promos',
+		'manage_users',
+		'manage_roles',
+		'manage_refunds',
+		'manage_settings',
+		'view_monitoring',
+		'import_export'
+	]),
+	catalog_manager: new Set(['read_admin', 'manage_catalog', 'import_export']),
+	order_manager: new Set(['read_admin', 'manage_orders', 'manage_fulfillment', 'manage_refunds']),
+	support: new Set(['read_admin', 'manage_support', 'manage_orders']),
+	viewer: new Set(['read_admin', 'view_monitoring'])
+};
+
 type CheckoutProductRow = {
 	id: string;
 	title: string;
@@ -142,6 +206,14 @@ const webhookRateLimit = { limit: 120, windowMs: 60_000 };
 const checkoutSessionTtlMs = 20 * 60_000;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+const featureFlagCache: { expiresAt: number; values: Map<string, boolean> } = {
+	expiresAt: 0,
+	values: new Map()
+};
+const adminProductSelect =
+	'id,title,brand,category,description,image,images,price,mrp,stock,status,sku,source_url,compatibility,warranty,highlights,search_keywords,weight_kg,length_cm,breadth_cm,height_cm,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible,updated_at';
+const adminCouponSelect =
+	'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active,created_at,updated_at';
 
 const nullableTrimmedString = (max: number) =>
 	z
@@ -272,7 +344,9 @@ const productUpdateSchema = productUpsertSchema
 
 const adminUserUpdateSchema = z
 	.object({
-		role: z.enum(['admin', 'user']).optional(),
+		role: z
+			.enum(['owner', 'admin', 'catalog_manager', 'order_manager', 'support', 'viewer', 'user'])
+			.optional(),
 		fullName: nullableTrimmedString(160),
 		phone: nullableTrimmedString(30)
 	})
@@ -484,6 +558,22 @@ const couponWriteSchema = z.object({
 });
 
 const couponPatchSchema = couponWriteSchema.partial();
+
+const featureFlagPatchSchema = z.object({
+	key: z.string().trim().min(2).max(80),
+	enabled: z.boolean(),
+	description: nullableTrimmedString(300),
+	metadata: z.record(z.unknown()).optional().default({})
+});
+
+const productImportRowSchema = productUpsertSchema.extend({
+	id: z.string().uuid().optional()
+});
+
+const productImportSchema = z.object({
+	mode: z.enum(['preview', 'commit']).optional().default('preview'),
+	products: z.array(productImportRowSchema).min(1).max(200)
+});
 
 function roundMoney(value: number) {
 	return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -712,7 +802,17 @@ async function requireUser(req: Request) {
 	return { id: data.user.id, email: data.user.email ?? null } satisfies AuthenticatedUser;
 }
 
-async function requireAdmin(req: Request) {
+function normalizeRole(value: unknown): AppRole {
+	return typeof value === 'string' && (staffRoleValues.has(value as StaffRole) || value === 'user')
+		? (value as AppRole)
+		: 'user';
+}
+
+function hasStaffPermission(role: StaffRole, permission: StaffPermission) {
+	return staffPermissions[role]?.has(permission) ?? false;
+}
+
+async function requireStaff(req: Request, permission: StaffPermission = 'read_admin') {
 	const adminDb = getSupabaseAdmin();
 	const user = await requireUser(req);
 	const { data: roleRow, error: roleError } = await adminDb
@@ -721,8 +821,16 @@ async function requireAdmin(req: Request) {
 		.eq('user_id', user.id)
 		.maybeSingle();
 	if (roleError) throw roleError;
-	if (roleRow?.role !== 'admin') throw new HttpError(403, 'Admin role is required');
-	return user;
+	const role = normalizeRole(roleRow?.role);
+	if (!staffRoleValues.has(role as StaffRole)) throw new HttpError(403, 'Staff role is required');
+	if (!hasStaffPermission(role as StaffRole, permission)) {
+		throw new HttpError(403, `${permission.replaceAll('_', ' ')} permission is required`);
+	}
+	return { ...user, role: role as StaffRole } satisfies AuthenticatedStaff;
+}
+
+async function requireAdmin(req: Request) {
+	return requireStaff(req, 'read_admin');
 }
 
 function getClientIp(req: Request) {
@@ -749,6 +857,30 @@ function enforceRateLimit(
 		throw new HttpError(429, 'Too many requests');
 	}
 	current.count += 1;
+}
+
+async function enforceDurableRateLimit(
+	req: Request,
+	name: string,
+	configValue: { limit: number; windowMs: number },
+	subject?: string
+) {
+	const adminDb = getSupabaseAdmin();
+	const key = `${name}:${subject ?? getClientIp(req)}`;
+	const { data, error } = await adminDb.rpc('consume_rate_limit', {
+		p_key: key,
+		p_limit: configValue.limit,
+		p_window_seconds: Math.max(1, Math.ceil(configValue.windowMs / 1000))
+	});
+	if (error) {
+		console.warn('Durable rate limit unavailable, using local bucket', error.message);
+		enforceRateLimit(req, name, configValue);
+		return;
+	}
+	const result = asRecord(data);
+	if (result.allowed === false) {
+		throw new HttpError(429, 'Too many requests');
+	}
 }
 
 function isRazorpayAuthError(error: unknown) {
@@ -807,6 +939,64 @@ function toDateOnly(value: unknown) {
 function firstString(...values: unknown[]) {
 	const value = values.find((item) => typeof item === 'string' && item.trim());
 	return typeof value === 'string' ? value : null;
+}
+
+async function loadFeatureFlags() {
+	const now = Date.now();
+	if (featureFlagCache.expiresAt > now) return featureFlagCache.values;
+	const adminDb = getSupabaseAdmin();
+	const { data, error } = await adminDb.from('feature_flags').select('key,enabled');
+	if (error) {
+		console.warn('Could not load feature flags', error.message);
+		featureFlagCache.expiresAt = now + 10_000;
+		return featureFlagCache.values;
+	}
+	featureFlagCache.values = new Map(
+		(data ?? []).map((flag) => [String(flag.key), flag.enabled !== false])
+	);
+	featureFlagCache.expiresAt = now + 30_000;
+	return featureFlagCache.values;
+}
+
+async function isFeatureEnabled(key: string) {
+	const flags = await loadFeatureFlags();
+	return flags.get(key) !== false;
+}
+
+async function requireFeatureFlag(key: string, message: string) {
+	const flags = await loadFeatureFlags();
+	if (flags.get('maintenance_mode') === true) {
+		throw new HttpError(503, 'LapKart is in maintenance mode. Please try again shortly.');
+	}
+	if (flags.get(key) === false) {
+		throw new HttpError(503, message);
+	}
+}
+
+async function logMonitoringEvent(input: {
+	source: string;
+	severity?: 'info' | 'warning' | 'error' | 'critical';
+	message: string;
+	userId?: string | null;
+	requestKey?: string | null;
+	metadata?: Record<string, unknown>;
+}) {
+	try {
+		const adminDb = getSupabaseAdmin();
+		await adminDb.from('monitoring_events').insert({
+			source: input.source,
+			severity: input.severity ?? 'info',
+			message: input.message,
+			user_id: input.userId ?? null,
+			request_key: input.requestKey ?? null,
+			metadata: input.metadata ?? {}
+		});
+	} catch (error) {
+		console.warn(
+			'Could not write monitoring event',
+			error instanceof Error ? error.message : error
+		);
+	}
 }
 
 function getAwbData(response: Record<string, unknown>) {
@@ -1564,6 +1754,9 @@ async function validateCouponForCheckout({
 }): Promise<AppliedCoupon | null> {
 	const normalizedCode = code.trim().toUpperCase();
 	if (!normalizedCode) return null;
+	if (!(await isFeatureEnabled('coupons'))) {
+		throw new HttpError(503, 'Coupons are temporarily unavailable');
+	}
 
 	const adminDb = getSupabaseAdmin();
 	const { data: coupon, error } = await adminDb
@@ -1841,6 +2034,36 @@ function productPayloadFromInput(
 	return payload;
 }
 
+function csvCell(value: unknown) {
+	const textValue = Array.isArray(value)
+		? value.join('|')
+		: typeof value === 'object' && value !== null
+			? JSON.stringify(value)
+			: String(value ?? '');
+	return `"${textValue.replaceAll('"', '""')}"`;
+}
+
+function productsToCsv(rows: Array<Record<string, unknown>>) {
+	const headers = [
+		'id',
+		'title',
+		'brand',
+		'category',
+		'sku',
+		'status',
+		'price',
+		'mrp',
+		'stock',
+		'image',
+		'images',
+		'updated_at'
+	];
+	return [
+		headers.join(','),
+		...rows.map((row) => headers.map((header) => csvCell(row[header])).join(','))
+	].join('\n');
+}
+
 function couponPayloadFromInput(
 	input: z.infer<typeof couponWriteSchema> | z.infer<typeof couponPatchSchema>
 ) {
@@ -1866,6 +2089,50 @@ function couponPayloadFromInput(
 
 function parseQueryObject(url: URL) {
 	return Object.fromEntries(url.searchParams.entries());
+}
+
+function parseBoundedInteger(
+	value: string | null,
+	fallback: number,
+	options: { min?: number; max?: number } = {}
+) {
+	const min = options.min ?? 1;
+	const max = options.max ?? 100;
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed)) return fallback;
+	return Math.min(max, Math.max(min, parsed));
+}
+
+function parsePagination(url: URL, defaultPageSize = 50, maxPageSize = 100) {
+	const page = parseBoundedInteger(url.searchParams.get('page'), 1, { min: 1, max: 10_000 });
+	const pageSize = parseBoundedInteger(url.searchParams.get('pageSize'), defaultPageSize, {
+		min: 1,
+		max: maxPageSize
+	});
+	const from = (page - 1) * pageSize;
+	return {
+		page,
+		pageSize,
+		from,
+		to: from + pageSize - 1
+	};
+}
+
+function paginationPayload(page: number, pageSize: number, total: number | null | undefined) {
+	const safeTotal = total ?? 0;
+	const totalPages = Math.max(1, Math.ceil(safeTotal / pageSize));
+	return {
+		page,
+		pageSize,
+		total: safeTotal,
+		totalPages,
+		hasNext: page < totalPages,
+		hasPrevious: page > 1
+	};
+}
+
+function escapeIlike(value: string) {
+	return value.trim().replace(/[\\%_]/g, '\\$&');
 }
 
 function matchRoute(path: string, pattern: RegExp) {
@@ -1909,17 +2176,22 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'POST' && path === '/checkout/preview') {
-		enforceRateLimit(req, 'payment', paymentRateLimit);
+		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
+		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
 		const summary = await buildCheckoutSummary(user.id, input);
 		return json(req, 200, { summary });
 	}
 
 	if (req.method === 'POST' && path === '/checkout/create-cod-order') {
-		enforceRateLimit(req, 'payment', paymentRateLimit);
+		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
+		await requireFeatureFlag('cod', 'Cash on delivery is temporarily unavailable');
+		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const adminDb = getSupabaseAdmin();
 		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
 		const summary = await buildCheckoutSummary(user.id, input);
 		if (!summary.cod.eligible) {
@@ -2066,8 +2338,11 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'POST' && path === '/checkout/create-payment-order') {
-		enforceRateLimit(req, 'payment', paymentRateLimit);
+		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
+		await requireFeatureFlag('razorpay_payments', 'Online payments are temporarily unavailable');
+		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
 		const summary = await buildCheckoutSummary(user.id, input);
 		const razorpayOrder = await createRazorpayOrder(
@@ -2092,15 +2367,32 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'POST' && path === '/checkout/complete-payment') {
-		enforceRateLimit(req, 'payment', paymentRateLimit);
+		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
+		await requireFeatureFlag('razorpay_payments', 'Online payments are temporarily unavailable');
 		const adminDb = getSupabaseAdmin();
 		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCompletePaymentSchema.parse(await req.json());
 		const loadedSession = await loadCheckoutSession(input.razorpay_order_id);
 		if (!loadedSession) {
+			await logMonitoringEvent({
+				source: 'checkout',
+				severity: 'warning',
+				message: 'Checkout session missing or expired during payment completion',
+				userId: user.id,
+				requestKey: input.razorpay_order_id
+			});
 			throw new HttpError(409, 'Checkout session expired. Please create a new payment order.');
 		}
 		if (loadedSession.orderId && loadedSession.status === 'paid') {
+			await logMonitoringEvent({
+				source: 'checkout',
+				severity: 'info',
+				message: 'Duplicate payment completion returned existing order',
+				userId: user.id,
+				requestKey: input.razorpay_order_id,
+				metadata: { orderId: loadedSession.orderId }
+			});
 			return json(req, 200, { verified: true, orderId: loadedSession.orderId });
 		}
 		if (loadedSession.status !== 'pending') {
@@ -2116,7 +2408,17 @@ async function handle(req: Request) {
 			paymentId: input.razorpay_payment_id,
 			signature: input.razorpay_signature
 		});
-		if (!verified) throw new HttpError(400, 'Razorpay signature verification failed');
+		if (!verified) {
+			await logMonitoringEvent({
+				source: 'checkout',
+				severity: 'warning',
+				message: 'Razorpay signature verification failed',
+				userId: user.id,
+				requestKey: input.razorpay_order_id,
+				metadata: { paymentId: input.razorpay_payment_id }
+			});
+			throw new HttpError(400, 'Razorpay signature verification failed');
+		}
 
 		const { data: existingPayment, error: existingPaymentError } = await adminDb
 			.from('payments')
@@ -2126,6 +2428,14 @@ async function handle(req: Request) {
 		if (existingPaymentError) throw existingPaymentError;
 		if (existingPayment?.order_id) {
 			await markCheckoutSessionPaid(input.razorpay_order_id, existingPayment.order_id);
+			await logMonitoringEvent({
+				source: 'checkout',
+				severity: 'info',
+				message: 'Duplicate payment callback matched existing payment',
+				userId: user.id,
+				requestKey: input.razorpay_order_id,
+				metadata: { orderId: existingPayment.order_id }
+			});
 			return json(req, 200, { verified: true, orderId: existingPayment.order_id });
 		}
 
@@ -2231,6 +2541,14 @@ async function handle(req: Request) {
 		);
 		if (completeError) {
 			await markCheckoutSessionFailed(input.razorpay_order_id);
+			await logMonitoringEvent({
+				source: 'checkout',
+				severity: 'error',
+				message: 'Checkout payment completion failed',
+				userId: user.id,
+				requestKey: input.razorpay_order_id,
+				metadata: { error: completeError.message, orderId }
+			});
 			throw completeError;
 		}
 
@@ -2257,8 +2575,8 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'GET' && path === '/maps/autocomplete') {
-		enforceRateLimit(req, 'map', mapRateLimit);
-		await requireUser(req);
+		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = autocompleteQuerySchema.parse(parseQueryObject(url));
 		const suggestions = await autocompleteOlaPlaces(
 			input.input,
@@ -2270,15 +2588,16 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'GET' && path === '/maps/reverse-geocode') {
-		enforceRateLimit(req, 'map', mapRateLimit);
-		await requireUser(req);
+		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = reverseGeocodeQuerySchema.parse(parseQueryObject(url));
 		return json(req, 200, await reverseGeocodeOlaPlace(input.latitude, input.longitude));
 	}
 
 	if (req.method === 'GET' && path === '/maps/delivery-estimate') {
-		enforceRateLimit(req, 'map', mapRateLimit);
-		await requireUser(req);
+		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
+		const user = await requireUser(req);
+		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = deliveryEstimateQuerySchema.parse(parseQueryObject(url));
 		const [route, couriers] = await Promise.all([
 			getOlaDeliveryRoute(input),
@@ -2302,7 +2621,7 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'GET' && path === '/shiprocket/status') {
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
 		const verify = url.searchParams.get('verify');
 		if (verify !== '1' && verify !== 'true') {
 			return json(req, 200, {
@@ -2317,7 +2636,8 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'GET' && path === '/shiprocket/account') {
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		const [walletBalance, pickupResponse] = await Promise.all([
 			getShiprocketWalletBalance(),
 			getShiprocketPickupLocations()
@@ -2347,14 +2667,30 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/fulfillment/orders') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const { data: orders, error: ordersError } = await adminDb
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const status = url.searchParams.get('status')?.trim().toLowerCase();
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		let fulfillmentQuery = adminDb
 			.from('orders')
 			.select(
-				'id,created_at,status,total,shipping_name,shipping_city,shipping_state,shipping_pincode,shipping_service_type'
-			)
+				'id,created_at,status,total,shipping_name,shipping_city,shipping_state,shipping_pincode,shipping_service_type',
+				{ count: 'exact' }
+			);
+		if (status) fulfillmentQuery = fulfillmentQuery.eq('status', status);
+		if (q) {
+			fulfillmentQuery = fulfillmentQuery.or(
+				`shipping_name.ilike.%${q}%,shipping_city.ilike.%${q}%,shipping_state.ilike.%${q}%,shipping_pincode.ilike.%${q}%`
+			);
+		}
+		const {
+			data: orders,
+			error: ordersError,
+			count
+		} = await fulfillmentQuery
 			.order('created_at', { ascending: false })
-			.limit(100);
+			.order('id', { ascending: true })
+			.range(from, to);
 		if (ordersError) throw ordersError;
 
 		const orderIds = (orders ?? []).map((order) => order.id);
@@ -2425,7 +2761,8 @@ async function handle(req: Request) {
 					shipmentsByOrder.get(order.id),
 					shipmentEventsByShipment.get(String(shipmentsByOrder.get(order.id)?.id ?? ''))
 				)
-			}))
+			})),
+			pagination: paginationPayload(page, pageSize, count)
 		});
 	}
 
@@ -2853,20 +3190,30 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/product-questions') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const { data, error } = await adminDb
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const status = url.searchParams.get('status')?.trim();
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		let questionsQuery = adminDb
 			.from('product_questions')
-			.select('*,products(id,title,image,brand)')
+			.select('*,products(id,title,image,brand)', { count: 'exact' });
+		if (status) questionsQuery = questionsQuery.eq('status', status);
+		if (q) questionsQuery = questionsQuery.or(`question.ilike.%${q}%,answer.ilike.%${q}%`);
+		const { data, error, count } = await questionsQuery
 			.order('created_at', { ascending: false })
-			.limit(200);
+			.order('id', { ascending: true })
+			.range(from, to);
 		if (error) throw error;
-		return json(req, 200, { questions: data ?? [] });
+		return json(req, 200, {
+			questions: data ?? [],
+			pagination: paginationPayload(page, pageSize, count)
+		});
 	}
 
 	const adminQuestionMatch = matchRoute(path, /^\/admin\/product-questions\/([^/]+)$/);
 	if (req.method === 'PATCH' && adminQuestionMatch) {
 		const adminDb = getSupabaseAdmin();
-		const adminUser = await requireAdmin(req);
+		const adminUser = await requireStaff(req, 'manage_support');
 		const { orderId: questionId } = orderIdParamSchema.parse({ orderId: adminQuestionMatch[1] });
 		const input = adminQuestionUpdateSchema.parse(await req.json());
 		const payload: Record<string, unknown> = {};
@@ -2889,14 +3236,24 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/stock-notification-events') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const { data, error } = await adminDb
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const status = url.searchParams.get('status')?.trim();
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		let eventsQuery = adminDb
 			.from('stock_notification_events')
-			.select('*,products(id,title,image,brand,stock)')
+			.select('*,products(id,title,image,brand,stock)', { count: 'exact' });
+		if (status) eventsQuery = eventsQuery.eq('status', status);
+		if (q) eventsQuery = eventsQuery.ilike('email', `%${q}%`);
+		const { data, error, count } = await eventsQuery
 			.order('created_at', { ascending: false })
-			.limit(200);
+			.order('id', { ascending: true })
+			.range(from, to);
 		if (error) throw error;
-		return json(req, 200, { events: data ?? [] });
+		return json(req, 200, {
+			events: data ?? [],
+			pagination: paginationPayload(page, pageSize, count)
+		});
 	}
 
 	const adminStockEventMatch = matchRoute(path, /^\/admin\/stock-notification-events\/([^/]+)$/);
@@ -2905,7 +3262,7 @@ async function handle(req: Request) {
 		/^\/admin\/stock-notification-events\/([^/]+)\/send$/
 	);
 	if (req.method === 'POST' && adminStockEventSendMatch) {
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_support');
 		const { orderId: eventId } = orderIdParamSchema.parse({
 			orderId: adminStockEventSendMatch[1]
 		});
@@ -2915,7 +3272,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'PATCH' && adminStockEventMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_support');
 		const { orderId: eventId } = orderIdParamSchema.parse({ orderId: adminStockEventMatch[1] });
 		const input = z
 			.object({ status: z.enum(['pending', 'sent', 'failed', 'cancelled']) })
@@ -2936,7 +3293,7 @@ async function handle(req: Request) {
 	const adminCancellationMatch = matchRoute(path, /^\/admin\/cancellation-requests\/([^/]+)$/);
 	if (req.method === 'POST' && adminCancellationMatch) {
 		const adminDb = getSupabaseAdmin();
-		const adminUser = await requireAdmin(req);
+		const adminUser = await requireStaff(req, 'manage_orders');
 		const { orderId: cancellationId } = orderIdParamSchema.parse({
 			orderId: adminCancellationMatch[1]
 		});
@@ -2989,7 +3346,7 @@ async function handle(req: Request) {
 	const adminReturnMatch = matchRoute(path, /^\/admin\/return-requests\/([^/]+)$/);
 	if (req.method === 'POST' && adminReturnMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_orders');
 		const { orderId: returnRequestId } = orderIdParamSchema.parse({ orderId: adminReturnMatch[1] });
 		const input = adminWorkflowActionSchema.parse(await req.json());
 		const status =
@@ -3032,7 +3389,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/admin/refunds') {
 		const adminDb = getSupabaseAdmin();
-		const adminUser = await requireAdmin(req);
+		const adminUser = await requireStaff(req, 'manage_refunds');
 		const input = adminRefundSchema.parse(await req.json());
 		const [{ data: order, error: orderError }, { data: payment, error: paymentError }] =
 			await Promise.all([
@@ -3224,7 +3581,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/create') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		requireLivePaymentEnvironment();
 		const input = createShiprocketShipmentSchema.parse(await req.json());
 		const { shipment, shiprocket: response } = await createShiprocketShipmentForOrder(
@@ -3236,7 +3594,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/assign-awb') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		requireLivePaymentEnvironment();
 		const input = assignAwbSchema.parse(await req.json());
 		const { data: shipment, error: shipmentError } = await adminDb
@@ -3300,7 +3659,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/pickup') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		requireLivePaymentEnvironment();
 		const input = shipmentIdSchema.parse(await req.json());
 		const { data: shipment, error: shipmentError } = await adminDb
@@ -3359,7 +3719,8 @@ async function handle(req: Request) {
 	const shipmentTrackingMatch = matchRoute(path, /^\/shipments\/shiprocket\/([^/]+)\/tracking$/);
 	if (req.method === 'GET' && shipmentTrackingMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'read_admin');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		const input = shipmentIdSchema.parse({ shipmentId: shipmentTrackingMatch[1] });
 		const { data: shipment, error: shipmentError } = await adminDb
 			.from('shipments')
@@ -3373,7 +3734,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/return') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		requireLivePaymentEnvironment();
 		const input = reversePickupSchema.parse(await req.json());
 		const { data: returnRequest, error: returnRequestError } = await adminDb
@@ -3514,7 +3876,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/bulk') {
 		const adminDb = getSupabaseAdmin();
-		const adminUser = await requireAdmin(req);
+		const adminUser = await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		requireLivePaymentEnvironment();
 		const input = bulkFulfillmentSchema.parse(await req.json());
 		if (input.action === 'create_orders' && !input.orderIds.length) {
@@ -3752,7 +4115,8 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/shipments/shiprocket/labels') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_fulfillment');
+		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		const input = labelsSchema.parse(await req.json());
 		const { data: shipments, error } = await adminDb
 			.from('shipments')
@@ -3781,7 +4145,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/logistics/events') {
 		const adminDb = getSupabaseAdmin();
-		enforceRateLimit(req, 'webhook', webhookRateLimit);
+		await enforceDurableRateLimit(req, 'webhook', webhookRateLimit, getClientIp(req));
 		if (!config.shiprocketWebhookToken) {
 			throw new HttpError(
 				503,
@@ -3828,6 +4192,13 @@ async function handle(req: Request) {
 			.single();
 		if (webhookEventError) {
 			if (webhookEventError.code === '23505') {
+				await logMonitoringEvent({
+					source: 'shiprocket.webhook',
+					severity: 'info',
+					message: 'Duplicate Shiprocket webhook ignored',
+					requestKey: idempotencyKey,
+					metadata: { providerEventId, awb, shiprocketShipmentId }
+				});
 				return json(req, 200, { ok: true, duplicate: true });
 			}
 			throw webhookEventError;
@@ -3863,6 +4234,15 @@ async function handle(req: Request) {
 				processed_at: new Date().toISOString()
 			})
 			.eq('id', webhookEvent.id);
+		if (!shipmentId) {
+			await logMonitoringEvent({
+				source: 'shiprocket.webhook',
+				severity: 'warning',
+				message: 'Shiprocket webhook did not match a shipment',
+				requestKey: idempotencyKey,
+				metadata: { providerEventId, awb, shiprocketShipmentId, status }
+			});
+		}
 		return json(req, 200, { ok: true });
 	}
 
@@ -3870,7 +4250,10 @@ async function handle(req: Request) {
 	if (req.method === 'POST' && storageUploadMatch) {
 		const adminDb = getSupabaseAdmin();
 		enforceRateLimit(req, 'upload', uploadRateLimit);
-		await requireAdmin(req);
+		await requireStaff(
+			req,
+			storageUploadMatch[1] === 'products' ? 'manage_catalog' : 'manage_users'
+		);
 		const formData = await req.formData();
 		const fileValue = formData.get('file');
 		if (!(fileValue instanceof File)) throw new HttpError(400, 'file is required');
@@ -3893,7 +4276,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/analytics') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'read_admin');
 		const [orders, products, users, cancellations, returnsResult, refunds] = await Promise.all([
 			adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
 			adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
@@ -4029,26 +4412,214 @@ async function handle(req: Request) {
 		});
 	}
 
-	if (req.method === 'GET' && path === '/admin/products') {
+	if (req.method === 'GET' && path === '/admin/feature-flags') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_settings');
+		const { data, error } = await adminDb
+			.from('feature_flags')
+			.select('*')
+			.order('key', { ascending: true });
+		if (error) throw error;
+		return json(req, 200, { flags: data ?? [] });
+	}
+
+	if (req.method === 'PATCH' && path === '/admin/feature-flags') {
+		const adminDb = getSupabaseAdmin();
+		const actor = await requireStaff(req, 'manage_settings');
+		const input = featureFlagPatchSchema.parse(await req.json());
+		const { data, error } = await adminDb
+			.from('feature_flags')
+			.upsert(
+				{
+					key: input.key,
+					enabled: input.enabled,
+					description: input.description ?? null,
+					metadata: input.metadata,
+					updated_by: actor.id,
+					updated_at: new Date().toISOString()
+				},
+				{ onConflict: 'key' }
+			)
+			.select('*')
+			.single();
+		if (error) throw error;
+		featureFlagCache.expiresAt = 0;
+		await logMonitoringEvent({
+			source: 'admin.feature_flags',
+			severity: 'info',
+			message: `Feature flag ${input.key} set to ${input.enabled ? 'enabled' : 'disabled'}`,
+			userId: actor.id,
+			requestKey: input.key
+		});
+		return json(req, 200, { flag: data });
+	}
+
+	if (req.method === 'GET' && path === '/admin/monitoring/events') {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'view_monitoring');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const severity = url.searchParams.get('severity')?.trim();
+		const source = url.searchParams.get('source')?.trim();
+		let query = adminDb.from('monitoring_events').select('*', { count: 'exact' });
+		if (severity) query = query.eq('severity', severity);
+		if (source) query = query.eq('source', source);
+		const { data, error, count } = await query
+			.order('created_at', { ascending: false })
+			.range(from, to);
+		if (error) throw error;
+		return json(req, 200, {
+			events: data ?? [],
+			pagination: paginationPayload(page, pageSize, count)
+		});
+	}
+
+	if (req.method === 'GET' && path === '/admin/products/export') {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'import_export');
 		const { data, error } = await adminDb
 			.from('products')
-			.select('*')
+			.select(adminProductSelect)
 			.order('updated_at', { ascending: false })
-			.limit(250);
+			.limit(5000);
 		if (error) throw error;
-		return json(req, 200, { products: data ?? [] });
+		return text(req, 200, productsToCsv((data ?? []) as Array<Record<string, unknown>>), {
+			'Content-Type': 'text/csv; charset=utf-8',
+			'Content-Disposition': `attachment; filename="lapkart-products-${new Date().toISOString().slice(0, 10)}.csv"`
+		});
+	}
+
+	if (req.method === 'POST' && path === '/admin/products/import') {
+		const adminDb = getSupabaseAdmin();
+		const actor = await requireStaff(req, 'import_export');
+		const raw = productImportSchema.parse(await req.json());
+		const rows = raw.products;
+		const parsedRows = rows.map((row, index) => {
+			const result = productImportRowSchema.safeParse(row);
+			return result.success
+				? { index, ok: true as const, product: result.data }
+				: { index, ok: false as const, issues: result.error.issues };
+		});
+		const errorRows = parsedRows.filter((row) => !row.ok);
+		const mode = raw.mode;
+		const { data: job, error: jobError } = await adminDb
+			.from('admin_import_jobs')
+			.insert({
+				actor_user_id: actor.id,
+				kind: 'products',
+				mode,
+				status: mode === 'preview' ? (errorRows.length ? 'rejected' : 'accepted') : 'accepted',
+				row_count: rows.length,
+				error_count: errorRows.length,
+				summary: { errors: errorRows }
+			})
+			.select('*')
+			.single();
+		if (jobError) throw jobError;
+		if (mode === 'preview' || errorRows.length) {
+			return json(req, errorRows.length ? 400 : 200, {
+				job,
+				mode,
+				accepted: parsedRows.length - errorRows.length,
+				errors: errorRows
+			});
+		}
+
+		const results: Array<Record<string, unknown>> = [];
+		let successCount = 0;
+		for (const row of parsedRows) {
+			if (!row.ok) continue;
+			try {
+				const { id, ...productInput } = row.product;
+				const payload = productPayloadFromInput(productInput);
+				let productId = id ?? null;
+				if (!productId && productInput.sku) {
+					const { data: existing, error: existingError } = await adminDb
+						.from('products')
+						.select('id')
+						.eq('sku', productInput.sku)
+						.maybeSingle();
+					if (existingError) throw existingError;
+					productId = existing?.id ?? null;
+				}
+				const mutation = productId
+					? adminDb
+							.from('products')
+							.update(payload)
+							.eq('id', productId)
+							.select('id,title,sku,status')
+							.single()
+					: adminDb.from('products').insert(payload).select('id,title,sku,status').single();
+				const { data, error } = await mutation;
+				if (error) throw error;
+				successCount += 1;
+				results.push({ index: row.index, status: 'completed', product: data });
+			} catch (error) {
+				results.push({
+					index: row.index,
+					status: 'failed',
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+		}
+		const failures = results.filter((row) => row.status === 'failed');
+		const { data: updatedJob, error: updateJobError } = await adminDb
+			.from('admin_import_jobs')
+			.update({
+				status: failures.length ? 'failed' : 'completed',
+				error_count: failures.length,
+				summary: { results }
+			})
+			.eq('id', job.id)
+			.select('*')
+			.single();
+		if (updateJobError) throw updateJobError;
+		return json(req, failures.length ? 207 : 200, {
+			job: updatedJob,
+			processed: results.length,
+			successCount,
+			failureCount: failures.length,
+			results
+		});
+	}
+
+	if (req.method === 'GET' && path === '/admin/products') {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		const category = url.searchParams.get('category')?.trim();
+		const status = url.searchParams.get('status')?.trim();
+		const sort = url.searchParams.get('sort') ?? 'updated-desc';
+		let query = adminDb.from('products').select(adminProductSelect, { count: 'exact' });
+		if (q) {
+			query = query.or(
+				`title.ilike.%${q}%,brand.ilike.%${q}%,sku.ilike.%${q}%,category.ilike.%${q}%`
+			);
+		}
+		if (category) query = query.eq('category', category);
+		if (status) query = query.eq('status', status);
+		if (sort === 'price-asc') query = query.order('price', { ascending: true });
+		else if (sort === 'price-desc') query = query.order('price', { ascending: false });
+		else if (sort === 'stock-asc') query = query.order('stock', { ascending: true });
+		else if (sort === 'stock-desc') query = query.order('stock', { ascending: false });
+		else if (sort === 'title-asc') query = query.order('title', { ascending: true });
+		else query = query.order('updated_at', { ascending: false });
+		const { data, error, count } = await query.order('id', { ascending: true }).range(from, to);
+		if (error) throw error;
+		return json(req, 200, {
+			products: data ?? [],
+			pagination: paginationPayload(page, pageSize, count)
+		});
 	}
 
 	if (req.method === 'POST' && path === '/admin/products') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_catalog');
 		const input = productUpsertSchema.parse(await req.json());
 		const { data, error } = await adminDb
 			.from('products')
 			.insert(productPayloadFromInput(input))
-			.select('*')
+			.select(adminProductSelect)
 			.single();
 		if (error) throw error;
 		return json(req, 201, { product: data });
@@ -4057,14 +4628,14 @@ async function handle(req: Request) {
 	const productMatch = matchRoute(path, /^\/admin\/products\/([^/]+)$/);
 	if (req.method === 'PATCH' && productMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_catalog');
 		const { productId } = productIdParamSchema.parse({ productId: productMatch[1] });
 		const input = productUpdateSchema.parse(await req.json());
 		const { data, error } = await adminDb
 			.from('products')
 			.update(productPayloadFromInput(input))
 			.eq('id', productId)
-			.select('*')
+			.select(adminProductSelect)
 			.single();
 		if (error) throw error;
 		return json(req, 200, { product: data });
@@ -4072,7 +4643,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'DELETE' && productMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_catalog');
 		const { productId } = productIdParamSchema.parse({ productId: productMatch[1] });
 		const { count, error: usageError } = await adminDb
 			.from('order_items')
@@ -4100,13 +4671,27 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/coupons') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const [{ data: coupons, error: couponsError }, { data: redemptions, error: redemptionsError }] =
-			await Promise.all([
-				adminDb.from('coupons').select('*').order('created_at', { ascending: false }),
-				adminDb.from('coupon_redemptions').select('coupon_id,discount_amount')
-			]);
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		const activeParam = url.searchParams.get('active');
+		let couponsQuery = adminDb
+			.from('coupons')
+			.select(adminCouponSelect, { count: 'exact' })
+			.order('created_at', { ascending: false })
+			.order('id', { ascending: true });
+		if (q) couponsQuery = couponsQuery.or(`code.ilike.%${q}%,description.ilike.%${q}%`);
+		if (activeParam === 'true') couponsQuery = couponsQuery.eq('active', true);
+		if (activeParam === 'false') couponsQuery = couponsQuery.eq('active', false);
+		const { data: coupons, error: couponsError, count } = await couponsQuery.range(from, to);
 		if (couponsError) throw couponsError;
+		const couponIds = (coupons ?? []).map((coupon) => coupon.id);
+		const { data: redemptions, error: redemptionsError } = couponIds.length
+			? await adminDb
+					.from('coupon_redemptions')
+					.select('coupon_id,discount_amount')
+					.in('coupon_id', couponIds)
+			: { data: [], error: null };
 		if (redemptionsError) throw redemptionsError;
 		const usage = new Map<string, { count: number; discount: number }>();
 		for (const redemption of redemptions ?? []) {
@@ -4133,18 +4718,19 @@ async function handle(req: Request) {
 				updatedAt: coupon.updated_at,
 				usedCount: usage.get(coupon.id)?.count ?? 0,
 				discountGiven: roundMoney(usage.get(coupon.id)?.discount ?? 0)
-			}))
+			})),
+			pagination: paginationPayload(page, pageSize, count)
 		});
 	}
 
 	if (req.method === 'POST' && path === '/admin/coupons') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_promos');
 		const input = couponWriteSchema.parse(await req.json());
 		const { data, error } = await adminDb
 			.from('coupons')
 			.insert(couponPayloadFromInput(input))
-			.select('*')
+			.select(adminCouponSelect)
 			.single();
 		if (error) throw error;
 		return json(req, 201, { coupon: data });
@@ -4153,7 +4739,7 @@ async function handle(req: Request) {
 	const couponMatch = matchRoute(path, /^\/admin\/coupons\/([^/]+)$/);
 	if (req.method === 'PATCH' && couponMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_promos');
 		const { couponId } = z
 			.object({ couponId: z.string().uuid() })
 			.parse({ couponId: couponMatch[1] });
@@ -4162,7 +4748,7 @@ async function handle(req: Request) {
 			.from('coupons')
 			.update(couponPayloadFromInput(input))
 			.eq('id', couponId)
-			.select('*')
+			.select(adminCouponSelect)
 			.single();
 		if (error) throw error;
 		return json(req, 200, { coupon: data });
@@ -4170,7 +4756,7 @@ async function handle(req: Request) {
 
 	if (req.method === 'DELETE' && couponMatch) {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
+		await requireStaff(req, 'manage_promos');
 		const { couponId } = z
 			.object({ couponId: z.string().uuid() })
 			.parse({ couponId: couponMatch[1] });
@@ -4196,19 +4782,49 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/users') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const [
-			{ data: authUsersData, error: authUsersError },
-			profilesResult,
-			rolesResult,
-			ordersResult
-		] = await Promise.all([
-			adminDb.auth.admin.listUsers({ page: 1, perPage: 200 }),
-			adminDb.from('profiles').select('id,full_name,phone,created_at,updated_at'),
-			adminDb.from('user_roles').select('user_id,role'),
-			adminDb.from('orders').select('user_id,total,created_at')
-		]);
-		if (authUsersError) throw authUsersError;
+		await requireStaff(req, 'manage_users');
+		const { page, pageSize } = parsePagination(url, 50, 100);
+		const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+		const authUsersData = q
+			? await (async () => {
+					const allUsers: Array<Record<string, unknown>> = [];
+					const perPage = 100;
+					for (let cursor = 1; cursor <= 50; cursor += 1) {
+						const { data, error } = await adminDb.auth.admin.listUsers({
+							page: cursor,
+							perPage
+						});
+						if (error) throw error;
+						const users = (data.users ?? []) as Array<Record<string, unknown>>;
+						allUsers.push(...users);
+						if (users.length < perPage) break;
+					}
+					return { users: allUsers, total: allUsers.length };
+				})()
+			: await (async () => {
+					const { data, error } = await adminDb.auth.admin.listUsers({
+						page,
+						perPage: pageSize
+					});
+					if (error) throw error;
+					return data;
+				})();
+		const authUsers = (authUsersData.users ?? []) as Array<Record<string, unknown>>;
+		const userIds = authUsers.map((authUser) => authUser.id);
+		const [profilesResult, rolesResult, ordersResult] = userIds.length
+			? await Promise.all([
+					adminDb
+						.from('profiles')
+						.select('id,full_name,phone,created_at,updated_at')
+						.in('id', userIds),
+					adminDb.from('user_roles').select('user_id,role').in('user_id', userIds),
+					adminDb.from('orders').select('user_id,total,created_at').in('user_id', userIds)
+				])
+			: [
+					{ data: [], error: null },
+					{ data: [], error: null },
+					{ data: [], error: null }
+				];
 		if (profilesResult.error) throw profilesResult.error;
 		if (rolesResult.error) throw rolesResult.error;
 		if (ordersResult.error) throw ordersResult.error;
@@ -4223,16 +4839,17 @@ async function handle(req: Request) {
 			stats.totalSpent += Number(order.total ?? 0);
 			orderStats.set(order.user_id, stats);
 		}
-		const users = (authUsersData.users ?? [])
+		const users = authUsers
 			.map((authUser) => {
-				const profile = profiles.get(authUser.id);
-				const stats = orderStats.get(authUser.id) ?? { orderCount: 0, totalSpent: 0 };
+				const id = String(authUser.id);
+				const profile = profiles.get(id);
+				const stats = orderStats.get(id) ?? { orderCount: 0, totalSpent: 0 };
 				return {
-					id: authUser.id,
-					email: authUser.email ?? null,
+					id,
+					email: firstString(authUser.email),
 					createdAt: authUser.created_at ?? profile?.created_at ?? null,
 					lastSignInAt: authUser.last_sign_in_at ?? null,
-					role: roles.get(authUser.id) ?? 'user',
+					role: normalizeRole(roles.get(id)),
 					fullName: profile?.full_name ?? null,
 					phone: profile?.phone ?? null,
 					orderCount: stats.orderCount,
@@ -4243,18 +4860,36 @@ async function handle(req: Request) {
 				const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
 				const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
 				return rightTime - leftTime;
+			})
+			.filter((user) => {
+				if (!q) return true;
+				return [user.email, user.fullName, user.phone, user.id]
+					.filter(Boolean)
+					.some((value) => String(value).toLowerCase().includes(q));
 			});
-		return json(req, 200, { users });
+		const filteredUsers = q ? users.slice((page - 1) * pageSize, page * pageSize) : users;
+		const authTotal = Number((authUsersData as { total?: unknown }).total);
+		const hasAuthTotal = Number.isFinite(authTotal) && authTotal >= 0;
+		const pagination = paginationPayload(
+			page,
+			pageSize,
+			q ? users.length : hasAuthTotal ? authTotal : (page - 1) * pageSize + authUsers.length
+		);
+		if (!hasAuthTotal) pagination.hasNext = authUsers.length === pageSize;
+		return json(req, 200, { users: filteredUsers, pagination });
 	}
 
 	const userMatch = matchRoute(path, /^\/admin\/users\/([^/]+)$/);
 	if (req.method === 'PATCH' && userMatch) {
 		const adminDb = getSupabaseAdmin();
-		const actor = await requireAdmin(req);
+		const actor = await requireStaff(req, 'manage_users');
 		const { userId } = userIdParamSchema.parse({ userId: userMatch[1] });
 		const input = adminUserUpdateSchema.parse(await req.json());
-		if (input.role && actor.id === userId && input.role !== 'admin') {
-			throw new HttpError(400, 'Use another admin account before removing your own admin role.');
+		if (input.role && !hasStaffPermission(actor.role, 'manage_roles')) {
+			throw new HttpError(403, 'manage roles permission is required');
+		}
+		if (input.role && actor.id === userId && input.role !== actor.role) {
+			throw new HttpError(400, 'Use another owner/admin account before changing your own role.');
 		}
 
 		const [currentProfileResult, currentRoleResult, orderCountResult] = await Promise.all([
@@ -4267,7 +4902,7 @@ async function handle(req: Request) {
 		if (orderCountResult.error) throw orderCountResult.error;
 
 		const currentState = {
-			role: currentRoleResult.data?.role === 'admin' ? 'admin' : 'user',
+			role: normalizeRole(currentRoleResult.data?.role),
 			fullName: currentProfileResult.data?.full_name ?? null,
 			phone: currentProfileResult.data?.phone ?? null
 		};
@@ -4283,13 +4918,18 @@ async function handle(req: Request) {
 		}
 
 		if (input.role) {
-			if (currentState.role === 'admin' && input.role !== 'admin') {
+			if (
+				(currentState.role === 'owner' || currentState.role === 'admin') &&
+				input.role !== 'owner' &&
+				input.role !== 'admin'
+			) {
 				const { count, error: adminCountError } = await adminDb
 					.from('user_roles')
 					.select('user_id', { count: 'exact', head: true })
-					.eq('role', 'admin');
+					.in('role', ['owner', 'admin']);
 				if (adminCountError) throw adminCountError;
-				if ((count ?? 0) <= 1) throw new HttpError(400, 'At least one admin account must remain.');
+				if ((count ?? 0) <= 1)
+					throw new HttpError(400, 'At least one owner/admin account must remain.');
 			}
 			const { error: roleUpdateError } = await adminDb
 				.from('user_roles')
@@ -4342,23 +4982,38 @@ async function handle(req: Request) {
 
 	if (req.method === 'GET' && path === '/admin/orders') {
 		const adminDb = getSupabaseAdmin();
-		await requireAdmin(req);
-		const [{ data: orders, error: ordersError }, authUsersResult] = await Promise.all([
-			adminDb
-				.from('orders')
-				.select(
-					'id,user_id,created_at,updated_at,status,payment_status,payment_method,subtotal,shipping,total,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_service_type,shipping_courier_name'
-				)
-				.order('created_at', { ascending: false })
-				.limit(200),
-			adminDb.auth.admin.listUsers({ page: 1, perPage: 200 })
-		]);
+		await requireStaff(req, 'read_admin');
+		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
+		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		const status = url.searchParams.get('status')?.trim().toLowerCase();
+		const paymentStatus = url.searchParams.get('paymentStatus')?.trim().toLowerCase();
+		const dateFrom = url.searchParams.get('from');
+		const dateTo = url.searchParams.get('to');
+		let ordersQuery = adminDb
+			.from('orders')
+			.select(
+				'id,user_id,created_at,updated_at,status,payment_status,payment_method,subtotal,shipping,total,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_service_type,shipping_courier_name',
+				{ count: 'exact' }
+			);
+		if (q) {
+			ordersQuery = ordersQuery.or(
+				`shipping_name.ilike.%${q}%,shipping_phone.ilike.%${q}%,shipping_email.ilike.%${q}%,shipping_city.ilike.%${q}%,shipping_pincode.ilike.%${q}%`
+			);
+		}
+		if (status) ordersQuery = ordersQuery.eq('status', status);
+		if (paymentStatus) ordersQuery = ordersQuery.eq('payment_status', paymentStatus);
+		if (dateFrom) ordersQuery = ordersQuery.gte('created_at', dateFrom);
+		if (dateTo) ordersQuery = ordersQuery.lte('created_at', dateTo);
+		const {
+			data: orders,
+			error: ordersError,
+			count
+		} = await ordersQuery
+			.order('created_at', { ascending: false })
+			.order('id', { ascending: true })
+			.range(from, to);
 		if (ordersError) throw ordersError;
-		if (authUsersResult.error) throw authUsersResult.error;
 		const orderIds = (orders ?? []).map((order) => order.id);
-		const userEmailById = new Map(
-			(authUsersResult.data.users ?? []).map((user) => [user.id, user.email ?? null])
-		);
 		const [
 			itemsResult,
 			shipmentsResult,
@@ -4493,7 +5148,7 @@ async function handle(req: Request) {
 				return {
 					id: order.id,
 					userId: order.user_id,
-					userEmail: userEmailById.get(order.user_id) ?? order.shipping_email ?? null,
+					userEmail: order.shipping_email ?? null,
 					createdAt: order.created_at,
 					updatedAt: order.updated_at,
 					status: order.status,
@@ -4567,19 +5222,20 @@ async function handle(req: Request) {
 						reason: event.reason,
 						createdAt: event.created_at,
 						adminUserId: event.admin_user_id,
-						adminEmail: userEmailById.get(String(event.admin_user_id ?? '')) ?? null,
+						adminEmail: null,
 						fromState: event.from_state,
 						toState: event.to_state
 					}))
 				};
-			})
+			}),
+			pagination: paginationPayload(page, pageSize, count)
 		});
 	}
 
 	const adminOrderMatch = matchRoute(path, /^\/admin\/orders\/([^/]+)$/);
 	if (req.method === 'PATCH' && adminOrderMatch) {
 		const adminDb = getSupabaseAdmin();
-		const adminUser = await requireAdmin(req);
+		const adminUser = await requireStaff(req, 'manage_orders');
 		const { orderId } = orderIdParamSchema.parse({ orderId: adminOrderMatch[1] });
 		const input = adminOrderUpdateSchema.parse(await req.json());
 		const [
@@ -4760,13 +5416,35 @@ Deno.serve(async (req) => {
 			return json(req, 400, { error: 'Invalid request', issues: error.issues });
 		}
 		if (error instanceof HttpError) {
+			if (error.statusCode >= 500) {
+				await logMonitoringEvent({
+					source: 'api',
+					severity: 'error',
+					message: error.message,
+					requestKey: new URL(req.url).pathname,
+					metadata: { statusCode: error.statusCode }
+				});
+			}
 			return json(req, error.statusCode, { error: error.message });
 		}
 		if (isRazorpayAuthError(error)) {
+			await logMonitoringEvent({
+				source: 'payments.razorpay',
+				severity: 'critical',
+				message: 'Razorpay authentication failed',
+				requestKey: new URL(req.url).pathname
+			});
 			return json(req, 401, { error: 'Razorpay authentication failed' });
 		}
 		if (error instanceof Error) {
 			console.error(error);
+			await logMonitoringEvent({
+				source: 'api',
+				severity: 'error',
+				message: error.message || 'Internal server error',
+				requestKey: new URL(req.url).pathname,
+				metadata: { name: error.name, stack: error.stack?.slice(0, 2000) }
+			});
 			return json(req, 500, { error: error.message || 'Internal server error' });
 		}
 		return text(req, 500, 'Internal server error');

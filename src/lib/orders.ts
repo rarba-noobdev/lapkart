@@ -101,6 +101,13 @@ const orderSelect = `
 
 type OrderClient = SupabaseClient<Database>;
 
+export type OrdersPage = {
+	orders: OrderSummary[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
 function getClient(client?: OrderClient) {
 	return client ?? supabase;
 }
@@ -153,15 +160,36 @@ function normalizeOrder(order: RawOrder): OrderSummary {
 	};
 }
 
-export async function listOrdersForUser(userId: string, client?: OrderClient) {
-	const { data, error } = await getClient(client)
+export async function listOrdersForUser(userId: string, client?: OrderClient, limit?: number) {
+	const result = await listOrdersPageForUser(userId, client, { pageSize: limit ?? 50 });
+	return result.orders;
+}
+
+export async function listOrdersPageForUser(
+	userId: string,
+	client?: OrderClient,
+	options: { page?: number; pageSize?: number } = {}
+): Promise<OrdersPage> {
+	const pageSize = Math.min(Math.max(1, Math.floor(options.pageSize ?? 20)), 50);
+	const page = Math.max(1, Math.floor(options.page ?? 1));
+	const from = (page - 1) * pageSize;
+	let query = getClient(client)
 		.from('orders')
-		.select(orderSelect)
+		.select(orderSelect, { count: 'exact' })
 		.eq('user_id', userId)
-		.order('created_at', { ascending: false });
+		.order('created_at', { ascending: false })
+		.order('id', { ascending: true })
+		.range(from, from + pageSize - 1);
+
+	const { data, error, count } = await query;
 
 	if (error) throw error;
-	return ((data ?? []) as RawOrder[]).map(normalizeOrder);
+	return {
+		orders: ((data ?? []) as RawOrder[]).map(normalizeOrder),
+		total: count ?? 0,
+		page,
+		pageSize
+	};
 }
 
 export async function getOrderById(userId: string, orderId: string, client?: OrderClient) {

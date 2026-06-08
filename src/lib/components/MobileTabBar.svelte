@@ -12,6 +12,7 @@
 	import { onMount } from 'svelte';
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
+	import { isStaffRole } from '$lib/roles';
 
 	type MobileTab = {
 		label: string;
@@ -23,7 +24,7 @@
 	const auth = getAuthContext();
 
 	let mounted = $state(false);
-	const isAdmin = $derived(auth.role === 'admin');
+	const isAdmin = $derived(isStaffRole(auth.role));
 	const cartCount = $derived($cartState.items.reduce((sum, item) => sum + item.qty, 0));
 	const cartBadge = $derived($cartState.hydrated && cartCount > 0 ? cartCount : undefined);
 
@@ -89,15 +90,13 @@
 		z-index: 50;
 		display: none;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		border: 1px solid rgba(0, 0, 0, 0.06);
+		border: 1px solid var(--border-muted);
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.88);
+		background: #ffffff;
 		padding: 6px;
 		box-shadow:
-			0 24px 48px -12px rgba(0, 0, 0, 0.12),
-			0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-		backdrop-filter: blur(24px);
-		-webkit-backdrop-filter: blur(24px);
+			0 8px 32px -8px rgba(0, 0, 0, 0.12),
+			0 2px 8px -2px rgba(0, 0, 0, 0.06);
 	}
 
 	.mobile-tabbar a {

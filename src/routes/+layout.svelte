@@ -9,13 +9,13 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import MobileTabBar from '$lib/components/MobileTabBar.svelte';
+	import NavigationLoader from '$lib/components/NavigationLoader.svelte';
 	import { hydrateCart } from '$lib/cart';
 
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
 	const isAdminRoute = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
-	const routePath = $derived(page.url.pathname);
 
 	const auth = {
 		get supabase() {
@@ -83,16 +83,13 @@
 		};
 
 		syncProfileChannel(user?.id);
-		const profileSyncInterval = window.setInterval(() => {
-			syncProfileChannel(user?.id);
-		}, 500);
 
 		const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+			syncProfileChannel(session?.user?.id);
 			if (session?.expires_at !== claims?.exp) void invalidate('supabase:auth');
 		});
 
 		return () => {
-			window.clearInterval(profileSyncInterval);
 			authListener.subscription.unsubscribe();
 			if (profileChannel) void supabase.removeChannel(profileChannel);
 		};
@@ -103,6 +100,8 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+<NavigationLoader />
+
 <div
 	class={[
 		'flex min-h-screen w-full flex-col bg-[var(--background-base)] text-foreground',
@@ -112,9 +111,7 @@
 	{#if !isLoginRoute && !isAdminRoute}
 		<Header />
 	{/if}
-	{#key routePath}
-		<main class="motion-page flex min-w-0 w-full flex-1 flex-col">{@render children()}</main>
-	{/key}
+	<main class="flex min-w-0 w-full flex-1 flex-col">{@render children()}</main>
 	{#if !isLoginRoute && !isAdminRoute}
 		<div class="hidden md:block">
 			<Footer />

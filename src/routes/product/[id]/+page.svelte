@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { resolve } from '$app/paths';
 	import {
 		ArrowUpRight,
@@ -13,7 +13,7 @@
 		Truck
 	} from '@lucide/svelte';
 	import { flip } from 'svelte/animate';
-	import { fade, fly, scale } from 'svelte/transition';
+	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
@@ -56,7 +56,13 @@
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const quantity = $derived(Math.max(1, Number(qty) || 1));
-
+	const seoTitle = $derived(`${product.title} - lapkart`);
+	const productUrl = $derived(`https://lapkart-five.vercel.app/product/${product.id}`);
+	const seoDescription = $derived(
+		`${product.title} by ${product.brand}. ${formatINR(product.price)} genuine laptop part with ${
+			product.stock > 0 ? 'live stock availability' : 'current out-of-stock status'
+		}.`
+	);
 	const specs = $derived([
 		{ label: 'Compatibility', value: compatibility },
 		{ label: 'Warranty', value: warranty },
@@ -98,16 +104,18 @@
 </script>
 
 <svelte:head>
-	<title>{product.title} - lapkart</title>
-	<meta
-		name="description"
-		content="{product.title} by {product.brand}. {formatINR(
-			product.price
-		)} — genuine laptop parts at lapkart."
-	/>
+	<title>{seoTitle}</title>
+	<meta name="description" content={seoDescription} />
+	<link rel="canonical" href={productUrl} />
+	<meta property="og:type" content="product" />
+	<meta property="og:title" content={seoTitle} />
+	<meta property="og:description" content={seoDescription} />
+	<meta property="og:image" content={activeImage} />
+	<meta property="og:url" content={productUrl} />
+	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
-<!-- ─── Breadcrumb ─── -->
+<!-- â”€â”€â”€ Breadcrumb â”€â”€â”€ -->
 <nav class="container mx-auto px-4 pt-4 pb-1 md:pt-5">
 	<ol
 		class="text-mono-x-small flex flex-wrap items-center gap-1 tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
@@ -124,13 +132,13 @@
 	</ol>
 </nav>
 
-<!-- ─── Product layout: two-panel card ─── -->
+<!-- â”€â”€â”€ Product layout: two-panel card â”€â”€â”€ -->
 <section class="container mx-auto px-4 pb-36 md:pb-14 lg:pb-14">
 	<div
 		class="motion-section mt-3 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)] md:mt-4"
 	>
 		<div class="grid lg:grid-cols-2">
-			<!-- ── LEFT PANEL: Gallery ── -->
+			<!-- â”€â”€ LEFT PANEL: Gallery â”€â”€ -->
 			<div
 				class="relative border-b border-[var(--border-faint)] bg-[var(--background-lighter)] lg:border-r lg:border-b-0"
 			>
@@ -172,7 +180,13 @@
 										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
 									onclick={() => (selectedImage = image)}
 								>
-									<img src={image} alt="" class="size-full object-contain" loading="lazy" decoding="async" />
+									<img
+										src={image}
+										alt=""
+										class="size-full object-contain"
+										loading="lazy"
+										decoding="async"
+									/>
 								</button>
 							{/each}
 						</div>
@@ -180,7 +194,7 @@
 				</div>
 			</div>
 
-			<!-- ── RIGHT PANEL: Product info ── -->
+			<!-- â”€â”€ RIGHT PANEL: Product info â”€â”€ -->
 			<div class="p-5 sm:p-6 md:p-8 lg:p-8 xl:p-10">
 				<!-- Brand -->
 				<p class="text-mono-x-small tracking-[0.18em] text-[var(--heat-100)] uppercase">
@@ -205,7 +219,7 @@
 					<span class="text-body-small text-[var(--black-alpha-48)]">
 						{product.reviews.toLocaleString('en-IN')} ratings
 					</span>
-					<span class="text-body-small text-[var(--black-alpha-24)]">•</span>
+					<span class="text-body-small text-[var(--black-alpha-24)]">â€¢</span>
 					<span
 						class="text-mono-x-small font-medium tracking-wider uppercase
 							{product.stock > 0 ? 'text-[var(--accent-forest)]' : 'text-[var(--accent-crimson)]'}"
@@ -216,12 +230,12 @@
 						<span
 							class="text-mono-x-small font-medium tracking-wider text-[var(--heat-100)] uppercase"
 						>
-							· only {product.stock} left
+							Â· only {product.stock} left
 						</span>
 					{/if}
 				</div>
 
-				<!-- ── Price ── -->
+				<!-- â”€â”€ Price â”€â”€ -->
 				<div class="mt-4 border-t border-b border-[var(--border-faint)] py-4">
 					<div class="flex flex-wrap items-baseline gap-2.5">
 						<span
@@ -243,7 +257,7 @@
 					</p>
 				</div>
 
-				<!-- ── Highlights ── -->
+				<!-- â”€â”€ Highlights â”€â”€ -->
 				{#if highlights.length > 0}
 					<div class="mt-4">
 						<h2
@@ -263,7 +277,7 @@
 					</div>
 				{/if}
 
-				<!-- ── Trust promises (inline) ── -->
+				<!-- â”€â”€ Trust promises (inline) â”€â”€ -->
 				<div class="mt-5 flex flex-wrap gap-x-5 gap-y-2">
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
@@ -285,11 +299,11 @@
 					</span>
 				</div>
 
-				<!-- ── Add-to-cart action ── -->
+				<!-- â”€â”€ Add-to-cart action â”€â”€ -->
 				<div class="mt-7 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
 					<!-- Quantity controls -->
 					<div
-						class="grid h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-lg border border-[var(--border-muted)] sm:w-36"
+						class="grid h-10 grid-cols-[40px_1fr_40px] overflow-hidden rounded-md border border-[var(--border-muted)] sm:w-32"
 					>
 						<button
 							type="button"
@@ -304,7 +318,7 @@
 							type="number"
 							min="1"
 							bind:value={qty}
-							class="text-label-medium h-full min-w-0 border-x border-[var(--border-faint)] bg-transparent text-center text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+							class="text-label-medium h-full min-w-0 [appearance:textfield] border-x border-[var(--border-faint)] bg-transparent text-center text-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 						/>
 						<button
 							type="button"
@@ -321,7 +335,7 @@
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
-						class="button button-primary text-label-small inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg px-8 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit"
+						class="button button-primary text-label-small inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-6 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit sm:flex-none"
 						onclick={handleAddToCart}
 					>
 						{#if added}
@@ -332,18 +346,6 @@
 							Add to cart
 						{/if}
 					</button>
-
-					<!-- Review cart -->
-					{#if added}
-						<a
-							href={resolve('/cart')}
-							class="text-label-small inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-muted)] bg-transparent px-8 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:w-fit"
-							transition:scale={{ duration: 140, start: 0.96 }}
-						>
-							Review cart
-							<ChevronRight class="size-4" />
-						</a>
-					{/if}
 				</div>
 
 				{#if added}
@@ -358,7 +360,7 @@
 		</div>
 	</div>
 
-	<!-- ─── Specifications table (below the card) ─── -->
+	<!-- â”€â”€â”€ Specifications table (below the card) â”€â”€â”€ -->
 	<div
 		class="mt-4 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
 	>
@@ -377,7 +379,7 @@
 		</div>
 	</div>
 
-	<!-- ─── Related products ─── -->
+	<!-- â”€â”€â”€ Related products â”€â”€â”€ -->
 	{#if related.length > 0}
 		<section class="mt-10 md:mt-14">
 			<div class="mb-5 flex items-end justify-between gap-4">
@@ -408,9 +410,9 @@
 	{/if}
 </section>
 
-<!-- ─── Sticky mobile CTA ─── -->
+<!-- â”€â”€â”€ Sticky mobile CTA â”€â”€â”€ -->
 <div
-	class="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-faint)] bg-white/95 backdrop-blur-md lg:hidden"
+	class="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-faint)] bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.04)] lg:hidden"
 >
 	<div class="container mx-auto flex items-center gap-3 px-4 py-2.5">
 		<div class="min-w-0 flex-1">

@@ -2,7 +2,9 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getProduct, listRelatedProducts } from '$lib/products';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ depends, locals, params }) => {
+	depends(`product:${params.id}`);
+
 	const product = await getProduct(params.id, locals.supabase);
 
 	if (!product) {

@@ -684,7 +684,6 @@
 @layer utilities {
 	.motion-page {
 		animation: motion-page-enter var(--motion-page) var(--motion-ease-out) both;
-		transform-origin: 50% 24px;
 	}
 
 	.motion-section {
@@ -758,7 +757,17 @@
 	.button:active,
 	button:not(:disabled):active,
 	[role='button']:active {
-		transform: scale(0.98);
+		transform: scale(0.97);
+	}
+
+	@media (pointer: coarse) {
+		.motion-press:active,
+		.button:active,
+		button:not(:disabled):active,
+		[role='button']:active {
+			transform: scale(0.95);
+			transition-duration: 80ms;
+		}
 	}
 
 	.motion-backdrop:active {
@@ -792,9 +801,11 @@
 	@keyframes motion-page-enter {
 		from {
 			opacity: 0;
+			transform: translateY(4px);
 		}
 		to {
 			opacity: 1;
+			transform: translateY(0);
 		}
 	}
 

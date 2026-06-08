@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { ArrowUpRight, Flame } from '@lucide/svelte';
 	import { getAuthContext } from '$lib/auth-context';
+	import { isStaffRole } from '$lib/roles';
 
 	type FooterColumn = {
 		title: string;
@@ -12,7 +13,7 @@
 	};
 
 	const auth = getAuthContext();
-	const isAdmin = $derived(auth.role === 'admin');
+	const isAdmin = $derived(isStaffRole(auth.role));
 	const footerColumns = $derived<FooterColumn[]>(
 		isAdmin
 			? [

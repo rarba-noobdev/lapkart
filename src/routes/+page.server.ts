@@ -1,8 +1,10 @@
 import type { PageServerLoad } from './$types';
-import { listProducts } from '$lib/products';
+import { listCatalogProducts } from '$lib/products';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ depends, locals }) => {
+	depends('app:products');
+
 	return {
-		products: await listProducts(locals.supabase)
+		products: await listCatalogProducts({ limit: 96 }, locals.supabase)
 	};
 };

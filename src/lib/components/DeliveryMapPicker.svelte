@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { apiBase } from '$lib/api-base';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 
@@ -55,6 +57,8 @@
 	let suggestions = $state<Suggestion[]>([]);
 	let currentPin = $state<DeliveryPin | null>(null);
 	let suppressNextSearch = false;
+	let resolveController: AbortController | null = null;
+	const reverseGeocodeCache = new SvelteMap<string, ResolvedDeliveryAddress>();
 
 	function roundCoordinate(value: number) {
 		return Number(value.toFixed(6));
@@ -67,7 +71,36 @@
 		return `https://api.olamaps.io/tiles/v1/styles/default-light-standard/static/${pin.longitude},${pin.latitude},15/1000x640.png?${params.toString()}`;
 	}
 
+	function publishResolvedAddress(resolved: ResolvedDeliveryAddress) {
+		suppressNextSearch = true;
+		query = resolved.formattedAddress;
+		onAddressResolved?.(resolved);
+	}
+
+	function cacheResolvedAddress(key: string, resolved: ResolvedDeliveryAddress) {
+		if (!reverseGeocodeCache.has(key) && reverseGeocodeCache.size >= 20) {
+			const firstKey = reverseGeocodeCache.keys().next().value;
+			if (firstKey) reverseGeocodeCache.delete(firstKey);
+		}
+		reverseGeocodeCache.set(key, resolved);
+	}
+
 	async function resolvePin(pin: DeliveryPin, selectedPlaceId?: string) {
+		const resolveKey = [
+			roundCoordinate(pin.latitude),
+			roundCoordinate(pin.longitude),
+			selectedPlaceId ?? ''
+		].join('|');
+		const cachedAddress = reverseGeocodeCache.get(resolveKey);
+		if (cachedAddress) {
+			publishResolvedAddress(cachedAddress);
+			return;
+		}
+
+		resolveController?.abort();
+		const controller = new AbortController();
+		resolveController = controller;
+
 		try {
 			resolving = true;
 			error = null;
@@ -77,6 +110,7 @@
 			url.searchParams.set('longitude', String(pin.longitude));
 
 			const response = await fetch(url, {
+				signal: controller.signal,
 				headers: await getAuthorizationHeaders()
 			});
 			const data = (await response.json().catch(() => null)) as
@@ -88,14 +122,15 @@
 			}
 
 			const resolved = { ...data, placeId: selectedPlaceId ?? data.placeId };
-			suppressNextSearch = true;
-			query = resolved.formattedAddress;
-			onAddressResolved?.(resolved);
+			cacheResolvedAddress(resolveKey, resolved);
+			publishResolvedAddress(resolved);
 		} catch (resolveError) {
+			if (controller.signal.aborted) return;
 			error =
 				resolveError instanceof Error ? resolveError.message : 'Could not resolve this address';
 		} finally {
-			resolving = false;
+			if (resolveController === controller) resolveController = null;
+			if (!controller.signal.aborted) resolving = false;
 		}
 	}
 
@@ -222,6 +257,10 @@
 	});
 
 	const staticMapUrl = $derived(buildStaticMapUrl(currentPin));
+
+	onDestroy(() => {
+		resolveController?.abort();
+	});
 </script>
 
 <div class="overflow-hidden rounded-[18px] border border-[var(--border-faint)] bg-white">

@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
 	import { SlidersHorizontal, X, ChevronDown } from '@lucide/svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
+	import { slide, fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { categories, formatINR, type Product } from '$lib/catalog';
 
@@ -16,6 +18,10 @@
 		| 'inStock'
 		| 'minRating'
 		| 'sort';
+	type SearchParamKey = FilterKey | 'page';
+	type ProductsRoute = '/products' | `/products?${string}`;
+
+	const pageSize = 96;
 
 	const sortOptions = [
 		{ value: 'relevance', label: 'Relevance' },
@@ -32,6 +38,9 @@
 		data: {
 			products: Product[];
 			productTotal: number;
+			page: number;
+			searchSource: 'typesense' | 'supabase';
+			categoryCounts: Record<string, number>;
 			filters: {
 				category: string;
 				q: string;
@@ -46,7 +55,10 @@
 	} = $props();
 	let products = $derived(data.products);
 	let productTotal = $derived(data.productTotal);
+	let currentPage = $derived(Math.max(1, data.page ?? 1));
+	let categoryCounts = $derived(data.categoryCounts);
 	let filters = $derived(data.filters);
+	const totalAllProducts = $derived(Object.values(categoryCounts).reduce((sum, n) => sum + n, 0));
 
 	let mobileFiltersOpen = $state(false);
 
@@ -62,6 +74,14 @@
 	const activeSort = $derived(
 		sortOptions.some((option) => option.value === sort) ? sort : 'relevance'
 	);
+	const totalPages = $derived(Math.max(1, Math.ceil(productTotal / pageSize)));
+	const resultStart = $derived(productTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1);
+	const resultEnd = $derived(Math.min(productTotal, currentPage * pageSize));
+	const visiblePages = $derived.by(() => {
+		const start = Math.max(1, currentPage - 2);
+		const end = Math.min(totalPages, start + 4);
+		return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+	});
 	const currentCategory = $derived(categories.find((item) => item.slug === category) ?? null);
 	const scopedProducts = $derived(
 		category ? products.filter((product) => product.category === category) : products
@@ -72,6 +92,9 @@
 			.sort((a, b) => a.localeCompare(b))
 	);
 	const sorted = $derived(products);
+	const isRefreshing = $derived(
+		Boolean(navigating.to && navigating.to.url.pathname === resolve('/products'))
+	);
 
 	const appliedFilters = $derived.by(() => {
 		const filters: Array<{ key: FilterKey; label: string }> = [];
@@ -91,19 +114,28 @@
 		return filters;
 	});
 
-	function updateSearch(patch: Partial<Record<FilterKey, string | undefined>>) {
+	function updateSearch(patch: Partial<Record<SearchParamKey, string | undefined>>) {
 		const params = new SvelteURLSearchParams(page.url.searchParams);
 
 		for (const [key, value] of Object.entries(patch)) {
 			if (!value) params.delete(key);
 			else params.set(key, value);
 		}
+		if (!('page' in patch)) params.delete('page');
 
 		const next = params.toString();
 		void goto(resolve(next ? `/products?${next}` : '/products'), {
 			keepFocus: true,
 			noScroll: true
 		});
+	}
+
+	function productsHrefWithPage(pageNumber: number): ProductsRoute {
+		const params = new SvelteURLSearchParams(page.url.searchParams);
+		if (pageNumber <= 1) params.delete('page');
+		else params.set('page', String(pageNumber));
+		const next = params.toString();
+		return (next ? `/products?${next}` : '/products') as ProductsRoute;
 	}
 
 	function clearFilters() {
@@ -117,11 +149,19 @@
 <svelte:head>
 	<title>All components - lapkart</title>
 	<meta name="description" content="Browse RAM, SSDs, batteries, displays, processors and more." />
+	{#if currentPage > 1}
+		<link rel="prev" href={resolve(productsHrefWithPage(currentPage - 1))} />
+	{/if}
+	{#if currentPage < totalPages}
+		<link rel="next" href={resolve(productsHrefWithPage(currentPage + 1))} />
+	{/if}
 </svelte:head>
 
 <div class="border-b border-[var(--border-faint)] bg-white">
 	<div class="container mx-auto px-4 py-3 sm:py-10">
-		<nav class="text-mono-x-small hidden tracking-[0.18em] text-[var(--black-alpha-48)] uppercase sm:block">
+		<nav
+			class="text-mono-x-small hidden tracking-[0.18em] text-[var(--black-alpha-48)] uppercase sm:block"
+		>
 			<a href={resolve('/')} class="transition-colors hover:text-[var(--heat-100)]">home</a>
 			<span class="mx-2 text-[var(--black-alpha-24)]">/</span>
 			<a href={resolve('/products')} class="transition-colors hover:text-[var(--heat-100)]"
@@ -135,7 +175,7 @@
 
 		<div class="flex flex-wrap items-end justify-between gap-2 sm:mt-4 sm:gap-6">
 			<div class="min-w-0 flex-1">
-				<h1 class="text-[18px] font-medium leading-tight text-foreground sm:text-title-h3">
+				<h1 class="sm:text-title-h3 text-[18px] leading-tight font-medium text-foreground">
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
@@ -144,16 +184,21 @@
 						All components
 					{/if}
 				</h1>
-				<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)] sm:mt-1 sm:text-body-medium">
+				<p class="sm:text-body-medium mt-0.5 text-[12px] text-[var(--black-alpha-56)] sm:mt-1">
 					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
 						: ''}
+					{#if productTotal > pageSize}
+						<span class="text-[var(--black-alpha-40)]">
+							&nbsp;showing {resultStart}-{resultEnd}
+						</span>
+					{/if}
 				</p>
 			</div>
 
 			<select
 				value={activeSort}
-				class="h-8 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground sm:h-11 sm:px-3 sm:text-body-medium"
+				class="sm:text-body-medium h-8 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground sm:h-11 sm:px-3"
 				onchange={(event) =>
 					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
 			>
@@ -164,7 +209,10 @@
 		</div>
 
 		{#if appliedFilters.length > 0}
-			<div class="mt-3 flex flex-wrap gap-1.5 sm:mt-6 sm:gap-2">
+			<div
+				class="mt-3 flex flex-wrap gap-1.5 sm:mt-6 sm:gap-2"
+				in:fly={{ y: 4, duration: 180, easing: cubicOut }}
+			>
 				{#each appliedFilters as filter (filter.key)}
 					<button
 						type="button"
@@ -189,9 +237,13 @@
 	</div>
 </div>
 
-<div class="products-layout container mx-auto grid min-w-0 gap-3 overflow-hidden px-4 py-3 sm:gap-8 sm:py-10 lg:grid-cols-[240px_1fr]">
+<div
+	class="products-layout container mx-auto grid min-w-0 gap-3 overflow-hidden px-4 py-3 sm:gap-8 sm:py-10 lg:grid-cols-[240px_1fr]"
+>
 	<div class="min-w-0 lg:hidden">
-		<div class="scrollbar-hide -mx-4 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-4 pb-1.5 sm:gap-2 sm:pb-2">
+		<div
+			class="scrollbar-hide -mx-4 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-4 pb-1.5 sm:gap-2 sm:pb-2"
+		>
 			<a
 				href={resolve(q ? `/products?q=${encodeURIComponent(q)}` : '/products')}
 				aria-current={!category ? 'page' : undefined}
@@ -234,7 +286,9 @@
 			>
 				<SlidersHorizontal class="size-3" /> Refine Results
 				{#if appliedFilters.length > 0}
-					<span class="rounded-full bg-[var(--heat-100)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+					<span
+						class="rounded-full bg-[var(--heat-100)] px-1.5 py-0.5 text-[10px] font-bold text-white"
+					>
 						{appliedFilters.length}
 					</span>
 				{/if}
@@ -248,7 +302,10 @@
 		</button>
 
 		{#if mobileFiltersOpen}
-			<div class="mt-1 grid gap-3 rounded-b-lg border border-t-0 border-[var(--border-faint)] bg-white p-4">
+			<div
+				class="mt-1 grid gap-3 rounded-b-lg border border-t-0 border-[var(--border-faint)] bg-white p-4"
+				transition:slide={{ duration: 200, easing: cubicOut }}
+			>
 				<div class="grid grid-cols-2 gap-3">
 					<label>
 						<span
@@ -368,11 +425,11 @@
 						onclick={() => updateSearch({ category: undefined, brand: undefined })}
 					>
 						All products
-						<span class="text-mono-x-small text-[var(--black-alpha-40)]">{productTotal}</span>
+						<span class="text-mono-x-small text-[var(--black-alpha-40)]">{totalAllProducts}</span>
 					</button>
 				</li>
 				{#each categories as item (item.slug)}
-					{@const count = products.filter((product) => product.category === item.slug).length}
+					{@const count = categoryCounts[item.slug] ?? 0}
 					<li>
 						<button
 							type="button"
@@ -483,10 +540,20 @@
 		</section>
 	</aside>
 
-	<main class="min-w-0 w-full">
+	<main class="relative w-full min-w-0" aria-busy={isRefreshing}>
+		{#if isRefreshing}
+			<p class="sr-only" role="status">Updating products</p>
+			<div
+				class="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 overflow-hidden rounded-full bg-[var(--heat-8)]"
+				transition:slide={{ duration: 160, easing: cubicOut }}
+			>
+				<div class="catalog-loading-bar h-full w-1/3 rounded-full bg-[var(--heat-100)]"></div>
+			</div>
+		{/if}
 		{#if sorted.length === 0}
 			<div
 				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center"
+				in:fly={{ y: 8, duration: 240, easing: cubicOut }}
 			>
 				<p class="text-label-small text-[var(--heat-100)]">No matching parts</p>
 				<p class="text-body-large mt-3 text-foreground">No products found.</p>
@@ -504,11 +571,54 @@
 		{:else}
 			<div class="product-grid">
 				{#each sorted as product, index (product.id)}
-					<div class="min-w-0">
+					<div
+						class="min-w-0"
+						in:fly={{ y: 8, duration: 240, delay: Math.min(index * 35, 280), easing: cubicOut }}
+					>
 						<ProductCard {product} eager={index < 2} />
 					</div>
 				{/each}
 			</div>
+
+			{#if totalPages > 1}
+				<nav
+					class="mt-6 flex flex-wrap items-center justify-center gap-2 sm:mt-8"
+					aria-label="Product pages"
+					in:fly={{ y: 8, duration: 220, easing: cubicOut }}
+				>
+					{#if currentPage > 1}
+						<a
+							href={resolve(productsHrefWithPage(currentPage - 1))}
+							class="text-label-small inline-flex h-10 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+						>
+							Previous
+						</a>
+					{/if}
+
+					{#each visiblePages as pageNumber (pageNumber)}
+						<a
+							href={resolve(productsHrefWithPage(pageNumber))}
+							aria-current={pageNumber === currentPage ? 'page' : undefined}
+							class={`text-label-small inline-flex size-10 items-center justify-center rounded-md border transition-colors ${
+								pageNumber === currentPage
+									? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
+									: 'border-[var(--border-muted)] bg-white text-foreground hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]'
+							}`}
+						>
+							{pageNumber}
+						</a>
+					{/each}
+
+					{#if currentPage < totalPages}
+						<a
+							href={resolve(productsHrefWithPage(currentPage + 1))}
+							class="text-label-small inline-flex h-10 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+						>
+							Next
+						</a>
+					{/if}
+				</nav>
+			{/if}
 		{/if}
 	</main>
 </div>
@@ -542,5 +652,18 @@
 			grid-template-columns: repeat(4, minmax(0, 1fr));
 			gap: 16px;
 		}
+	}
+
+	@keyframes catalog-loading {
+		0% {
+			transform: translateX(-120%);
+		}
+		100% {
+			transform: translateX(320%);
+		}
+	}
+
+	.catalog-loading-bar {
+		animation: catalog-loading 900ms ease-in-out infinite;
 	}
 </style>

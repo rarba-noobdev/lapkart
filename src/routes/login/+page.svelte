@@ -120,7 +120,7 @@
 
 	<!-- Right: Form -->
 	<main class="flex flex-col items-center justify-center bg-[var(--background-lighter)] p-5 sm:p-8 lg:p-12">
-		<div class="w-full max-w-[400px] space-y-6">
+		<div class="motion-section w-full max-w-[400px] space-y-6">
 			<!-- Mobile logo -->
 			<a href={resolve('/')} class="inline-flex items-center gap-2 lg:hidden">
 				<div class="grid size-8 place-items-center rounded-lg bg-[var(--heat-100)]">

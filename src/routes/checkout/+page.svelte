@@ -30,6 +30,7 @@
 		type DeliveryPin,
 		type ResolvedDeliveryAddress
 	} from '$lib/components/DeliveryMapPicker.svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	type MessageTone = 'error' | 'success' | 'info';
 
@@ -253,6 +254,7 @@
 	let lastEstimateKey = '';
 	let estimateController: AbortController | null = null;
 	let estimateTimer: number | null = null;
+	const deliveryEstimateCache = new SvelteMap<string, DeliveryEstimate>();
 
 	function setMessage(tone: MessageTone, text: string) {
 		message = { tone, text };
@@ -282,10 +284,13 @@
 	async function loadSavedAddressForUser(userId: string) {
 		const { data, error } = await supabase
 			.from('addresses')
-			.select('*')
+			.select(
+				'id,user_id,full_name,phone,line1,line2,city,state,pincode,is_default,created_at,latitude,longitude,location_source,ola_place_id,formatted_address'
+			)
 			.eq('user_id', userId)
 			.order('is_default', { ascending: false })
-			.order('created_at', { ascending: false });
+			.order('created_at', { ascending: false })
+			.limit(20);
 
 		if (error || !data || savedAddressLoadedForUserId !== userId) return;
 		savedAddresses = data as Tables<'addresses'>[];
@@ -346,6 +351,23 @@
 		}
 	}
 
+	function preferredQuoteId(estimate: DeliveryEstimate, currentQuoteId: string | null) {
+		return (
+			estimate.couriers.find((courier) => courier.quoteId === currentQuoteId)?.quoteId ??
+			estimate.couriers.find((courier) => courier.recommended)?.quoteId ??
+			estimate.couriers[0]?.quoteId ??
+			null
+		);
+	}
+
+	function cacheDeliveryEstimate(key: string, estimate: DeliveryEstimate) {
+		if (!deliveryEstimateCache.has(key) && deliveryEstimateCache.size >= 12) {
+			const firstKey = deliveryEstimateCache.keys().next().value;
+			if (firstKey) deliveryEstimateCache.delete(firstKey);
+		}
+		deliveryEstimateCache.set(key, estimate);
+	}
+
 	function queueDeliveryEstimate() {
 		const latitude = address.latitude;
 		const longitude = address.longitude;
@@ -362,6 +384,18 @@
 			deliveryEstimate = null;
 			selectedQuoteId = null;
 			estimateError = null;
+			estimateLoading = false;
+			return;
+		}
+
+		const cachedEstimate = deliveryEstimateCache.get(nextEstimateKey);
+		if (cachedEstimate) {
+			deliveryEstimate = cachedEstimate;
+			selectedQuoteId = preferredQuoteId(cachedEstimate, selectedQuoteId);
+			estimateError =
+				cachedEstimate.couriers.length === 0
+					? 'No standard or Shiprocket Quick courier currently services this location.'
+					: null;
 			estimateLoading = false;
 			return;
 		}
@@ -392,11 +426,8 @@
 				}
 
 				deliveryEstimate = data;
-				selectedQuoteId =
-					data.couriers.find((courier) => courier.quoteId === selectedQuoteId)?.quoteId ??
-					data.couriers.find((courier) => courier.recommended)?.quoteId ??
-					data.couriers[0]?.quoteId ??
-					null;
+				cacheDeliveryEstimate(nextEstimateKey, data);
+				selectedQuoteId = preferredQuoteId(data, selectedQuoteId);
 
 				if (data.couriers.length === 0) {
 					estimateError =
@@ -477,12 +508,12 @@
 		address.formattedAddress ||= savedAddress.formatted_address ?? '';
 	}
 
-	onMount(() => {
+	$effect(() => {
 		syncCheckoutState();
-		const interval = window.setInterval(syncCheckoutState, 250);
+	});
 
+	onMount(() => {
 		return () => {
-			window.clearInterval(interval);
 			clearEstimateRequest();
 		};
 	});
@@ -789,7 +820,7 @@
 
 <section class="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 sm:py-8">
 	<!-- Compact header -->
-	<div class="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+	<div class="motion-section mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
 		<div class="flex items-center gap-3">
 			<a
 				href={resolve('/cart')}
@@ -840,7 +871,7 @@
 		</div>
 	{:else}
 		<div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-			<div class="space-y-3 sm:space-y-4">
+			<div class="reveal-stagger space-y-3 sm:space-y-4">
 				<!-- Address section -->
 				<article class="rounded-lg border border-[var(--border-faint)] bg-white">
 					<div class="flex items-center justify-between border-b border-[var(--border-faint)] px-3 py-2.5 sm:px-4 sm:py-3">

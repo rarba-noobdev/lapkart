@@ -131,7 +131,7 @@
 	<div class="grid gap-6 lg:grid-cols-[280px_1fr] lg:gap-8 xl:grid-cols-[320px_1fr]">
 
 		<!-- ─── Left sidebar ─── -->
-		<div class="space-y-4 lg:sticky lg:top-24 lg:h-fit">
+		<div class="motion-section space-y-4 lg:sticky lg:top-24 lg:h-fit">
 			<!-- Identity card -->
 			<div class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
 				<div class="flex items-center gap-3">
@@ -267,7 +267,7 @@
 		</div>
 
 		<!-- ─── Right: Main content ─── -->
-		<div class="space-y-6">
+		<div class="reveal-stagger space-y-6">
 			<!-- Orders -->
 			<div>
 				<div class="mb-4 flex items-center justify-between">

@@ -8,6 +8,7 @@
 	import { apiBase } from '$lib/api-base';
 	import { categories, formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
+	import { isStaffRole, roleLabel, staffRoles, type AppRole } from '$lib/roles';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 	import {
 		Activity,
@@ -44,7 +45,14 @@
 		}
 	});
 
-	type AdminView = 'overview' | 'catalog' | 'orders' | 'fulfillment' | 'users' | 'promos' | 'support';
+	type AdminView =
+		| 'overview'
+		| 'catalog'
+		| 'orders'
+		| 'fulfillment'
+		| 'users'
+		| 'promos'
+		| 'support';
 
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
@@ -166,7 +174,7 @@
 		email: string | null;
 		createdAt: string | null;
 		lastSignInAt: string | null;
-		role: 'admin' | 'user';
+		role: AppRole;
 		fullName: string | null;
 		phone: string | null;
 		orderCount: number;
@@ -175,7 +183,7 @@
 
 	type UserEditorState = {
 		id: string | null;
-		role: 'admin' | 'user';
+		role: AppRole;
 		fullName: string;
 		phone: string;
 	};
@@ -251,6 +259,12 @@
 		initialView === 'overview' ? ['overview'] : ['overview', initialView]
 	);
 	let realtimeRefreshTimer: number | null = null;
+	let pendingRealtimeRefresh = {
+		analytics: false,
+		products: false,
+		users: false,
+		coupons: false
+	};
 	let productsLoaded = $state(false);
 	let usersLoaded = $state(false);
 	let couponsLoaded = $state(false);
@@ -476,8 +490,10 @@
 	}
 
 	function noticeClasses(tone: Notice['tone']) {
-		if (tone === 'error') return 'border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 text-[var(--accent-crimson)]';
-		if (tone === 'success') return 'border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/6 text-[var(--accent-forest)]';
+		if (tone === 'error')
+			return 'border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 text-[var(--accent-crimson)]';
+		if (tone === 'success')
+			return 'border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/6 text-[var(--accent-forest)]';
 		return 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-72)]';
 	}
 
@@ -636,13 +652,31 @@
 		window.history.replaceState(window.history.state, '', nextUrl);
 	}
 
-	function scheduleAdminRealtimeRefresh() {
+	function scheduleAdminRealtimeRefresh(
+		targets: Partial<typeof pendingRealtimeRefresh> = { analytics: true }
+	) {
+		pendingRealtimeRefresh = {
+			analytics: pendingRealtimeRefresh.analytics || Boolean(targets.analytics),
+			products: pendingRealtimeRefresh.products || Boolean(targets.products),
+			users: pendingRealtimeRefresh.users || Boolean(targets.users),
+			coupons: pendingRealtimeRefresh.coupons || Boolean(targets.coupons)
+		};
+
 		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 		realtimeRefreshTimer = window.setTimeout(() => {
-			void loadAnalytics();
-			if (productsLoaded) void loadProducts(true);
-			if (usersLoaded) void loadUsers(true);
-			if (couponsLoaded) void loadCoupons(true);
+			const nextRefresh = pendingRealtimeRefresh;
+			pendingRealtimeRefresh = {
+				analytics: false,
+				products: false,
+				users: false,
+				coupons: false
+			};
+			realtimeRefreshTimer = null;
+
+			if (nextRefresh.analytics) void loadAnalytics();
+			if (nextRefresh.products && productsLoaded) void loadProducts(true);
+			if (nextRefresh.users && usersLoaded) void loadUsers(true);
+			if (nextRefresh.coupons && couponsLoaded) void loadCoupons(true);
 		}, 300);
 	}
 
@@ -758,7 +792,7 @@
 		userNotice = null;
 
 		try {
-			const payload: { role: 'admin' | 'user'; fullName: string; phone?: string } = {
+			const payload: { role: AppRole; fullName: string; phone?: string } = {
 				role: userEditor.role,
 				fullName: userEditor.fullName
 			};
@@ -860,7 +894,7 @@
 	}
 
 	onMount(() => {
-		if (!currentUser || currentRole !== 'admin') return;
+		if (!currentUser || !isStaffRole(currentRole)) return;
 		if (initializedForUserId === currentUser.id) return;
 
 		initializedForUserId = currentUser.id;
@@ -868,18 +902,40 @@
 
 		const channel = auth.supabase
 			.channel(`admin-shell:${currentUser.id}`)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, scheduleAdminRealtimeRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupon_redemptions' }, scheduleAdminRealtimeRefresh)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true, products: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true, users: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, () =>
+				scheduleAdminRealtimeRefresh({ users: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, () =>
+				scheduleAdminRealtimeRefresh({ coupons: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupon_redemptions' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true, coupons: true })
+			)
 			.subscribe();
 
 		return () => {
 			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			pendingRealtimeRefresh = {
+				analytics: false,
+				products: false,
+				users: false,
+				coupons: false
+			};
 			void auth.supabase.removeChannel(channel);
 		};
 	});
@@ -1002,7 +1058,10 @@
 							<!-- OVERVIEW TAB -->
 							<div class="space-y-5">
 								{#if overviewError}
-									<div class="flex items-start gap-2 rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[13px] text-[var(--accent-crimson)]" in:fly={{ y: -8, duration: 200 }}>
+									<div
+										class="flex items-start gap-2 rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[13px] text-[var(--accent-crimson)]"
+										in:fly={{ y: -8, duration: 200 }}
+									>
 										<ShieldAlert class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
 										<span>{overviewError}</span>
 									</div>
@@ -1018,8 +1077,14 @@
 										>
 											<div class="flex items-start justify-between">
 												<div>
-													<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase">{card.label}</p>
-													<p class="mt-2 text-[26px] font-semibold tracking-tight text-foreground">{card.value}</p>
+													<p
+														class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+													>
+														{card.label}
+													</p>
+													<p class="mt-2 text-[26px] font-semibold tracking-tight text-foreground">
+														{card.value}
+													</p>
 												</div>
 												<div class="kpi-icon">
 													<Icon class="size-4" strokeWidth={2} />
@@ -1031,10 +1096,17 @@
 
 								<!-- Period reports -->
 								{#if analytics?.periodReports?.length}
-									<div class="grid gap-3 sm:grid-cols-3" in:fly={{ y: 12, duration: 300, delay: 280 }}>
+									<div
+										class="grid gap-3 sm:grid-cols-3"
+										in:fly={{ y: 12, duration: 300, delay: 280 }}
+									>
 										{#each analytics.periodReports as period (period.id)}
 											<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-												<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase">{period.label}</p>
+												<p
+													class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+												>
+													{period.label}
+												</p>
 												<div class="mt-3 grid grid-cols-2 gap-3">
 													<div>
 														<p class="text-[11px] text-[var(--black-alpha-48)]">Orders</p>
@@ -1042,15 +1114,21 @@
 													</div>
 													<div>
 														<p class="text-[11px] text-[var(--black-alpha-48)]">Revenue</p>
-														<p class="text-[16px] font-semibold text-foreground">{formatINR(period.revenue)}</p>
+														<p class="text-[16px] font-semibold text-foreground">
+															{formatINR(period.revenue)}
+														</p>
 													</div>
 													<div>
 														<p class="text-[11px] text-[var(--black-alpha-48)]">AOV</p>
-														<p class="text-[14px] font-medium text-foreground">{formatINR(period.averageOrderValue)}</p>
+														<p class="text-[14px] font-medium text-foreground">
+															{formatINR(period.averageOrderValue)}
+														</p>
 													</div>
 													<div>
 														<p class="text-[11px] text-[var(--black-alpha-48)]">Refunds</p>
-														<p class="text-[14px] font-medium text-[var(--accent-crimson)]">{formatINR(period.refundAmount)}</p>
+														<p class="text-[14px] font-medium text-[var(--accent-crimson)]">
+															{formatINR(period.refundAmount)}
+														</p>
 													</div>
 												</div>
 											</div>
@@ -1060,15 +1138,23 @@
 
 								<div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
 									<!-- Recent orders -->
-									<div class="rounded-lg border border-[var(--border-faint)] bg-white" in:fly={{ y: 12, duration: 300, delay: 340 }}>
-										<div class="flex items-center justify-between border-b border-[var(--border-faint)] px-4 py-3">
+									<div
+										class="rounded-lg border border-[var(--border-faint)] bg-white"
+										in:fly={{ y: 12, duration: 300, delay: 340 }}
+									>
+										<div
+											class="flex items-center justify-between border-b border-[var(--border-faint)] px-4 py-3"
+										>
 											<div class="flex items-center gap-2">
 												<Activity class="size-4 text-[var(--black-alpha-40)]" strokeWidth={2} />
 												<p class="text-[13px] font-medium text-foreground">Recent orders</p>
 											</div>
 											{#if loading}
-												<span class="flex items-center gap-1.5 text-[10px] tracking-[0.1em] text-[var(--heat-100)] uppercase">
-													<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"></span>
+												<span
+													class="flex items-center gap-1.5 text-[10px] tracking-[0.1em] text-[var(--heat-100)] uppercase"
+												>
+													<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"
+													></span>
 													Live
 												</span>
 											{/if}
@@ -1080,31 +1166,41 @@
 													in:fly={{ x: -8, duration: 200, delay: idx * 30 }}
 												>
 													<div class="flex items-center gap-2.5">
-														<div class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-48)]">
+														<div
+															class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
 															{order.id.slice(0, 2).toUpperCase()}
 														</div>
 														<div>
-															<p class="font-mono text-[12px] text-foreground">#{order.id.slice(0, 8).toUpperCase()}</p>
-															<p class="text-[11px] text-[var(--black-alpha-40)]">{order.shippingName || 'Customer'}</p>
+															<p class="font-mono text-[12px] text-foreground">
+																#{order.id.slice(0, 8).toUpperCase()}
+															</p>
+															<p class="text-[11px] text-[var(--black-alpha-40)]">
+																{order.shippingName || 'Customer'}
+															</p>
 														</div>
 													</div>
 													<div class="flex items-center gap-2.5">
 														<span
 															class="rounded-sm px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
 																{order.status === 'cancelled'
-																	? 'bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
-																	: order.status === 'delivered'
-																		? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-																		: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
+																? 'bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
+																: order.status === 'delivered'
+																	? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
+																	: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
 														>
 															{order.status}
 														</span>
-														<span class="text-[12px] font-medium text-foreground">{formatINR(order.total)}</span>
+														<span class="text-[12px] font-medium text-foreground"
+															>{formatINR(order.total)}</span
+														>
 													</div>
 												</div>
 											{/each}
 											{#if (analytics?.recentOrders ?? []).length === 0}
-												<div class="px-4 py-10 text-center text-[12px] text-[var(--black-alpha-32)]">
+												<div
+													class="px-4 py-10 text-center text-[12px] text-[var(--black-alpha-32)]"
+												>
 													No order history yet.
 												</div>
 											{/if}
@@ -1114,12 +1210,24 @@
 									<!-- Right sidebar column -->
 									<div class="flex flex-col gap-3" in:fly={{ y: 12, duration: 300, delay: 400 }}>
 										<!-- Pending fulfillment CTA -->
-										<div class="rounded-lg border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4">
+										<div
+											class="rounded-lg border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4"
+										>
 											<div class="flex items-start justify-between">
 												<div>
-													<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase">Pending fulfillment</p>
-													<p class="mt-1.5 text-[28px] font-semibold tracking-tight text-foreground">{analytics?.pendingFulfillment ?? 0}</p>
-													<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">Awaiting Shiprocket dispatch</p>
+													<p
+														class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
+													>
+														Pending fulfillment
+													</p>
+													<p
+														class="mt-1.5 text-[28px] font-semibold tracking-tight text-foreground"
+													>
+														{analytics?.pendingFulfillment ?? 0}
+													</p>
+													<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
+														Awaiting Shiprocket dispatch
+													</p>
 												</div>
 												<Truck class="size-5 text-[var(--heat-100)]" strokeWidth={1.5} />
 											</div>
@@ -1135,15 +1243,27 @@
 										<!-- Monthly revenue chart -->
 										{#if analytics?.monthlySeries?.length}
 											<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-												<p class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase">Monthly revenue</p>
+												<p
+													class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+												>
+													Monthly revenue
+												</p>
 												<div class="mt-3 flex items-end gap-1" style="height: 80px">
 													{#each analytics.monthlySeries as month, idx (month.month)}
-														<div class="group relative flex flex-1 flex-col items-center justify-end" style="height: 100%">
+														<div
+															class="group relative flex flex-1 flex-col items-center justify-end"
+															style="height: 100%"
+														>
 															<div
 																class="chart-bar w-full rounded-t-sm bg-[var(--heat-100)] transition-all duration-500"
-																style="height: {Math.max(4, (month.revenue / maxMonthlyRevenue) * 100)}%; animation-delay: {idx * 60}ms"
+																style="height: {Math.max(
+																	4,
+																	(month.revenue / maxMonthlyRevenue) * 100
+																)}%; animation-delay: {idx * 60}ms"
 															></div>
-															<span class="mt-1 text-[8px] text-[var(--black-alpha-32)]">{month.month.slice(5)}</span>
+															<span class="mt-1 text-[8px] text-[var(--black-alpha-32)]"
+																>{month.month.slice(5)}</span
+															>
 															<div class="chart-tooltip">
 																{formatINR(month.revenue)}
 															</div>
@@ -1162,28 +1282,37 @@
 														<span class="size-1.5 rounded-full bg-[var(--accent-forest)]"></span>
 														<span class="text-[12px] text-[var(--black-alpha-56)]">Delivered</span>
 													</div>
-													<span class="text-[12px] font-medium text-foreground">{analytics?.deliveredOrders ?? 0}</span>
+													<span class="text-[12px] font-medium text-foreground"
+														>{analytics?.deliveredOrders ?? 0}</span
+													>
 												</div>
 												<div class="flex items-center justify-between">
 													<div class="flex items-center gap-2">
 														<span class="size-1.5 rounded-full bg-[var(--accent-honey)]"></span>
-														<span class="text-[12px] text-[var(--black-alpha-56)]">Cancellations</span>
+														<span class="text-[12px] text-[var(--black-alpha-56)]"
+															>Cancellations</span
+														>
 													</div>
-													<span class="text-[12px] font-medium text-foreground">{analytics?.cancellationReport.total ?? 0}</span>
+													<span class="text-[12px] font-medium text-foreground"
+														>{analytics?.cancellationReport.total ?? 0}</span
+													>
 												</div>
 												<div class="flex items-center justify-between">
 													<div class="flex items-center gap-2">
 														<span class="size-1.5 rounded-full bg-[var(--accent-crimson)]"></span>
-														<span class="text-[12px] text-[var(--black-alpha-56)]">Awaiting review</span>
+														<span class="text-[12px] text-[var(--black-alpha-56)]"
+															>Awaiting review</span
+														>
 													</div>
-													<span class="text-[12px] font-medium text-foreground">{analytics?.cancellationReport.pending ?? 0}</span>
+													<span class="text-[12px] font-medium text-foreground"
+														>{analytics?.cancellationReport.pending ?? 0}</span
+													>
 												</div>
 											</div>
 										</div>
 									</div>
 								</div>
 							</div>
-
 						{:else if view === 'catalog'}
 							<!-- CATALOG TAB -->
 							{#if productsLoading && !products.length}
@@ -1191,7 +1320,10 @@
 									<div class="grid gap-3 xl:grid-cols-[380px_1fr]">
 										<div class="space-y-2">
 											{#each [1, 2, 3, 4, 5] as i (i)}
-												<div class="skeleton-card h-[60px]" style="animation-delay: {i * 60}ms"></div>
+												<div
+													class="skeleton-card h-[60px]"
+													style="animation-delay: {i * 60}ms"
+												></div>
 											{/each}
 										</div>
 										<div class="skeleton-card h-[400px]"></div>
@@ -1201,12 +1333,16 @@
 								<div class="grid items-start gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
 									<!-- Product list sidebar -->
 									<aside class="catalog-sidebar xl:sticky xl:top-4 xl:self-start">
-										<div class="border-b border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+										<div
+											class="border-b border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+										>
 											<div class="mb-2 flex items-center justify-between gap-2">
 												<div class="flex items-center gap-2">
 													<Boxes class="size-4 text-[var(--black-alpha-40)]" strokeWidth={2} />
 													<span class="text-[13px] font-medium text-foreground">Catalog</span>
-													<span class="text-[11px] text-[var(--black-alpha-32)]">{filteredProducts.length}/{products.length}</span>
+													<span class="text-[11px] text-[var(--black-alpha-32)]"
+														>{filteredProducts.length}/{products.length}</span
+													>
 												</div>
 												<button
 													type="button"
@@ -1236,7 +1372,9 @@
 													}}
 													in:fly={{ x: -8, duration: 200, delay: Math.min(idx * 20, 300) }}
 												>
-													<div class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5">
+													<div
+														class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5"
+													>
 														<img
 															src={product.image || 'https://placehold.co/100x100?text=%20'}
 															alt={product.title}
@@ -1245,22 +1383,30 @@
 													</div>
 													<div class="min-w-0 flex-1">
 														<div class="flex items-start justify-between gap-1">
-															<p class="line-clamp-1 text-[12px] font-medium text-foreground">{product.title}</p>
-															<p class="shrink-0 text-[11px] font-medium text-foreground">{formatINR(product.price)}</p>
+															<p class="line-clamp-1 text-[12px] font-medium text-foreground">
+																{product.title}
+															</p>
+															<p class="shrink-0 text-[11px] font-medium text-foreground">
+																{formatINR(product.price)}
+															</p>
 														</div>
 														<p class="mt-0.5 truncate text-[10px] text-[var(--black-alpha-40)]">
-															{product.brand} · {categoryNameBySlug.get(product.category) ?? product.category}
+															{product.brand} · {categoryNameBySlug.get(product.category) ??
+																product.category}
 														</p>
 														<div class="mt-1 flex items-center gap-1">
 															<span
 																class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
 																	{product.status === 'active'
-																		? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
-																		: product.status === 'archived'
-																			? 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'
-																			: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
-															>{product.status}</span>
-															<span class="text-[9px] text-[var(--black-alpha-32)]">Stock {product.stock}</span>
+																	? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
+																	: product.status === 'archived'
+																		? 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'
+																		: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
+																>{product.status}</span
+															>
+															<span class="text-[9px] text-[var(--black-alpha-32)]"
+																>Stock {product.stock}</span
+															>
 														</div>
 													</div>
 												</button>
@@ -1278,9 +1424,15 @@
 									<div class="editor-panel">
 										<div class="border-b border-[var(--border-faint)] p-5">
 											<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-												<div class="flex size-24 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] p-3">
+												<div
+													class="flex size-24 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] p-3"
+												>
 													{#if productEditor.image}
-														<img src={productEditor.image} alt={productEditor.title || 'Preview'} class="max-h-full max-w-full object-contain" />
+														<img
+															src={productEditor.image}
+															alt={productEditor.title || 'Preview'}
+															class="max-h-full max-w-full object-contain"
+														/>
 													{:else}
 														<Boxes class="size-5 text-[var(--black-alpha-16)]" strokeWidth={1.5} />
 													{/if}
@@ -1290,14 +1442,16 @@
 														<span
 															class="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase
 																{selectedProductId === 'new'
-																	? 'bg-[var(--heat-100)] text-white'
-																	: productEditor.status === 'active'
-																		? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
-																		: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
+																? 'bg-[var(--heat-100)] text-white'
+																: productEditor.status === 'active'
+																	? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
+																	: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
 														>
 															{selectedProductId === 'new' ? 'new' : productEditor.status}
 														</span>
-														<span class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">
+														<span
+															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+														>
 															{categoryNameBySlug.get(productEditor.category) ?? 'Category pending'}
 														</span>
 													</div>
@@ -1305,24 +1459,42 @@
 														{productEditor.title || 'Untitled product'}
 													</h2>
 													<p class="text-[12px] text-[var(--black-alpha-40)]">
-														{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku || '—'}
+														{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku ||
+															'—'}
 													</p>
 												</div>
 												<div class="flex shrink-0 gap-5">
 													<div>
-														<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Price</p>
-														<p class="mt-0.5 text-[14px] font-medium text-foreground">{formatINR(Number(productEditor.price || 0))}</p>
+														<p
+															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+														>
+															Price
+														</p>
+														<p class="mt-0.5 text-[14px] font-medium text-foreground">
+															{formatINR(Number(productEditor.price || 0))}
+														</p>
 													</div>
 													<div>
-														<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Stock</p>
-														<p class="mt-0.5 text-[14px] font-medium text-foreground">{productEditor.stock || '0'}</p>
+														<p
+															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+														>
+															Stock
+														</p>
+														<p class="mt-0.5 text-[14px] font-medium text-foreground">
+															{productEditor.stock || '0'}
+														</p>
 													</div>
 												</div>
 											</div>
 										</div>
 
 										{#if productNotice}
-											<div class="m-5 mb-0 flex items-start gap-2 rounded-md border px-3 py-2.5 text-[12px] {noticeClasses(productNotice.tone)}" in:fly={{ y: -4, duration: 200 }}>
+											<div
+												class="m-5 mb-0 flex items-start gap-2 rounded-md border px-3 py-2.5 text-[12px] {noticeClasses(
+													productNotice.tone
+												)}"
+												in:fly={{ y: -4, duration: 200 }}
+											>
 												<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
 												<span>{productNotice.text}</span>
 											</div>
@@ -1354,7 +1526,11 @@
 													</label>
 													<label class="sm:col-span-2">
 														<span class="field-label">Description</span>
-														<textarea bind:value={productEditor.description} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
+														<textarea
+															bind:value={productEditor.description}
+															class="input-field min-h-[80px] py-2"
+															style="height:auto"
+														></textarea>
 													</label>
 													<label class="sm:col-span-2">
 														<span class="field-label">Compatibility</span>
@@ -1370,15 +1546,27 @@
 												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 													<label>
 														<span class="field-label">Price</span>
-														<input bind:value={productEditor.price} class="input-field" inputmode="decimal" />
+														<input
+															bind:value={productEditor.price}
+															class="input-field"
+															inputmode="decimal"
+														/>
 													</label>
 													<label>
 														<span class="field-label">MRP</span>
-														<input bind:value={productEditor.mrp} class="input-field" inputmode="decimal" />
+														<input
+															bind:value={productEditor.mrp}
+															class="input-field"
+															inputmode="decimal"
+														/>
 													</label>
 													<label>
 														<span class="field-label">Stock</span>
-														<input bind:value={productEditor.stock} class="input-field" inputmode="numeric" />
+														<input
+															bind:value={productEditor.stock}
+															class="input-field"
+															inputmode="numeric"
+														/>
 													</label>
 													<label>
 														<span class="field-label">Status</span>
@@ -1398,7 +1586,10 @@
 												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 													<label>
 														<span class="field-label">Authenticity</span>
-														<select bind:value={productEditor.authenticityGrade} class="input-field">
+														<select
+															bind:value={productEditor.authenticityGrade}
+															class="input-field"
+														>
 															<option value="oem">OEM</option>
 															<option value="compatible">Compatible</option>
 															<option value="refurbished">Refurbished</option>
@@ -1420,7 +1611,11 @@
 													</label>
 													<label>
 														<span class="field-label">GST rate (%)</span>
-														<input bind:value={productEditor.gstRate} class="input-field" inputmode="numeric" />
+														<input
+															bind:value={productEditor.gstRate}
+															class="input-field"
+															inputmode="numeric"
+														/>
 													</label>
 												</div>
 											</section>
@@ -1432,15 +1627,31 @@
 												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 													<label>
 														<span class="field-label">DOA window (days)</span>
-														<input bind:value={productEditor.doaPolicyDays} class="input-field" inputmode="numeric" />
+														<input
+															bind:value={productEditor.doaPolicyDays}
+															class="input-field"
+															inputmode="numeric"
+														/>
 													</label>
 													<label class="checkbox-field">
-														<input type="checkbox" bind:checked={productEditor.localDeliveryEligible} class="size-3.5 accent-[var(--heat-100)]" />
-														<span class="text-[11px] text-[var(--black-alpha-56)]">Local delivery</span>
+														<input
+															type="checkbox"
+															bind:checked={productEditor.localDeliveryEligible}
+															class="size-3.5 accent-[var(--heat-100)]"
+														/>
+														<span class="text-[11px] text-[var(--black-alpha-56)]"
+															>Local delivery</span
+														>
 													</label>
 													<label class="checkbox-field">
-														<input type="checkbox" bind:checked={productEditor.codEligible} class="size-3.5 accent-[var(--heat-100)]" />
-														<span class="text-[11px] text-[var(--black-alpha-56)]">COD eligible</span>
+														<input
+															type="checkbox"
+															bind:checked={productEditor.codEligible}
+															class="size-3.5 accent-[var(--heat-100)]"
+														/>
+														<span class="text-[11px] text-[var(--black-alpha-56)]"
+															>COD eligible</span
+														>
 													</label>
 												</div>
 											</section>
@@ -1460,24 +1671,44 @@
 													</label>
 													<label class="sm:col-span-2">
 														<span class="field-label">Additional images (one URL per line)</span>
-														<textarea bind:value={productEditor.imagesText} class="input-field min-h-[80px] py-2 font-mono" style="height:auto"></textarea>
+														<textarea
+															bind:value={productEditor.imagesText}
+															class="input-field min-h-[80px] py-2 font-mono"
+															style="height:auto"
+														></textarea>
 													</label>
 													<div class="grid grid-cols-2 gap-2.5 sm:col-span-2 sm:grid-cols-4">
 														<label>
 															<span class="field-label">Weight (kg)</span>
-															<input bind:value={productEditor.weightKg} class="input-field" inputmode="decimal" />
+															<input
+																bind:value={productEditor.weightKg}
+																class="input-field"
+																inputmode="decimal"
+															/>
 														</label>
 														<label>
 															<span class="field-label">Length (cm)</span>
-															<input bind:value={productEditor.lengthCm} class="input-field" inputmode="decimal" />
+															<input
+																bind:value={productEditor.lengthCm}
+																class="input-field"
+																inputmode="decimal"
+															/>
 														</label>
 														<label>
 															<span class="field-label">Breadth (cm)</span>
-															<input bind:value={productEditor.breadthCm} class="input-field" inputmode="decimal" />
+															<input
+																bind:value={productEditor.breadthCm}
+																class="input-field"
+																inputmode="decimal"
+															/>
 														</label>
 														<label>
 															<span class="field-label">Height (cm)</span>
-															<input bind:value={productEditor.heightCm} class="input-field" inputmode="decimal" />
+															<input
+																bind:value={productEditor.heightCm}
+																class="input-field"
+																inputmode="decimal"
+															/>
 														</label>
 													</div>
 												</div>
@@ -1490,11 +1721,19 @@
 												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
 													<label>
 														<span class="field-label">Highlights (one per line)</span>
-														<textarea bind:value={productEditor.highlightsText} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
+														<textarea
+															bind:value={productEditor.highlightsText}
+															class="input-field min-h-[80px] py-2"
+															style="height:auto"
+														></textarea>
 													</label>
 													<label>
 														<span class="field-label">Search keywords (one per line)</span>
-														<textarea bind:value={productEditor.searchKeywordsText} class="input-field min-h-[80px] py-2" style="height:auto"></textarea>
+														<textarea
+															bind:value={productEditor.searchKeywordsText}
+															class="input-field min-h-[80px] py-2"
+															style="height:auto"
+														></textarea>
 													</label>
 												</div>
 											</section>
@@ -1525,13 +1764,10 @@
 									</div>
 								</div>
 							{/if}
-
 						{:else if view === 'orders'}
 							<AdminOrdersManager />
-
 						{:else if view === 'fulfillment'}
 							<FulfillmentQueue />
-
 						{:else if view === 'users'}
 							<!-- USERS TAB -->
 							{#if usersLoading && !users.length}
@@ -1551,7 +1787,9 @@
 										<div class="overflow-x-auto">
 											<table class="w-full min-w-[600px] border-collapse text-left">
 												<thead>
-													<tr class="border-b border-[var(--border-muted)] text-[10px] font-medium tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
+													<tr
+														class="border-b border-[var(--border-muted)] text-[10px] font-medium tracking-[0.12em] text-[var(--black-alpha-40)] uppercase"
+													>
 														<th class="px-2 py-2">User</th>
 														<th class="px-2 py-2">Role</th>
 														<th class="px-2 py-2">Orders</th>
@@ -1571,27 +1809,43 @@
 															in:fly={{ x: -6, duration: 180, delay: Math.min(idx * 20, 200) }}
 														>
 															<td class="px-2 py-3">
-																<p class="text-[12px] font-medium text-foreground">{user.fullName || user.email || 'Unnamed'}</p>
-																<p class="text-[10px] text-[var(--black-alpha-32)]">{user.email || 'No email'}</p>
+																<p class="text-[12px] font-medium text-foreground">
+																	{user.fullName || user.email || 'Unnamed'}
+																</p>
+																<p class="text-[10px] text-[var(--black-alpha-32)]">
+																	{user.email || 'No email'}
+																</p>
 															</td>
 															<td class="px-2 py-3">
-																<span class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
-																	{user.role === 'admin'
+																<span
+																	class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
+																	{user.role !== 'user'
 																		? 'bg-[var(--accent-honey)]/12 text-[var(--accent-honey)]'
 																		: 'bg-[var(--background-lighter)] text-[var(--black-alpha-40)]'}"
-																>{user.role}</span>
+																	>{roleLabel(user.role)}</span
+																>
 															</td>
-															<td class="px-2 py-3 text-[12px] text-foreground">{user.orderCount}</td>
-															<td class="px-2 py-3 text-[12px] text-foreground">{formatINR(user.totalSpent)}</td>
+															<td class="px-2 py-3 text-[12px] text-foreground"
+																>{user.orderCount}</td
+															>
+															<td class="px-2 py-3 text-[12px] text-foreground"
+																>{formatINR(user.totalSpent)}</td
+															>
 														</tr>
 													{/each}
 												</tbody>
 											</table>
 										</div>
 										{#if usersError}
-											<div class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">{usersError}</div>
+											<div
+												class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
+											>
+												{usersError}
+											</div>
 										{:else if !filteredUsers.length}
-											<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-32)]">No users match.</div>
+											<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-32)]">
+												No users match.
+											</div>
 										{/if}
 									</div>
 
@@ -1600,7 +1854,14 @@
 										<p class="text-[13px] font-medium text-foreground">Edit account</p>
 
 										{#if userNotice}
-											<div class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(userNotice.tone)}" in:fly={{ y: -4, duration: 200 }}>{userNotice.text}</div>
+											<div
+												class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+													userNotice.tone
+												)}"
+												in:fly={{ y: -4, duration: 200 }}
+											>
+												{userNotice.text}
+											</div>
 										{/if}
 
 										{#if selectedUser}
@@ -1612,11 +1873,15 @@
 														class="input-field"
 														disabled={selectedUserIsCurrentAdmin}
 													>
-														<option value="user">User</option>
-														<option value="admin">Admin</option>
+														<option value="user">Customer</option>
+														{#each staffRoles as role (role)}
+															<option value={role}>{roleLabel(role)}</option>
+														{/each}
 													</select>
 													{#if selectedUserIsCurrentAdmin}
-														<span class="mt-1 block text-[10px] text-[var(--black-alpha-32)]">Use another admin account first.</span>
+														<span class="mt-1 block text-[10px] text-[var(--black-alpha-32)]"
+															>Use another admin account first.</span
+														>
 													{/if}
 												</label>
 												<label>
@@ -1625,31 +1890,61 @@
 												</label>
 												<label class="sm:col-span-2">
 													<span class="field-label">Phone</span>
-													<input bind:value={userEditor.phone} class="input-field disabled:opacity-50" disabled={selectedUserPhoneLocked} />
+													<input
+														bind:value={userEditor.phone}
+														class="input-field disabled:opacity-50"
+														disabled={selectedUserPhoneLocked}
+													/>
 													{#if selectedUserPhoneLocked}
-														<span class="mt-1 block text-[10px] text-[var(--black-alpha-32)]">Locked — account has order history.</span>
+														<span class="mt-1 block text-[10px] text-[var(--black-alpha-32)]"
+															>Locked — account has order history.</span
+														>
 													{/if}
 												</label>
 											</div>
 
 											<div class="mt-4 grid gap-2 sm:grid-cols-2">
 												<div class="rounded-md bg-[var(--background-lighter)] p-3">
-													<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Email</p>
-													<p class="mt-0.5 text-[12px] font-medium text-foreground">{selectedUser.email || 'No email'}</p>
-												</div>
-												<div class="rounded-md bg-[var(--background-lighter)] p-3">
-													<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Joined</p>
+													<p
+														class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+													>
+														Email
+													</p>
 													<p class="mt-0.5 text-[12px] font-medium text-foreground">
-														{selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleString('en-IN') : 'Unknown'}
+														{selectedUser.email || 'No email'}
 													</p>
 												</div>
 												<div class="rounded-md bg-[var(--background-lighter)] p-3">
-													<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Orders</p>
-													<p class="mt-0.5 text-[12px] font-medium text-foreground">{selectedUser.orderCount}</p>
+													<p
+														class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+													>
+														Joined
+													</p>
+													<p class="mt-0.5 text-[12px] font-medium text-foreground">
+														{selectedUser.createdAt
+															? new Date(selectedUser.createdAt).toLocaleString('en-IN')
+															: 'Unknown'}
+													</p>
 												</div>
 												<div class="rounded-md bg-[var(--background-lighter)] p-3">
-													<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">Total spent</p>
-													<p class="mt-0.5 text-[12px] font-medium text-foreground">{formatINR(selectedUser.totalSpent)}</p>
+													<p
+														class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+													>
+														Orders
+													</p>
+													<p class="mt-0.5 text-[12px] font-medium text-foreground">
+														{selectedUser.orderCount}
+													</p>
+												</div>
+												<div class="rounded-md bg-[var(--background-lighter)] p-3">
+													<p
+														class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+													>
+														Total spent
+													</p>
+													<p class="mt-0.5 text-[12px] font-medium text-foreground">
+														{formatINR(selectedUser.totalSpent)}
+													</p>
 												</div>
 											</div>
 
@@ -1664,14 +1959,15 @@
 												</button>
 											</div>
 										{:else}
-											<div class="mt-4 rounded-md bg-[var(--background-lighter)] p-4 text-center text-[12px] text-[var(--black-alpha-32)]">
+											<div
+												class="mt-4 rounded-md bg-[var(--background-lighter)] p-4 text-center text-[12px] text-[var(--black-alpha-32)]"
+											>
 												Select a user to edit.
 											</div>
 										{/if}
 									</div>
 								</div>
 							{/if}
-
 						{:else if view === 'promos'}
 							<!-- PROMOS TAB -->
 							{#if couponsLoading && !coupons.length}
@@ -1686,7 +1982,9 @@
 										<div class="mb-3 flex items-center justify-between gap-2">
 											<div>
 												<p class="text-[13px] font-medium text-foreground">Promotions</p>
-												<p class="text-[11px] text-[var(--black-alpha-40)]">Coupon codes &amp; limits.</p>
+												<p class="text-[11px] text-[var(--black-alpha-40)]">
+													Coupon codes &amp; limits.
+												</p>
 											</div>
 											<button
 												type="button"
@@ -1698,7 +1996,9 @@
 										</div>
 
 										<div class="overflow-hidden rounded-md border border-[var(--border-faint)]">
-											<div class="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2 text-[9px] font-medium tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
+											<div
+												class="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2 text-[9px] font-medium tracking-[0.12em] text-[var(--black-alpha-40)] uppercase"
+											>
 												<span>Code</span>
 												<span>Used</span>
 												<span>Status</span>
@@ -1708,9 +2008,7 @@
 												<button
 													type="button"
 													class="grid w-full grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-[var(--border-faint)] px-3 py-2.5 text-left transition-colors last:border-b-0
-														{selectedCouponId === coupon.id
-															? 'bg-[var(--heat-4)]'
-															: 'hover:bg-[var(--background-lighter)]'}"
+														{selectedCouponId === coupon.id ? 'bg-[var(--heat-4)]' : 'hover:bg-[var(--background-lighter)]'}"
 													onclick={() => {
 														selectedCouponId = coupon.id;
 														couponEditor = mapCouponToEditor(coupon);
@@ -1719,13 +2017,20 @@
 													in:fly={{ x: -6, duration: 180, delay: Math.min(idx * 25, 200) }}
 												>
 													<span>
-														<span class="text-[12px] font-medium text-foreground">{coupon.code}</span>
+														<span class="text-[12px] font-medium text-foreground"
+															>{coupon.code}</span
+														>
 														<span class="mt-0.5 block text-[10px] text-[var(--black-alpha-32)]">
-															{coupon.discountType === 'percent' ? `${coupon.discountValue}% off` : `${formatINR(coupon.discountValue)} off`}
+															{coupon.discountType === 'percent'
+																? `${coupon.discountValue}% off`
+																: `${formatINR(coupon.discountValue)} off`}
 														</span>
 													</span>
-													<span class="text-[12px] font-medium text-foreground">{coupon.usedCount}</span>
-													<span class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
+													<span class="text-[12px] font-medium text-foreground"
+														>{coupon.usedCount}</span
+													>
+													<span
+														class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
 														{coupon.active
 															? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
 															: 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'}"
@@ -1737,9 +2042,15 @@
 										</div>
 
 										{#if couponsError}
-											<div class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">{couponsError}</div>
+											<div
+												class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
+											>
+												{couponsError}
+											</div>
 										{:else if !coupons.length}
-											<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-32)]">No coupons yet.</div>
+											<div class="mt-3 p-3 text-center text-[12px] text-[var(--black-alpha-32)]">
+												No coupons yet.
+											</div>
 										{/if}
 									</div>
 
@@ -1747,10 +2058,14 @@
 									<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
 										<div class="flex items-start justify-between gap-3">
 											<div>
-												<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase">
+												<p
+													class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+												>
 													{couponEditor.id ? 'Edit coupon' : 'Create coupon'}
 												</p>
-												<h3 class="mt-0.5 text-[16px] font-medium text-foreground">{couponEditor.code || 'New campaign'}</h3>
+												<h3 class="mt-0.5 text-[16px] font-medium text-foreground">
+													{couponEditor.code || 'New campaign'}
+												</h3>
 											</div>
 											{#if selectedCoupon}
 												<div class="text-right text-[11px] text-[var(--black-alpha-40)]">
@@ -1761,7 +2076,14 @@
 										</div>
 
 										{#if couponNotice}
-											<div class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(couponNotice.tone)}" in:fly={{ y: -4, duration: 200 }}>{couponNotice.text}</div>
+											<div
+												class="mt-3 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+													couponNotice.tone
+												)}"
+												in:fly={{ y: -4, duration: 200 }}
+											>
+												{couponNotice.text}
+											</div>
 										{/if}
 
 										<div class="mt-4 grid gap-3 md:grid-cols-2">
@@ -1782,32 +2104,56 @@
 											</label>
 											<label>
 												<span class="field-label">
-													{couponEditor.discountType === 'percent' ? 'Discount percent' : 'Discount amount'}
+													{couponEditor.discountType === 'percent'
+														? 'Discount percent'
+														: 'Discount amount'}
 												</span>
-												<input bind:value={couponEditor.discountValue} class="input-field" inputmode="decimal" />
+												<input
+													bind:value={couponEditor.discountValue}
+													class="input-field"
+													inputmode="decimal"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Minimum subtotal</span>
-												<input bind:value={couponEditor.minimumSubtotal} class="input-field" inputmode="decimal" />
+												<input
+													bind:value={couponEditor.minimumSubtotal}
+													class="input-field"
+													inputmode="decimal"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Max discount</span>
-												<input bind:value={couponEditor.maxDiscount} class="input-field" inputmode="decimal" />
+												<input
+													bind:value={couponEditor.maxDiscount}
+													class="input-field"
+													inputmode="decimal"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Total usage limit</span>
-												<input bind:value={couponEditor.usageLimit} class="input-field" inputmode="numeric" />
+												<input
+													bind:value={couponEditor.usageLimit}
+													class="input-field"
+													inputmode="numeric"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Per user limit</span>
-												<input bind:value={couponEditor.perUserLimit} class="input-field" inputmode="numeric" />
+												<input
+													bind:value={couponEditor.perUserLimit}
+													class="input-field"
+													inputmode="numeric"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Status</span>
 												<select
 													class="input-field"
 													value={couponEditor.active ? 'active' : 'inactive'}
-													onchange={(event) => (couponEditor.active = (event.currentTarget as HTMLSelectElement).value === 'active')}
+													onchange={(event) =>
+														(couponEditor.active =
+															(event.currentTarget as HTMLSelectElement).value === 'active')}
 												>
 													<option value="active">Active</option>
 													<option value="inactive">Inactive</option>
@@ -1815,17 +2161,28 @@
 											</label>
 											<label>
 												<span class="field-label">Starts at</span>
-												<input bind:value={couponEditor.startsAt} class="input-field" type="datetime-local" />
+												<input
+													bind:value={couponEditor.startsAt}
+													class="input-field"
+													type="datetime-local"
+												/>
 											</label>
 											<label>
 												<span class="field-label">Ends at</span>
-												<input bind:value={couponEditor.endsAt} class="input-field" type="datetime-local" />
+												<input
+													bind:value={couponEditor.endsAt}
+													class="input-field"
+													type="datetime-local"
+												/>
 											</label>
 										</div>
 
 										<label class="mt-3 block">
 											<span class="field-label">Description</span>
-											<textarea bind:value={couponEditor.description} class="input-field min-h-[80px] py-2"></textarea>
+											<textarea
+												bind:value={couponEditor.description}
+												class="input-field min-h-[80px] py-2"
+											></textarea>
 										</label>
 
 										<div class="mt-4 flex flex-wrap gap-2">
@@ -1851,7 +2208,6 @@
 									</div>
 								</div>
 							{/if}
-
 						{:else if view === 'support'}
 							<AdminSupportManager />
 						{/if}
@@ -2021,8 +2377,13 @@
 	}
 
 	@keyframes skeleton-pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
 	}
 
 	/* ── KPI cards ── */

@@ -3,7 +3,7 @@ import type { CollectionCreateSchema } from 'typesense/lib/Typesense/Collections
 import type { ImportResponse } from 'typesense/lib/Typesense/Documents';
 import { discountPct, type Product } from '$lib/catalog';
 import {
-	listCatalogProducts,
+	listCatalogProductPage,
 	normalizeProductRow,
 	productSelectFields,
 	type ProductRow
@@ -283,27 +283,26 @@ export async function searchProducts(
 		}
 	}
 
-	const products = orderFallbackProducts(
-		await listCatalogProducts(
-			{
-				category: options.category,
-				query: options.query,
-				brand: options.brand,
-				minPrice: options.minPrice,
-				maxPrice: options.maxPrice,
-				inStock: options.inStock,
-				minRating: options.minRating,
-				sort: options.sort,
-				limit: options.limit
-			},
-			client
-		),
-		options.sort
+	const fallbackResult = await listCatalogProductPage(
+		{
+			category: options.category,
+			query: options.query,
+			brand: options.brand,
+			minPrice: options.minPrice,
+			maxPrice: options.maxPrice,
+			inStock: options.inStock,
+			minRating: options.minRating,
+			sort: options.sort,
+			limit: options.limit,
+			page: options.page
+		},
+		client
 	);
+	const products = orderFallbackProducts(fallbackResult.products, options.sort);
 
 	return {
 		products,
-		total: products.length,
+		total: fallbackResult.total,
 		source: 'supabase'
 	};
 }
@@ -327,7 +326,7 @@ export async function syncPendingProductSearchEvents(client: ProductClient, limi
 
 	const { data: events, error } = await client
 		.from('product_search_sync_events')
-		.select('*')
+		.select('id,product_id,operation,status,attempts')
 		.in('status', ['pending', 'failed'])
 		.order('created_at', { ascending: true })
 		.limit(limit);

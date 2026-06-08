@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { apiBase } from '$lib/api-base';
+	import { getAuthContext } from '$lib/auth-context';
 	import { formatINR } from '$lib/catalog';
 	import type { OrderSummary } from '$lib/orders';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
@@ -20,7 +22,8 @@
 		ShieldCheck,
 		Truck
 	} from '@lucide/svelte';
-	import { cubicOut } from 'svelte/easing';
+	import { onMount } from 'svelte';
+	import { cubicOut, quintOut } from 'svelte/easing';
 	import { fade, fly } from 'svelte/transition';
 
 	type TimelineStep = {
@@ -30,13 +33,24 @@
 		state: 'complete' | 'active' | 'waiting' | 'problem';
 	};
 
-	type DetailPair = {
-		label: string;
-		value: string;
+	type DetailPair = { label: string; value: string };
+	type OrderRealtimePatch = {
+		id: string;
+		status?: string;
+		paymentStatus?: string;
+		updatedAt?: string;
 	};
 
 	let { data }: { data: { order: OrderSummary } } = $props();
-	let order = $derived(data.order);
+	let realtimeOrderPatch = $state<OrderRealtimePatch | null>(null);
+	let order = $derived.by(() => {
+		if (!realtimeOrderPatch || realtimeOrderPatch.id !== data.order.id) return data.order;
+		return {
+			...data.order,
+			...realtimeOrderPatch
+		};
+	});
+	const auth = getAuthContext();
 	let trackingMessage = $state<string | null>(null);
 	let trackingRefreshing = $state(false);
 	let trackingMessageTone = $state<'info' | 'error'>('info');
@@ -46,10 +60,10 @@
 	const orderStatusLabel = $derived(order ? formatStatusLabel(order.status) : '');
 	const paymentStatusLabel = $derived(order ? formatStatusLabel(order.paymentStatus) : '');
 	const shipmentStatusLabel = $derived(
-		order?.shipment?.status ? formatStatusLabel(order.shipment.status) : 'Waiting for dispatch'
+		order?.shipment?.status ? formatStatusLabel(order.shipment.status) : 'Awaiting dispatch'
 	);
 	const courierLabel = $derived(order?.shipment?.courierName || 'Courier pending');
-	const awbLabel = $derived(order?.shipment?.awbCode || 'Not assigned yet');
+	const awbLabel = $derived(order?.shipment?.awbCode || 'Not assigned');
 	const itemCount = $derived(order ? order.items.reduce((sum, item) => sum + item.qty, 0) : 0);
 	const subtotal = $derived(
 		order ? order.items.reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.qty ?? 0), 0) : 0
@@ -66,10 +80,10 @@
 	const timeline = $derived(order ? buildTimeline(order) : []);
 	const primaryActionLabel = $derived(
 		order?.shipment?.trackingUrl
-			? 'Open carrier tracking'
+			? 'Track shipment'
 			: order?.shipment
 				? 'Refresh tracking'
-				: 'Waiting for shipment'
+				: 'Awaiting shipment'
 	);
 	const paymentDetails = $derived<DetailPair[]>(
 		order
@@ -79,7 +93,7 @@
 					{ label: 'Provider', value: order.payment?.provider ?? 'Pending' },
 					{
 						label: 'Reference',
-						value: order.payment?.providerPaymentId ?? order.payment?.providerOrderId ?? 'Not available'
+						value: order.payment?.providerPaymentId ?? order.payment?.providerOrderId ?? 'N/A'
 					}
 				]
 			: []
@@ -124,50 +138,47 @@
 			},
 			{
 				key: 'paid',
-				label: 'Payment checked',
+				label: 'Payment verified',
 				detail: formatStatusLabel(currentOrder.paymentStatus),
 				state: isComplete(paymentStatus, ['paid', 'captured', 'verified']) ? 'complete' : failed ? 'problem' : 'active'
 			},
 			{
 				key: 'packed',
-				label: 'Packed for courier',
-				detail: hasShipment ? courierLabel : 'Operations will assign a courier',
+				label: 'Packed',
+				detail: hasShipment ? courierLabel : 'Awaiting courier',
 				state: hasShipment ? 'complete' : failed ? 'problem' : 'active'
 			},
 			{
 				key: 'transit',
 				label: 'In transit',
-				detail: hasShipment ? shipmentStatusLabel : 'Tracking appears after AWB',
+				detail: hasShipment ? shipmentStatusLabel : 'Pending AWB',
 				state: delivered ? 'complete' : hasShipment ? 'active' : 'waiting'
 			},
 			{
 				key: 'delivered',
 				label: 'Delivered',
-				detail: delivered ? 'Package delivered' : 'Final handoff pending',
+				detail: delivered ? 'Package delivered' : 'Pending',
 				state: delivered ? 'complete' : failed ? 'problem' : 'waiting'
 			}
 		];
 	}
 
-	function statusTone(status: string) {
+	function statusTone(status: string): string {
 		const normalized = status.toLowerCase();
-		if (['delivered', 'paid', 'captured', 'verified'].includes(normalized)) {
-			return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-		}
-		if (['cancelled', 'failed', 'payment_failed', 'refunded', 'returned'].includes(normalized)) {
-			return 'border-red-200 bg-red-50 text-red-700';
-		}
-		if (['pending_payment', 'pending', 'cod_pending', 'processing'].includes(normalized)) {
-			return 'border-amber-200 bg-amber-50 text-amber-700';
-		}
-		return 'border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]';
+		if (['delivered', 'paid', 'captured', 'verified'].includes(normalized))
+			return 'tone-success';
+		if (['cancelled', 'failed', 'payment_failed', 'refunded', 'returned'].includes(normalized))
+			return 'tone-danger';
+		if (['pending_payment', 'pending', 'cod_pending', 'processing'].includes(normalized))
+			return 'tone-warning';
+		return 'tone-heat';
 	}
 
-	function stepClasses(state: TimelineStep['state']) {
-		if (state === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-		if (state === 'active') return 'border-[var(--heat-20)] bg-[var(--heat-8)] text-[var(--heat-100)]';
-		if (state === 'problem') return 'border-red-200 bg-red-50 text-red-700';
-		return 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-48)]';
+	function stepTone(state: TimelineStep['state']): string {
+		if (state === 'complete') return 'tone-success';
+		if (state === 'active') return 'tone-heat';
+		if (state === 'problem') return 'tone-danger';
+		return 'tone-muted';
 	}
 
 	function stepIcon(state: TimelineStep['state']) {
@@ -191,7 +202,6 @@
 
 	async function refreshTracking() {
 		if (!order?.shipment) return;
-
 		try {
 			trackingRefreshing = true;
 			trackingMessageTone = 'info';
@@ -204,6 +214,7 @@
 			} | null;
 			if (!response.ok) throw new Error(body?.error ?? 'Could not refresh tracking');
 			trackingMessage = body?.tracking?.latest ?? 'Tracking refreshed';
+			void invalidate(`order:${order.id}`);
 		} catch (refreshError) {
 			trackingMessageTone = 'error';
 			trackingMessage =
@@ -215,16 +226,108 @@
 
 	function handlePrimaryAction() {
 		if (order?.shipment?.trackingUrl) {
-			openTrackingUrl(order.shipment.trackingUrl);
+			window.open(order.shipment.trackingUrl, '_blank', 'noopener,noreferrer');
 			return;
 		}
 		void refreshTracking();
 	}
 
-	function openTrackingUrl(url: string | null | undefined) {
-		if (!url) return;
-		window.open(url, '_blank', 'noopener,noreferrer');
+	function applyRealtimeOrderRow(row: Record<string, unknown>) {
+		if (row.id !== data.order.id) return;
+		const currentOrder = order;
+
+		realtimeOrderPatch = {
+			id: data.order.id,
+			status: typeof row.status === 'string' ? row.status : currentOrder.status,
+			paymentStatus:
+				typeof row.payment_status === 'string' ? row.payment_status : currentOrder.paymentStatus,
+			updatedAt: typeof row.updated_at === 'string' ? row.updated_at : currentOrder.updatedAt
+		};
 	}
+
+	onMount(() => {
+		const orderId = order?.id;
+		if (!orderId) return;
+
+		let refreshTimer: number | null = null;
+		let fallbackTimer: number | null = null;
+		let subscriptionWatchdog: number | null = null;
+		let subscribed = false;
+		const refreshOrder = () => {
+			if (refreshTimer) window.clearTimeout(refreshTimer);
+			refreshTimer = window.setTimeout(() => {
+				refreshTimer = null;
+				void invalidate(`order:${orderId}`);
+			}, 250);
+		};
+		const stopFallbackRefresh = () => {
+			if (!fallbackTimer) return;
+			window.clearInterval(fallbackTimer);
+			fallbackTimer = null;
+		};
+		const startFallbackRefresh = () => {
+			if (fallbackTimer) return;
+			fallbackTimer = window.setInterval(() => {
+				if (!document.hidden) refreshOrder();
+			}, 15000);
+		};
+		const handleVisibilityRefresh = () => {
+			if (!document.hidden) refreshOrder();
+		};
+
+		const channel = auth.supabase
+			.channel(`order:${orderId}`)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+				(payload) => {
+					if (payload.eventType !== 'DELETE' && payload.new) {
+						applyRealtimeOrderRow(payload.new as Record<string, unknown>);
+					}
+					refreshOrder();
+				}
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'order_items', filter: `order_id=eq.${orderId}` },
+				refreshOrder
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'payments', filter: `order_id=eq.${orderId}` },
+				refreshOrder
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipments', filter: `order_id=eq.${orderId}` },
+				refreshOrder
+			)
+			.subscribe((status) => {
+				if (status === 'SUBSCRIBED') {
+					subscribed = true;
+					stopFallbackRefresh();
+					return;
+				}
+				if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+					startFallbackRefresh();
+				}
+			});
+
+		window.addEventListener('focus', refreshOrder);
+		document.addEventListener('visibilitychange', handleVisibilityRefresh);
+		subscriptionWatchdog = window.setTimeout(() => {
+			if (!subscribed) startFallbackRefresh();
+		}, 3500);
+
+		return () => {
+			if (refreshTimer) window.clearTimeout(refreshTimer);
+			if (subscriptionWatchdog) window.clearTimeout(subscriptionWatchdog);
+			stopFallbackRefresh();
+			window.removeEventListener('focus', refreshOrder);
+			document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+			void auth.supabase.removeChannel(channel);
+		};
+	});
 </script>
 
 <svelte:head>
@@ -232,195 +335,172 @@
 </svelte:head>
 
 {#snippet statusPill(label: string, status: string)}
-	<span
-		class={`inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-[0.12em] uppercase ${statusTone(status)}`}
-	>
+	<span class={`status-pill ${statusTone(status)}`}>
 		{label}
 	</span>
 {/snippet}
 
-{#snippet detailGrid(title: string, icon: typeof Package, details: DetailPair[])}
+{#snippet detailGrid(title: string, icon: typeof Package, details: DetailPair[], delay: number)}
 	{@const Icon = icon}
-	<section class="order-panel p-4 sm:p-5" in:fly={{ y: 12, duration: 360, easing: cubicOut }}>
-		<div class="mb-4 flex items-center gap-3">
-			<div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--heat-8)] text-[var(--heat-100)]">
-				<Icon class="size-4" strokeWidth={2} />
+	<section class="panel" in:fly={{ y: 10, duration: 380, delay, easing: quintOut }}>
+		<div class="mb-3 flex items-center gap-2.5">
+			<div class="icon-box">
+				<Icon class="size-3.5" strokeWidth={2} />
 			</div>
-			<h2 class="text-[15px] font-semibold text-foreground">{title}</h2>
+			<h2 class="text-[13px] font-semibold text-foreground">{title}</h2>
 		</div>
-		<div class="grid gap-2 sm:grid-cols-2">
+		<div class="grid gap-1.5 sm:grid-cols-2">
 			{#each details as detail (detail.label)}
-				<div class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
-					<p class="text-[10px] font-medium tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
+				<div class="detail-cell">
+					<p class="text-[9px] font-semibold tracking-[0.14em] text-[var(--black-alpha-40)] uppercase">
 						{detail.label}
 					</p>
-					<p class="mt-1 text-[13px] font-medium text-foreground">{detail.value}</p>
+					<p class="mt-0.5 text-[12px] font-medium text-foreground">{detail.value}</p>
 				</div>
 			{/each}
 		</div>
 	</section>
 {/snippet}
 
-<section class="order-page mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+<section class="mx-auto w-full max-w-[1120px] px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
 	{#if order}
-		<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_370px]">
-			<div class="min-w-0 space-y-5">
-				<header class="order-hero overflow-hidden" in:fly={{ y: 14, duration: 420, easing: cubicOut }}>
-					<div class="order-hero-grid absolute inset-0 opacity-60"></div>
-					<div class="relative p-4 sm:p-6 lg:p-7">
+		<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+			<!-- Main Column -->
+			<div class="min-w-0 space-y-4">
+				<!-- Hero -->
+				<header class="hero" in:fly={{ y: 12, duration: 400, easing: quintOut }}>
+					<div class="hero-grain"></div>
+					<div class="relative p-4 sm:p-5">
 						<a
 							href={resolve('/orders')}
-							class="mb-6 inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border-faint)] bg-white/80 px-3 text-[13px] font-medium text-[var(--black-alpha-56)] shadow-sm backdrop-blur transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+							class="back-link"
 						>
-							<ArrowLeft class="size-4" strokeWidth={2} />
+							<ArrowLeft class="size-3.5" strokeWidth={2} />
 							Orders
 						</a>
 
-						<div class="grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
+						<div class="mt-4 flex flex-wrap items-end justify-between gap-4">
 							<div class="min-w-0">
-								<p class="text-[11px] font-semibold tracking-[0.16em] text-[var(--heat-100)] uppercase">
-									Live order record
-								</p>
-								<div class="mt-2 flex flex-wrap items-center gap-2">
-									<h1 class="text-[30px] font-semibold tracking-tight text-foreground sm:text-[40px]">
+								<div class="flex items-center gap-2">
+									<h1 class="text-[28px] font-bold tracking-tight text-foreground sm:text-[34px]">
 										#{shortOrderId}
 									</h1>
 									<button
 										type="button"
-										class="inline-flex size-9 items-center justify-center rounded-full border border-[var(--border-faint)] bg-white text-[var(--black-alpha-48)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+										class="copy-btn"
 										onclick={copyOrderId}
 										aria-label="Copy full order ID"
 									>
-										<Copy class="size-4" strokeWidth={2} />
+										<Copy class="size-3.5" strokeWidth={2} />
 									</button>
 								</div>
-								<p class="mt-2 max-w-2xl text-[14px] leading-6 text-[var(--black-alpha-56)]">
-									Placed {new Date(order.createdAt).toLocaleString('en-IN')}. We keep checkout
-									items, payment evidence, and courier state together so this page is easy to scan.
-								</p>
 								{#if copiedOrderId}
-									<p class="mt-2 text-[12px] font-medium text-[var(--heat-100)]" transition:fade>
-										Full order ID copied
+									<p class="mt-1 text-[11px] font-medium text-[var(--heat-100)]" transition:fade={{ duration: 200 }}>
+										Copied
 									</p>
 								{/if}
+								<p class="mt-1 text-[12px] text-[var(--black-alpha-48)]">
+									{new Date(order.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+								</p>
 							</div>
 
-							<div class="grid min-w-[220px] gap-2 rounded-lg border border-[var(--border-faint)] bg-white/86 p-3 shadow-sm backdrop-blur">
-								<div class="flex items-center justify-between gap-4">
-									<span class="text-[11px] tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
-										Total
-									</span>
-									<span class="text-[22px] font-semibold text-foreground">{formatINR(order.total)}</span>
-								</div>
-								<div class="flex flex-wrap gap-2">
+							<div class="flex flex-wrap items-center gap-3">
+								<div class="flex flex-wrap gap-1.5">
 									{@render statusPill(orderStatusLabel, order.status)}
 									{@render statusPill(paymentStatusLabel, order.paymentStatus)}
 								</div>
+								<span class="text-[22px] font-bold text-foreground">{formatINR(order.total)}</span>
 							</div>
 						</div>
 					</div>
 				</header>
 
-				<section class="order-panel p-4 sm:p-5" in:fly={{ y: 12, duration: 420, delay: 70, easing: cubicOut }}>
-					<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-						<div>
-							<p class="text-[11px] font-semibold tracking-[0.16em] text-[var(--black-alpha-40)] uppercase">
-								Progress
-							</p>
-							<h2 class="mt-1 text-[20px] font-semibold tracking-tight text-foreground">
-								Delivery timeline
-							</h2>
-						</div>
-						<div class="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-1.5 text-[12px] font-medium text-[var(--black-alpha-56)]">
+				<!-- Timeline -->
+				<section class="panel p-4 sm:p-5" in:fly={{ y: 10, duration: 400, delay: 60, easing: quintOut }}>
+					<div class="mb-4 flex items-center justify-between gap-3">
+						<h2 class="text-[13px] font-semibold text-foreground">Delivery timeline</h2>
+						<span class="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] font-medium text-[var(--black-alpha-48)]">
 							{shipmentStatusLabel}
-						</div>
+						</span>
 					</div>
 
-					<div class="timeline-grid">
+					<div class="tl-grid">
 						{#each timeline as step, index (step.key)}
 							{@const Icon = stepIcon(step.state)}
-							<div class="timeline-step" in:fly={{ y: 10, duration: 360, delay: 80 + index * 45, easing: cubicOut }}>
-								<div class={`timeline-dot ${stepClasses(step.state)}`}>
-									<Icon class="size-4" strokeWidth={2} />
+							<div class="tl-step" in:fly={{ y: 8, duration: 340, delay: 80 + index * 50, easing: quintOut }}>
+								<div class={`tl-dot ${stepTone(step.state)}`}>
+									<Icon class="size-3.5" strokeWidth={2.5} />
 								</div>
 								{#if index < timeline.length - 1}
-									<div class="timeline-line" class:complete={step.state === 'complete'}></div>
+									<div class="tl-line" class:complete={step.state === 'complete'}></div>
 								{/if}
-								<div class="pt-3">
-									<p class="text-[13px] font-semibold text-foreground">{step.label}</p>
-									<p class="mt-1 text-[12px] leading-5 text-[var(--black-alpha-48)]">{step.detail}</p>
+								<div class="tl-text">
+									<p class="text-[12px] font-semibold text-foreground">{step.label}</p>
+									<p class="text-[11px] text-[var(--black-alpha-48)]">{step.detail}</p>
 								</div>
 							</div>
 						{/each}
 					</div>
 				</section>
 
-				<section class="order-panel overflow-hidden" in:fly={{ y: 12, duration: 420, delay: 120, easing: cubicOut }}>
-					<div class="flex items-center justify-between gap-3 border-b border-[var(--border-faint)] bg-white p-4 sm:p-5">
-						<div class="flex items-center gap-3">
-							<div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--accent-black)] text-[var(--heat-100)]">
-								<Package class="size-4" strokeWidth={2} />
-							</div>
-							<div>
-								<h2 class="text-[15px] font-semibold text-foreground">Items in this order</h2>
-								<p class="text-[12px] text-[var(--black-alpha-48)]">{itemCount} item{itemCount === 1 ? '' : 's'} captured at checkout</p>
-							</div>
+				<!-- Items -->
+				<section class="panel overflow-hidden" in:fly={{ y: 10, duration: 400, delay: 100, easing: quintOut }}>
+					<div class="flex items-center gap-2.5 border-b border-[var(--border-faint)] px-4 py-3">
+						<div class="icon-box">
+							<Package class="size-3.5" strokeWidth={2} />
 						</div>
+						<h2 class="text-[13px] font-semibold text-foreground">
+							{itemCount} item{itemCount === 1 ? '' : 's'}
+						</h2>
 					</div>
 
 					<div class="divide-y divide-[var(--border-faint)]">
 						{#each order.items as item, index (item.id)}
 							<div
-								class="grid gap-3 p-4 transition-colors hover:bg-[var(--background-lighter)] sm:grid-cols-[72px_1fr_auto] sm:items-center sm:p-5"
-								in:fly={{ y: 10, duration: 320, delay: 160 + index * 35, easing: cubicOut }}
+								class="item-row"
+								in:fly={{ y: 8, duration: 300, delay: 130 + index * 40, easing: quintOut }}
 							>
-								<div class="flex aspect-square items-center justify-center rounded-md border border-[var(--border-faint)] bg-white p-2">
+								<div class="item-img">
 									<img src={item.image} alt={item.title} class="max-h-full w-full object-contain" loading="lazy" />
 								</div>
-								<div class="min-w-0">
-									<p class="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">{item.title}</p>
-									<div class="mt-2 flex flex-wrap gap-2 text-[12px] text-[var(--black-alpha-48)]">
-										<span>{item.brand || 'LapKart part'}</span>
-										<span>Qty {item.qty}</span>
-									</div>
-								</div>
-								<div class="flex items-center justify-between gap-4 sm:block sm:text-right">
-									<span class="text-[12px] text-[var(--black-alpha-40)] sm:hidden">Line total</span>
-									<p class="text-[14px] font-semibold text-foreground">{formatINR(item.price * item.qty)}</p>
-									<p class="mt-1 hidden text-[12px] text-[var(--black-alpha-48)] sm:block">
-										{formatINR(item.price)} each
+								<div class="min-w-0 flex-1">
+									<p class="line-clamp-2 text-[13px] font-semibold leading-5 text-foreground">{item.title}</p>
+									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
+										{item.brand || 'LapKart'} &middot; Qty {item.qty}
 									</p>
+								</div>
+								<div class="text-right">
+									<p class="text-[13px] font-semibold text-foreground">{formatINR(item.price * item.qty)}</p>
+									{#if item.qty > 1}
+										<p class="text-[11px] text-[var(--black-alpha-40)]">{formatINR(item.price)} ea</p>
+									{/if}
 								</div>
 							</div>
 						{/each}
 					</div>
 				</section>
 
-				<div class="grid gap-5 xl:grid-cols-2">
-					{@render detailGrid('Shipping details', Truck, shippingDetails)}
-					{@render detailGrid('Payment details', CreditCard, paymentDetails)}
+				<!-- Shipping + Payment -->
+				<div class="grid gap-4 xl:grid-cols-2">
+					{@render detailGrid('Shipping', Truck, shippingDetails, 140)}
+					{@render detailGrid('Payment', CreditCard, paymentDetails, 170)}
 				</div>
 			</div>
 
-			<aside class="space-y-4 lg:sticky lg:top-24 lg:h-fit" in:fly={{ x: 16, duration: 420, delay: 140, easing: cubicOut }}>
-				<div class="order-panel p-4 sm:p-5">
-					<div class="mb-5 flex items-start justify-between gap-4">
-						<div>
-							<p class="text-[11px] font-semibold tracking-[0.16em] text-[var(--black-alpha-40)] uppercase">
-								Next action
-							</p>
-							<h2 class="mt-1 text-[20px] font-semibold tracking-tight text-foreground">
-								{primaryActionLabel}
-							</h2>
-						</div>
-						<div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-[var(--heat-8)] text-[var(--heat-100)]">
-							<Truck class="size-5" strokeWidth={2} />
+			<!-- Sidebar -->
+			<aside class="space-y-3 lg:sticky lg:top-20 lg:h-fit" in:fly={{ x: 14, duration: 420, delay: 80, easing: quintOut }}>
+				<!-- Primary Action -->
+				<div class="panel p-4">
+					<div class="mb-3 flex items-center justify-between gap-3">
+						<h2 class="text-[13px] font-semibold text-foreground">{primaryActionLabel}</h2>
+						<div class="icon-box">
+							<Truck class="size-3.5" strokeWidth={2} />
 						</div>
 					</div>
 
 					<button
 						type="button"
-						class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[var(--heat-100)] px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+						class="primary-action-btn"
 						onclick={handlePrimaryAction}
 						disabled={!order.shipment || trackingRefreshing}
 					>
@@ -429,83 +509,79 @@
 						{:else}
 							<RefreshCw class={`size-4 ${trackingRefreshing ? 'animate-spin' : ''}`} strokeWidth={2} />
 						{/if}
-						{trackingRefreshing ? 'Refreshing' : primaryActionLabel}
+						{trackingRefreshing ? 'Refreshing...' : primaryActionLabel}
 					</button>
 
 					{#if trackingMessage}
 						<p
-							class={`mt-3 rounded-md border px-3 py-2 text-[12px] leading-5 ${
-								trackingMessageTone === 'error'
-									? 'border-red-200 bg-red-50 text-red-700'
-									: 'border-[var(--heat-16)] bg-[var(--heat-4)] text-[var(--heat-100)]'
-							}`}
-							transition:fade
+							class={`tracking-msg ${trackingMessageTone === 'error' ? 'tone-danger' : 'tone-heat'}`}
+							transition:fade={{ duration: 200 }}
 						>
 							{trackingMessage}
 						</p>
 					{/if}
 				</div>
 
-				<div class="order-panel p-4 sm:p-5">
-					<div class="mb-4 flex items-center gap-3">
-						<div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--heat-8)] text-[var(--heat-100)]">
-							<ReceiptText class="size-4" strokeWidth={2} />
+				<!-- Cost Summary -->
+				<div class="panel p-4">
+					<div class="mb-3 flex items-center gap-2.5">
+						<div class="icon-box">
+							<ReceiptText class="size-3.5" strokeWidth={2} />
 						</div>
-						<h2 class="text-[15px] font-semibold text-foreground">Cost summary</h2>
+						<h2 class="text-[13px] font-semibold text-foreground">Summary</h2>
 					</div>
-					<div class="space-y-3 text-[13px]">
-						<div class="flex items-center justify-between gap-4 text-[var(--black-alpha-56)]">
+					<div class="space-y-2 text-[12px]">
+						<div class="flex justify-between text-[var(--black-alpha-48)]">
 							<span>Subtotal</span>
 							<span class="font-medium text-foreground">{formatINR(subtotal)}</span>
 						</div>
-						<div class="flex items-center justify-between gap-4 text-[var(--black-alpha-56)]">
+						<div class="flex justify-between text-[var(--black-alpha-48)]">
 							<span>Shipping</span>
 							<span class="font-medium text-foreground">{formatINR(order.shipping)}</span>
 						</div>
-						<div class="border-t border-[var(--border-faint)] pt-3">
-							<div class="flex items-center justify-between gap-4">
-								<span class="font-semibold text-foreground">Paid total</span>
-								<span class="text-[18px] font-semibold text-foreground">{formatINR(order.total)}</span>
-							</div>
+						<div class="flex justify-between border-t border-[var(--border-faint)] pt-2">
+							<span class="font-semibold text-foreground">Total</span>
+							<span class="text-[16px] font-bold text-foreground">{formatINR(order.total)}</span>
 						</div>
 					</div>
 				</div>
 
-				<div class="order-panel p-4 sm:p-5">
-					<div class="mb-4 flex items-center gap-3">
-						<div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--heat-8)] text-[var(--heat-100)]">
-							<MapPin class="size-4" strokeWidth={2} />
+				<!-- Address -->
+				<div class="panel p-4">
+					<div class="mb-3 flex items-center gap-2.5">
+						<div class="icon-box">
+							<MapPin class="size-3.5" strokeWidth={2} />
 						</div>
-						<h2 class="text-[15px] font-semibold text-foreground">Delivery address</h2>
+						<h2 class="text-[13px] font-semibold text-foreground">Delivery address</h2>
 					</div>
-					<div class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+					<div class="detail-cell">
 						{#each addressLines as line (line)}
-							<p class="text-[13px] leading-6 text-foreground">{line}</p>
+							<p class="text-[12px] leading-5 text-foreground">{line}</p>
 						{/each}
 						{#if addressLines.length === 0}
-							<p class="text-[13px] text-[var(--black-alpha-48)]">Address pending</p>
+							<p class="text-[12px] text-[var(--black-alpha-48)]">Address pending</p>
 						{/if}
 					</div>
 				</div>
 
-				<div class="rounded-md border border-[var(--heat-16)] bg-[var(--heat-4)] p-4 text-[13px] leading-6 text-[var(--black-alpha-64)]">
-					<div class="mb-2 flex items-center gap-2 font-semibold text-foreground">
-						<ShieldCheck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-						Protected order record
-					</div>
-					This page shows the saved checkout snapshot. If fulfillment changes, refresh tracking to pull the newest courier state.
+				<!-- Trust footer -->
+				<div class="trust-footer">
+					<ShieldCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
+					<p>
+						<span class="font-semibold text-foreground">Protected record.</span>
+						Refresh tracking to pull latest courier state.
+					</p>
 				</div>
 			</aside>
 		</div>
 	{:else}
-		<div class="order-panel p-5 text-red-700" transition:fade>
-			<div class="flex gap-3">
-				<CalendarClock class="mt-1 size-5 shrink-0" strokeWidth={2} />
+		<div class="panel p-5" transition:fade>
+			<div class="flex items-center gap-3 text-[var(--accent-crimson)]">
+				<CalendarClock class="size-5 shrink-0" strokeWidth={2} />
 				<div>
-					<p class="font-semibold">Order not found</p>
-					<a href={resolve('/orders')} class="mt-2 inline-flex items-center gap-1 text-[13px] text-[var(--heat-100)]">
-						Back to orders
-						<ChevronRight class="size-4" strokeWidth={2} />
+					<p class="text-[14px] font-semibold">Order not found</p>
+					<a href={resolve('/orders')} class="mt-1 inline-flex items-center gap-1 text-[12px] text-[var(--heat-100)]">
+						Back to orders <ChevronRight class="size-3.5" strokeWidth={2} />
 					</a>
 				</div>
 			</div>
@@ -514,51 +590,225 @@
 </section>
 
 <style>
-	.order-page {
-		--order-border: var(--border-faint);
+	/* ── Panels ── */
+	.panel {
+		border: 1px solid var(--border-faint);
+		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.97);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 	}
 
-	.order-hero,
-	.order-panel {
-		border: 1px solid var(--order-border);
-		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.96);
-		box-shadow: 0 18px 60px rgba(38, 38, 38, 0.06);
-	}
-
-	.order-hero {
+	.hero {
 		position: relative;
+		border: 1px solid var(--border-faint);
+		border-radius: 10px;
 		background:
-			linear-gradient(135deg, rgba(250, 93, 25, 0.1), rgba(255, 255, 255, 0) 36%),
-			linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 249, 0.98));
+			linear-gradient(135deg, rgba(250, 93, 25, 0.07) 0%, transparent 40%),
+			rgba(255, 255, 255, 0.97);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+		overflow: hidden;
 	}
 
-	.order-hero-grid {
+	.hero-grain {
+		position: absolute;
+		inset: 0;
+		opacity: 0.5;
 		background-image:
-			linear-gradient(rgba(38, 38, 38, 0.045) 1px, transparent 1px),
-			linear-gradient(90deg, rgba(38, 38, 38, 0.045) 1px, transparent 1px);
-		background-size: 28px 28px;
-		mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.8), transparent 75%);
+			linear-gradient(rgba(38, 38, 38, 0.035) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(38, 38, 38, 0.035) 1px, transparent 1px);
+		background-size: 24px 24px;
+		mask-image: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+		pointer-events: none;
 	}
 
-	.timeline-grid {
+	/* ── Shared Components ── */
+	.icon-box {
+		display: flex;
+		width: 30px;
+		height: 30px;
+		align-items: center;
+		justify-content: center;
+		border-radius: 7px;
+		background: var(--heat-8);
+		color: var(--heat-100);
+		flex-shrink: 0;
+	}
+
+	.status-pill {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid;
+		border-radius: 999px;
+		padding: 3px 10px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		line-height: 1.4;
+	}
+
+	.detail-cell {
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 8px 10px;
+	}
+
+	.back-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border-radius: 999px;
+		border: 1px solid var(--border-faint);
+		background: rgba(255, 255, 255, 0.8);
+		backdrop-filter: blur(6px);
+		padding: 5px 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--black-alpha-56);
+		transition: all 0.15s ease;
+	}
+	.back-link:hover {
+		border-color: var(--heat-100);
+		color: var(--heat-100);
+	}
+
+	.copy-btn {
+		display: inline-flex;
+		width: 32px;
+		height: 32px;
+		align-items: center;
+		justify-content: center;
+		border-radius: 999px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		color: var(--black-alpha-40);
+		transition: all 0.15s ease;
+	}
+	.copy-btn:hover {
+		border-color: var(--heat-100);
+		color: var(--heat-100);
+	}
+
+	.primary-action-btn {
+		display: inline-flex;
+		width: 100%;
+		min-height: 40px;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		border-radius: 8px;
+		background: var(--heat-100);
+		padding: 8px 16px;
+		font-size: 13px;
+		font-weight: 600;
+		color: white;
+		transition: all 0.2s ease;
+	}
+	.primary-action-btn:hover:not(:disabled) {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(250, 93, 25, 0.25);
+	}
+	.primary-action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.tracking-msg {
+		margin-top: 10px;
+		border-radius: 6px;
+		border: 1px solid;
+		padding: 8px 10px;
+		font-size: 11px;
+		line-height: 1.5;
+	}
+
+	.trust-footer {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		border-radius: 8px;
+		border: 1px solid var(--heat-16);
+		background: var(--heat-4);
+		padding: 12px;
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--black-alpha-56);
+	}
+
+	/* ── Tone classes ── */
+	.tone-success {
+		border-color: color-mix(in srgb, var(--accent-forest) 30%, transparent);
+		background: color-mix(in srgb, var(--accent-forest) 8%, transparent);
+		color: var(--accent-forest);
+	}
+
+	.tone-danger {
+		border-color: color-mix(in srgb, var(--accent-crimson) 30%, transparent);
+		background: color-mix(in srgb, var(--accent-crimson) 8%, transparent);
+		color: var(--accent-crimson);
+	}
+
+	.tone-warning {
+		border-color: color-mix(in srgb, var(--accent-honey) 40%, transparent);
+		background: color-mix(in srgb, var(--accent-honey) 10%, transparent);
+		color: color-mix(in srgb, var(--accent-honey) 80%, black);
+	}
+
+	.tone-heat {
+		border-color: var(--heat-16);
+		background: var(--heat-4);
+		color: var(--heat-100);
+	}
+
+	.tone-muted {
+		border-color: var(--border-faint);
+		background: var(--background-lighter);
+		color: var(--black-alpha-48);
+	}
+
+	/* ── Items ── */
+	.item-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 16px;
+		transition: background 0.12s ease;
+	}
+	.item-row:hover {
+		background: var(--background-lighter);
+	}
+
+	.item-img {
+		width: 52px;
+		height: 52px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 4px;
+		flex-shrink: 0;
+	}
+
+	/* ── Timeline ── */
+	.tl-grid {
 		display: grid;
 		grid-template-columns: repeat(5, minmax(0, 1fr));
-		gap: 0;
 	}
 
-	.timeline-step {
+	.tl-step {
 		position: relative;
-		min-width: 0;
-		padding-right: 14px;
+		padding-right: 10px;
 	}
 
-	.timeline-dot {
+	.tl-dot {
 		position: relative;
 		z-index: 1;
 		display: flex;
-		width: 38px;
-		height: 38px;
+		width: 32px;
+		height: 32px;
 		align-items: center;
 		justify-content: center;
 		border-width: 1px;
@@ -566,40 +816,45 @@
 		border-radius: 999px;
 	}
 
-	.timeline-line {
+	.tl-line {
 		position: absolute;
-		top: 18px;
-		left: 38px;
+		top: 15px;
+		left: 32px;
 		right: 0;
 		height: 1px;
 		background: var(--border-faint);
 	}
 
-	.timeline-line.complete {
-		background: color-mix(in srgb, var(--heat-100) 46%, transparent);
+	.tl-line.complete {
+		background: color-mix(in srgb, var(--heat-100) 40%, transparent);
+	}
+
+	.tl-text {
+		padding-top: 8px;
 	}
 
 	@media (max-width: 767px) {
-		.timeline-grid {
+		.tl-grid {
 			grid-template-columns: 1fr;
-			gap: 12px;
+			gap: 8px;
 		}
 
-		.timeline-step {
+		.tl-step {
 			display: grid;
-			grid-template-columns: 38px 1fr;
-			gap: 12px;
+			grid-template-columns: 32px 1fr;
+			gap: 10px;
 			padding-right: 0;
 		}
 
-		.timeline-step .pt-3 {
+		.tl-text {
 			padding-top: 0;
+			align-self: center;
 		}
 
-		.timeline-line {
-			top: 38px;
-			bottom: -12px;
-			left: 18px;
+		.tl-line {
+			top: 32px;
+			bottom: -8px;
+			left: 15px;
 			right: auto;
 			width: 1px;
 			height: auto;

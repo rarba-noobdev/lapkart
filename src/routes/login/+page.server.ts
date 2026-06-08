@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { isStaffRole, normalizeAppRole } from '$lib/roles';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -14,7 +15,7 @@ async function getRoleForUser(locals: App.Locals, userId: string) {
 		.select('role')
 		.eq('user_id', userId)
 		.maybeSingle();
-	return data?.role === 'admin' ? 'admin' : 'user';
+	return normalizeAppRole(data?.role);
 }
 
 export const load: PageServerLoad = async ({ parent, url }) => {
@@ -22,7 +23,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	const redirectTarget = sanitizeRedirect(url.searchParams.get('redirect'));
 
 	if (user) {
-		redirect(307, role === 'admin' ? '/admin' : redirectTarget);
+		redirect(307, isStaffRole(role) ? '/admin' : redirectTarget);
 	}
 
 	return { redirectTarget };
@@ -67,7 +68,7 @@ export const actions: Actions = {
 		}
 
 		const role = await getRoleForUser(locals, data.user.id);
-		redirect(303, role === 'admin' ? '/admin' : redirectTarget);
+		redirect(303, isStaffRole(role) ? '/admin' : redirectTarget);
 	},
 	signup: async ({ request, locals }) => {
 		const formData = await request.formData();
@@ -130,7 +131,7 @@ export const actions: Actions = {
 
 		if (data.user && data.session) {
 			const role = await getRoleForUser(locals, data.user.id);
-			redirect(303, role === 'admin' ? '/admin' : redirectTarget);
+			redirect(303, isStaffRole(role) ? '/admin' : redirectTarget);
 		}
 
 		return {

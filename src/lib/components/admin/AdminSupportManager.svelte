@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fly, fade } from 'svelte/transition';
 	import { getAuthContext } from '$lib/auth-context';
 	import {
 		requestAdmin,
@@ -132,21 +133,19 @@
 	});
 </script>
 
-<div class="grid gap-6 xl:grid-cols-2">
-	<section class="rounded-[18px] border border-[var(--border-faint)] bg-white p-6">
+<div class="grid w-full gap-6 xl:grid-cols-2">
+	<!-- Product Questions Section -->
+	<section class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
 		<div class="flex items-center justify-between gap-3">
 			<div>
-				<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-					Support queue
-				</p>
-				<p class="text-label-large text-foreground">Product questions</p>
-				<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
-					Publish exact compatibility, condition, and packing answers from the admin desk.
+				<p class="text-[13px] font-medium text-foreground">Product questions</p>
+				<p class="text-[11px] text-[var(--black-alpha-40)]">
+					Publish compatibility, condition, and packing answers from the admin desk.
 				</p>
 			</div>
 			<button
 				type="button"
-				class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
 				disabled={loading}
 				onclick={() => void loadSupport()}
 			>
@@ -156,79 +155,90 @@
 
 		{#if error}
 			<div
-				class="text-body-small mt-5 rounded-[16px] border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-4 text-[var(--accent-crimson)]"
+				class="mt-4 rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
 			>
 				{error}
 			</div>
 		{/if}
 
-		<div class="mt-5 space-y-3">
+		<div class="mt-4 space-y-2">
 			{#if loading}
-				<div
-					class="text-body-small rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-[var(--black-alpha-56)]"
-				>
-					Loading product questions...
+				<div class="space-y-2">
+					{#each Array(3) as _, i}
+						<div class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+							<div class="flex gap-3">
+								<div class="h-12 w-12 shrink-0 rounded-md bg-[var(--black-alpha-6)]"></div>
+								<div class="flex-1 space-y-2">
+									<div class="h-3 w-2/3 rounded bg-[var(--black-alpha-6)]"></div>
+									<div class="h-3 w-1/3 rounded bg-[var(--black-alpha-6)]"></div>
+								</div>
+							</div>
+						</div>
+					{/each}
 				</div>
 			{:else if !questions.length}
 				<div
-					class="text-body-small rounded-[16px] border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-[var(--black-alpha-56)]"
+					class="rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-center text-[12px] text-[var(--black-alpha-56)]"
 				>
 					No product questions are waiting for review.
 				</div>
 			{:else}
-				{#each questions as question (question.id)}
-					<article class="rounded-[16px] border border-[var(--border-faint)] p-4">
+				{#each questions as question, idx (question.id)}
+					<article
+						class="rounded-lg border border-[var(--border-faint)] p-3"
+						in:fly={{ y: 6, duration: 200, delay: idx * 30 }}
+					>
 						<div class="flex gap-3">
 							{#if question.products?.image}
 								<img
 									src={question.products.image}
 									alt={question.products.title}
-									class="h-16 w-16 shrink-0 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] object-contain p-1.5"
+									class="h-12 w-12 shrink-0 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] object-contain p-1"
 								/>
 							{:else}
 								<div
-									class="grid h-16 w-16 shrink-0 place-items-center rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-40)]"
+									class="grid h-12 w-12 shrink-0 place-items-center rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[9px] text-[var(--black-alpha-40)]"
 								>
-									No image
+									No img
 								</div>
 							{/if}
 
 							<div class="min-w-0 flex-1">
 								<div class="flex flex-wrap items-center justify-between gap-2">
-									<p class="text-label-small truncate text-foreground">
+									<p class="truncate text-[12px] font-medium text-foreground">
 										{question.products?.title ?? 'Deleted product'}
 									</p>
 									<span
-										class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses('neutral')}`}
+										class="rounded-sm border border-[var(--border-faint)] bg-[var(--background-lighter)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[var(--black-alpha-48)] uppercase"
 									>
 										{question.status}
 									</span>
 								</div>
-								<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
+								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 									{question.products?.brand ?? 'Unknown brand'}
 								</p>
-								<p class="text-body-small mt-3 text-foreground">Q: {question.question}</p>
+								<p class="mt-2 text-[12px] text-foreground">Q: {question.question}</p>
 							</div>
 						</div>
 
-						<label class="mt-4 block">
+						<label class="mt-3 block">
 							<span
-								class="text-mono-x-small mb-2 block tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+								class="mb-1.5 block text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 							>
 								Answer
 							</span>
 							<textarea
 								bind:value={answers[question.id]}
-								rows="3"
+								rows="2"
 								placeholder="Answer with exact compatibility, condition, or packing details"
-								class="input-field min-h-28 py-3"
+								class="input-field min-h-20 py-2 text-[12px]"
 							></textarea>
 						</label>
 
-						<div class="mt-3 flex flex-wrap gap-2">
+						<div class="mt-2 flex flex-wrap gap-2">
 							<button
 								type="button"
-								class="button button-primary text-label-small inline-flex h-10 items-center justify-center rounded-md px-4 text-white disabled:opacity-60"
+								class="button button-primary inline-flex h-8 items-center justify-center rounded-md px-3 text-[12px] text-white disabled:opacity-50"
 								disabled={activeAction !== null}
 								onclick={() => void updateQuestion(question.id, 'published')}
 							>
@@ -236,7 +246,7 @@
 							</button>
 							<button
 								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-60"
+								class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-50"
 								disabled={activeAction !== null}
 								onclick={() => void updateQuestion(question.id, 'rejected')}
 							>
@@ -249,70 +259,79 @@
 		</div>
 	</section>
 
-	<section class="rounded-[18px] border border-[var(--border-faint)] bg-white p-6">
+	<!-- Back-in-Stock Notifications Section -->
+	<section class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
 		<div>
-			<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
-				Notification queue
-			</p>
-			<p class="text-label-large text-foreground">Back-in-stock outbox</p>
-			<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
+			<p class="text-[13px] font-medium text-foreground">Back-in-stock outbox</p>
+			<p class="text-[11px] text-[var(--black-alpha-40)]">
 				Review queued stock notifications and manually send or retire stuck entries.
 			</p>
 		</div>
 
-		<div class="mt-5 space-y-3">
+		<div class="mt-4 space-y-2">
 			{#if loading}
-				<div
-					class="text-body-small rounded-[16px] border border-[var(--border-faint)] bg-[var(--background-lighter)] p-4 text-[var(--black-alpha-56)]"
-				>
-					Loading notification events...
+				<div class="space-y-2">
+					{#each Array(3) as _, i}
+						<div class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+							<div class="flex gap-3">
+								<div class="h-12 w-12 shrink-0 rounded-md bg-[var(--black-alpha-6)]"></div>
+								<div class="flex-1 space-y-2">
+									<div class="h-3 w-2/3 rounded bg-[var(--black-alpha-6)]"></div>
+									<div class="h-3 w-1/3 rounded bg-[var(--black-alpha-6)]"></div>
+								</div>
+							</div>
+						</div>
+					{/each}
 				</div>
 			{:else if !events.length}
 				<div
-					class="text-body-small rounded-[16px] border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-[var(--black-alpha-56)]"
+					class="rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-5 text-center text-[12px] text-[var(--black-alpha-56)]"
 				>
 					No stock notification events have been queued.
 				</div>
 			{:else}
-				{#each events as event (event.id)}
-					<article class="rounded-[16px] border border-[var(--border-faint)] p-4">
+				{#each events as event, idx (event.id)}
+					<article
+						class="rounded-lg border border-[var(--border-faint)] p-3"
+						in:fly={{ y: 6, duration: 200, delay: idx * 30 }}
+					>
 						<div class="flex gap-3">
 							{#if event.products?.image}
 								<img
 									src={event.products.image}
 									alt={stockTitle(event)}
-									class="h-16 w-16 shrink-0 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] object-contain p-1.5"
+									class="h-12 w-12 shrink-0 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] object-contain p-1"
 								/>
 							{:else}
 								<div
-									class="grid h-16 w-16 shrink-0 place-items-center rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-40)]"
+									class="grid h-12 w-12 shrink-0 place-items-center rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] text-[9px] text-[var(--black-alpha-40)]"
 								>
-									No image
+									No img
 								</div>
 							{/if}
 
 							<div class="min-w-0 flex-1">
 								<div class="flex flex-wrap items-center justify-between gap-2">
-									<p class="text-label-small truncate text-foreground">{stockTitle(event)}</p>
+									<p class="truncate text-[12px] font-medium text-foreground">{stockTitle(event)}</p>
 									<span
-										class={`text-mono-x-small rounded-full border px-3 py-1 tracking-[0.16em] uppercase ${toneClasses('neutral')}`}
+										class="rounded-sm border border-[var(--border-faint)] bg-[var(--background-lighter)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[var(--black-alpha-48)] uppercase"
 									>
 										{event.status}
 									</span>
 								</div>
-								<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">{event.email}</p>
+								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">{event.email}</p>
 								<p
-									class="text-mono-x-small mt-3 tracking-[0.16em] text-[var(--black-alpha-48)] uppercase"
+									class="mt-2 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 								>
 									Queued {new Date(event.created_at).toLocaleString('en-IN')}
 								</p>
 							</div>
 						</div>
 
-						<div class="mt-3 flex flex-wrap gap-2">
+						<div class="mt-2 flex flex-wrap gap-2">
 							<button
 								type="button"
-								class="button button-primary text-label-small inline-flex h-10 items-center justify-center rounded-md px-4 text-white disabled:opacity-60"
+								class="button button-primary inline-flex h-8 items-center justify-center rounded-md px-3 text-[12px] text-white disabled:opacity-50"
 								disabled={!isStockSendable(event.status) || activeAction !== null}
 								onclick={() => void sendStockEvent(event.id)}
 							>
@@ -320,7 +339,7 @@
 							</button>
 							<button
 								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-60"
+								class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-50"
 								disabled={activeAction !== null}
 								onclick={() => void updateStockEvent(event.id, 'sent')}
 							>
@@ -328,7 +347,7 @@
 							</button>
 							<button
 								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-60"
+								class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-50"
 								disabled={activeAction !== null}
 								onclick={() => void updateStockEvent(event.id, 'failed')}
 							>
@@ -336,7 +355,7 @@
 							</button>
 							<button
 								type="button"
-								class="text-label-small inline-flex h-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-60"
+								class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-40)] disabled:opacity-50"
 								disabled={activeAction !== null}
 								onclick={() => void updateStockEvent(event.id, 'cancelled')}
 							>

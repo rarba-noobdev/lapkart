@@ -1,11 +1,23 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ArrowRight, ChevronRight, Package } from '@lucide/svelte';
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import { formatINR } from '$lib/catalog';
 	import type { OrderSummary } from '$lib/orders';
 
-	let { data }: { data: { orders: OrderSummary[] } } = $props();
+	type OrdersRoute = '/orders' | `/orders?${string}`;
+
+	let {
+		data
+	}: { data: { orders: OrderSummary[]; total: number; page: number; pageSize: number } } = $props();
 	let orders = $derived(data.orders);
+	let currentPage = $derived(Math.max(1, data.page ?? 1));
+	let total = $derived(data.total ?? 0);
+	let pageSize = $derived(data.pageSize ?? 20);
+	let totalPages = $derived(Math.max(1, Math.ceil(total / pageSize)));
+	let resultStart = $derived(total === 0 ? 0 : (currentPage - 1) * pageSize + 1);
+	let resultEnd = $derived(Math.min(total, currentPage * pageSize));
 
 	function statusColor(status: string) {
 		switch (status) {
@@ -22,6 +34,10 @@
 				return 'var(--heat-100)';
 		}
 	}
+
+	function ordersHrefWithPage(pageNumber: number): OrdersRoute {
+		return (pageNumber <= 1 ? '/orders' : `/orders?page=${pageNumber}`) as OrdersRoute;
+	}
 </script>
 
 <svelte:head>
@@ -29,9 +45,14 @@
 </svelte:head>
 
 <section class="container mx-auto max-w-3xl px-4 py-10">
-	<div class="mb-8">
+	<div class="mb-8" in:fly={{ y: 6, duration: 220, easing: cubicOut }}>
 		<span class="text-label-small text-[var(--heat-100)]">Orders</span>
 		<h1 class="text-title-h3 mt-2 font-display text-foreground">My orders</h1>
+		{#if total > pageSize}
+			<p class="text-body-small mt-2 text-[var(--black-alpha-56)]">
+				Showing {resultStart}-{resultEnd} of {total} orders
+			</p>
+		{/if}
 	</div>
 
 	{#if orders.length === 0}
@@ -57,8 +78,8 @@
 		</div>
 	{:else}
 		<ul class="space-y-3">
-			{#each orders as order (order.id)}
-				<li>
+			{#each orders as order, idx (order.id)}
+				<li in:fly={{ y: 8, duration: 240, delay: Math.min(idx * 50, 300), easing: cubicOut }}>
 					<a
 						href={resolve(`/order/${order.id}`)}
 						aria-label={`View order ${order.id.slice(0, 8).toUpperCase()}`}
@@ -103,5 +124,29 @@
 				</li>
 			{/each}
 		</ul>
+
+		{#if totalPages > 1}
+			<nav class="mt-6 flex items-center justify-center gap-2" aria-label="Order pages">
+				{#if currentPage > 1}
+					<a
+						href={resolve(ordersHrefWithPage(currentPage - 1))}
+						class="text-label-small inline-flex h-10 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+					>
+						Previous
+					</a>
+				{/if}
+				<span class="text-label-small px-2 text-[var(--black-alpha-56)]">
+					Page {currentPage} of {totalPages}
+				</span>
+				{#if currentPage < totalPages}
+					<a
+						href={resolve(ordersHrefWithPage(currentPage + 1))}
+						class="text-label-small inline-flex h-10 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+					>
+						Next
+					</a>
+				{/if}
+			</nav>
+		{/if}
 	{/if}
 </section>

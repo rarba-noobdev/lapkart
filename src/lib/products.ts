@@ -51,6 +51,12 @@ export type ListProductsOptions = {
 	minRating?: number;
 	sort?: 'relevance' | 'price-asc' | 'price-desc' | 'rating-desc' | 'discount-desc' | 'newest';
 	limit?: number;
+	page?: number;
+};
+
+export type CatalogProductsPage = {
+	products: Product[];
+	total: number;
 };
 
 function getClient(client?: ProductClient) {
@@ -77,7 +83,8 @@ export function normalizeProductRow(row: ProductRow): Product {
 		authenticity_grade: row.authenticity_grade ?? 'compatible',
 		condition_grade: row.condition_grade ?? 'new',
 		hsn_code: row.hsn_code ?? undefined,
-		gst_rate: row.gst_rate === null || row.gst_rate === undefined ? undefined : Number(row.gst_rate),
+		gst_rate:
+			row.gst_rate === null || row.gst_rate === undefined ? undefined : Number(row.gst_rate),
 		doa_policy_days: row.doa_policy_days ?? undefined,
 		local_delivery_eligible: row.local_delivery_eligible ?? undefined,
 		cod_eligible: row.cod_eligible ?? undefined
@@ -119,7 +126,17 @@ export async function listCatalogProducts(
 	options: ListProductsOptions = {},
 	client?: ProductClient
 ) {
-	let query = getClient(client).from('products').select(productCardSelectFields);
+	const result = await listCatalogProductPage(options, client);
+	return result.products;
+}
+
+export async function listCatalogProductPage(
+	options: ListProductsOptions = {},
+	client?: ProductClient
+): Promise<CatalogProductsPage> {
+	let query = getClient(client)
+		.from('products')
+		.select(productCardSelectFields, { count: 'exact' });
 
 	if (options.category) {
 		query = query.eq('category', options.category);
@@ -158,19 +175,28 @@ export async function listCatalogProducts(
 	else query = query.order('created_at', { ascending: false });
 
 	if (options.limit) {
-		query = query.limit(options.limit);
+		const limit = Math.min(Math.max(1, Math.floor(options.limit)), 250);
+		const page = Math.max(1, Math.floor(options.page ?? 1));
+		const from = (page - 1) * limit;
+		query = query.range(from, from + limit - 1);
 	}
 
-	const { data, error } = await query;
+	const { data, error, count } = await query;
 	if (error) throw error;
 
 	const products = ((data ?? []) as ProductRow[]).map(normalizeProductRow);
 
 	if (options.sort === 'discount-desc') {
-		return products.sort((a, b) => b.mrp - b.price - (a.mrp - a.price));
+		return {
+			products: products.sort((a, b) => b.mrp - b.price - (a.mrp - a.price)),
+			total: count ?? products.length
+		};
 	}
 
-	return products;
+	return {
+		products,
+		total: count ?? products.length
+	};
 }
 
 export async function listRelatedProducts(

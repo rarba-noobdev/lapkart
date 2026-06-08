@@ -1,6 +1,7 @@
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 import type { Database } from '$lib/supabase/types';
 import type { AuthClaims } from '$lib/auth-context';
+import type { AppRole } from '$lib/roles';
 
 declare global {
 	namespace App {
@@ -8,7 +9,7 @@ declare global {
 		interface Locals {
 			supabase: SupabaseClient<Database>;
 			safeGetSession: () => Promise<{ session: Session | null; user: User | null }>;
-			getRole: () => Promise<'admin' | 'user' | null>;
+			getRole: () => Promise<AppRole | null>;
 		}
 		interface PageData {
 			cookies?: { name: string; value: string }[];
@@ -16,7 +17,7 @@ declare global {
 			session?: Session | null;
 			supabase?: SupabaseClient<Database>;
 			user?: User | null;
-			role?: 'admin' | 'user' | null;
+			role?: AppRole | null;
 		}
 		// interface PageState {}
 		// interface Platform {}

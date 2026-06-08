@@ -1,6 +1,7 @@
 import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { createServerClient } from '@supabase/ssr';
 import { redirect, type Handle } from '@sveltejs/kit';
+import { isStaffRole, normalizeAppRole, type AppRole } from '$lib/roles';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const clearSupabaseAuthCookies = () => {
@@ -27,7 +28,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	});
 
 	let cachedSession: Awaited<ReturnType<typeof event.locals.safeGetSession>> | undefined;
-	let cachedRole: 'admin' | 'user' | null | undefined;
+	let cachedRole: AppRole | null | undefined;
 
 	event.locals.safeGetSession = async () => {
 		if (cachedSession) return cachedSession;
@@ -63,7 +64,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			.eq('user_id', user.id)
 			.maybeSingle();
 
-		cachedRole = data?.role === 'admin' ? 'admin' : 'user';
+		cachedRole = normalizeAppRole(data?.role);
 		return cachedRole;
 	};
 
@@ -98,11 +99,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		const role = await event.locals.getRole();
 
-		if (isAdminRoute && role !== 'admin') {
+		if (isAdminRoute && !isStaffRole(role)) {
 			redirect(307, '/profile');
 		}
 
-		if (isCustomerRoute && role === 'admin') {
+		if (isCustomerRoute && isStaffRole(role)) {
 			redirect(307, '/admin');
 		}
 	}

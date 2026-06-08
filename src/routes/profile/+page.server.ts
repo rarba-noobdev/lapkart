@@ -1,31 +1,43 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { listOrdersForUser } from '$lib/orders';
+import { isStaffRole, normalizeAppRole } from '$lib/roles';
 
-export const load: PageServerLoad = async ({ locals, parent }) => {
+export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 	const { user, role } = await parent();
 
 	if (!user) {
 		redirect(307, '/login?redirect=/profile');
 	}
 
-	if (role === 'admin') {
+	if (isStaffRole(role)) {
 		redirect(307, '/admin');
 	}
 
-	const [profileResult, orders, addressesResult] = await Promise.all([
+	depends('app:profile');
+	depends(`orders:user:${user.id}`);
+
+	const [profileResult, orders, orderTotalsResult, addressesResult] = await Promise.all([
 		locals.supabase.from('profiles').select('full_name,phone').eq('id', user.id).maybeSingle(),
-		listOrdersForUser(user.id, locals.supabase),
+		listOrdersForUser(user.id, locals.supabase, 10),
+		locals.supabase.from('orders').select('id,total').eq('user_id', user.id),
 		locals.supabase
 			.from('addresses')
-			.select('*')
+			.select(
+				'id,user_id,full_name,phone,line1,line2,city,state,pincode,is_default,created_at,latitude,longitude,location_source,ola_place_id,formatted_address'
+			)
 			.eq('user_id', user.id)
 			.order('is_default', { ascending: false })
 			.order('created_at', { ascending: false })
+			.limit(20)
 	]);
 
 	if (profileResult.error) {
 		throw profileResult.error;
+	}
+
+	if (orderTotalsResult.error) {
+		throw orderTotalsResult.error;
 	}
 
 	return {
@@ -34,8 +46,11 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			phone: profileResult.data?.phone ?? ''
 		},
 		orders,
-		orderCount: orders.length,
-		totalSpent: orders.reduce((sum, order) => sum + order.total, 0),
+		orderCount: orderTotalsResult.data?.length ?? orders.length,
+		totalSpent: (orderTotalsResult.data ?? []).reduce(
+			(sum, order) => sum + Number(order.total ?? 0),
+			0
+		),
 		addresses: addressesResult.data ?? []
 	};
 };
@@ -54,9 +69,9 @@ export const actions: Actions = {
 			.eq('user_id', user.id)
 			.maybeSingle();
 
-		const role = roleData?.role === 'admin' ? 'admin' : 'user';
+		const role = normalizeAppRole(roleData?.role);
 
-		if (role === 'admin') {
+		if (isStaffRole(role)) {
 			redirect(303, '/admin');
 		}
 
