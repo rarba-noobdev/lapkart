@@ -32,6 +32,7 @@ declare global {
 			description: string;
 			order_id: string;
 			prefill: { name: string; email: string; contact: string };
+			config?: Record<string, unknown>;
 			theme: { color: string };
 			modal?: { ondismiss?: () => void };
 			handler: (response: {

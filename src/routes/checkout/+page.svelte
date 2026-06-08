@@ -711,6 +711,20 @@
 					email: address.email.trim() || currentUser.email || '',
 					contact: address.phone.replace(/\D/g, '').slice(-10)
 				},
+				config: {
+					display: {
+						blocks: {
+							upi: {
+								name: 'Pay via UPI',
+								instruments: [
+									{ method: 'upi', flows: ['intent', 'collect', 'qr'] }
+								]
+							}
+						},
+						sequence: ['block.upi'],
+						preferences: { show_default_blocks: true }
+					}
+				},
 				theme: { color: '#fa5d19' },
 				modal: {
 					ondismiss: () => {
