@@ -717,7 +717,7 @@
 							upi: {
 								name: 'Pay via UPI',
 								instruments: [
-									{ method: 'upi', flows: ['intent', 'collect', 'qr'] }
+									{ method: 'upi', flows: ['intent', 'qr'] }
 								]
 							}
 						},
