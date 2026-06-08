@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { preloadData } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import {
 		ArrowRight,
 		ArrowUpRight,
@@ -17,6 +19,20 @@
 	import { addToCart } from '$lib/cart';
 
 	let { data }: { data: { products: Product[] } } = $props();
+
+	onMount(() => {
+		if ('requestIdleCallback' in window) {
+			requestIdleCallback(() => {
+				void preloadData('/products');
+				void preloadData('/cart');
+			});
+		} else {
+			setTimeout(() => {
+				void preloadData('/products');
+				void preloadData('/cart');
+			}, 2000);
+		}
+	});
 
 	let products = $derived(data.products);
 
@@ -102,9 +118,9 @@
 				</p>
 				<h1 class="mt-3 text-[28px] font-medium leading-[1.1] tracking-tight text-white sm:text-[44px]">
 					Parts that fit.<br />
-					<span class="gradient-text">Ship fast.</span>
+					<span class="text-[var(--heat-100)]">Ship fast.</span>
 				</h1>
-				<p class="mt-3 max-w-md text-[14px] leading-relaxed text-white/50 sm:mt-4 sm:text-[16px]">
+				<p class="mt-3 max-w-md text-[14px] leading-relaxed text-white/60 sm:mt-4 sm:text-[16px]">
 					SSDs, RAM, batteries, displays — with fitment guidance and same-day dispatch from local inventory.
 				</p>
 				<div class="mt-6 flex flex-wrap items-center gap-3 sm:mt-8">
@@ -120,7 +136,7 @@
 				<div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 sm:mt-8">
 					{#each serviceNotes as note (note.id)}
 						{@const Icon = note.icon}
-						<span class="inline-flex items-center gap-1.5 text-[11px] text-white/40">
+						<span class="inline-flex items-center gap-1.5 text-[12px] text-white/55">
 							<Icon class="size-3 text-[var(--heat-100)]" strokeWidth={2.2} />
 							{note.title}
 						</span>
@@ -149,11 +165,11 @@
 							{/if}
 						</div>
 						<div class="border-t border-white/8 p-4">
-							<p class="text-[10px] tracking-[0.14em] text-white/40 uppercase">{heroProduct.brand}</p>
+							<p class="text-[10px] tracking-[0.14em] text-white/55 uppercase">{heroProduct.brand}</p>
 							<h3 class="mt-0.5 line-clamp-1 text-[14px] font-medium text-white">{heroProduct.title}</h3>
 							<div class="mt-2 flex items-baseline gap-2">
 								<span class="text-[18px] font-semibold text-[var(--heat-100)]">{formatINR(heroProduct.price)}</span>
-								<span class="text-[12px] text-white/30 line-through">{formatINR(heroProduct.mrp)}</span>
+								<span class="text-[12px] text-white/45 line-through">{formatINR(heroProduct.mrp)}</span>
 							</div>
 						</div>
 					</a>
@@ -220,7 +236,7 @@
 						/>
 					</div>
 					<div class="border-t border-[var(--border-faint)] p-2.5 sm:p-3">
-						<p class="truncate text-[9px] tracking-[0.14em] text-[var(--black-alpha-40)] uppercase sm:text-[10px]">
+						<p class="truncate text-[10px] tracking-[0.14em] text-[var(--black-alpha-56)] uppercase sm:text-[10px]">
 							{deal.brand}
 						</p>
 						<h3 class="mt-0.5 line-clamp-1 text-[12px] font-medium text-foreground sm:text-[13px]">
@@ -228,7 +244,7 @@
 						</h3>
 						<div class="mt-1.5 flex items-baseline gap-1.5">
 							<span class="text-[13px] font-semibold text-[var(--heat-100)] sm:text-[15px]">{formatINR(deal.price)}</span>
-							<span class="text-[10px] text-[var(--black-alpha-32)] line-through sm:text-[11px]">{formatINR(deal.mrp)}</span>
+							<span class="text-[10px] text-[var(--black-alpha-48)] line-through sm:text-[11px]">{formatINR(deal.mrp)}</span>
 						</div>
 					</div>
 				</a>
@@ -253,7 +269,7 @@
 						<h3 class="text-[13px] font-medium text-foreground sm:text-[15px] {i === 0 ? 'sm:text-[18px]' : ''}">
 							{tile.name}
 						</h3>
-						<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">{tile.count} products</p>
+						<p class="mt-0.5 text-[11px] text-[var(--black-alpha-56)]">{tile.count} products</p>
 					</div>
 					<span class="relative z-10 mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-[var(--heat-100)]">
 						Browse <ArrowRight class="size-3 transition-transform duration-200 group-hover:translate-x-0.5" />
@@ -286,7 +302,7 @@
 			</a>
 		</div>
 
-		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+		<div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
 			{#each bestSellers as product, idx (product.id)}
 				<div class="animate-fade-up" style:animation-delay="{Math.min(idx * 40, 280)}ms">
 					<ProductCard {product} eager={idx < 2} />
@@ -312,7 +328,7 @@
 
 		<div class="scrollbar-hide -mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:gap-3 sm:px-0">
 			{#each newArrivals as product (product.id)}
-				<div class="w-[170px] shrink-0 snap-start sm:w-[220px]">
+				<div class="w-[75vw] max-w-[280px] shrink-0 snap-start sm:w-[220px]">
 					<ProductCard {product} />
 				</div>
 			{/each}
@@ -330,7 +346,7 @@
 					</div>
 					<div>
 						<h3 class="text-[13px] font-medium text-white sm:text-[14px]">{note.title}</h3>
-						<p class="mt-0.5 text-[11px] leading-relaxed text-white/40 sm:text-[12px]">{note.body}</p>
+						<p class="mt-0.5 text-[11px] leading-relaxed text-white/55 sm:text-[12px]">{note.body}</p>
 					</div>
 				</div>
 			{/each}

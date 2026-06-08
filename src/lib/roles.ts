@@ -1,11 +1,4 @@
-export const staffRoles = [
-	'owner',
-	'admin',
-	'catalog_manager',
-	'order_manager',
-	'support',
-	'viewer'
-] as const;
+export const staffRoles = ['owner', 'admin'] as const;
 
 export const appRoles = [...staffRoles, 'user'] as const;
 
@@ -33,14 +26,6 @@ export function roleLabel(value: AppRole | null | undefined) {
 			return 'Owner';
 		case 'admin':
 			return 'Admin';
-		case 'catalog_manager':
-			return 'Catalog manager';
-		case 'order_manager':
-			return 'Order manager';
-		case 'support':
-			return 'Support';
-		case 'viewer':
-			return 'Viewer';
 		default:
 			return 'Customer';
 	}

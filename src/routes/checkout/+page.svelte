@@ -97,6 +97,7 @@
 
 	type BackendCheckoutOrderResponse = {
 		razorpayOrder: {
+			key_id?: string;
 			order_id: string;
 			amount: number;
 			currency: string;
@@ -122,8 +123,6 @@
 		summary?: CheckoutSummary;
 		error?: string;
 	};
-
-	const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID ?? '';
 
 	const indianStates = [
 		'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -662,11 +661,6 @@
 			return;
 		}
 
-		if (!razorpayKey) {
-			setMessage('error', 'Razorpay key is missing. Restart the frontend after updating .env.');
-			return;
-		}
-
 		busy = true;
 
 		try {
@@ -698,6 +692,11 @@
 			deliveryEstimate = body.summary.deliveryEstimate;
 			selectedQuoteId = body.summary.selectedCourier.quoteId;
 			appliedSummary = body.summary;
+
+			const razorpayKey = body.razorpayOrder.key_id?.trim() ?? '';
+			if (!razorpayKey) {
+				throw new Error('Razorpay key is missing from the payment server response.');
+			}
 
 			const checkout = new window.Razorpay!({
 				key: razorpayKey,
@@ -1300,3 +1299,6 @@
 		</div>
 	{/if}
 </section>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>

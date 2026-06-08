@@ -172,7 +172,7 @@
 								<div class="min-w-0 flex-1">
 									<div class="flex items-start justify-between gap-2">
 										<div class="min-w-0">
-											<p class="text-[10px] tracking-[0.12em] text-[var(--black-alpha-40)] uppercase">
+											<p class="text-[10px] tracking-[0.12em] text-[var(--black-alpha-56)] uppercase">
 												{row.product.brand}
 											</p>
 											<a
@@ -197,7 +197,7 @@
 										<div class="flex items-center rounded-md border border-[var(--border-muted)]">
 											<button
 												type="button"
-												class="grid size-8 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)] disabled:opacity-30"
+												class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)] disabled:opacity-30 sm:size-8"
 												aria-label="Decrease quantity"
 												disabled={row.item.qty <= 1}
 												onclick={() => setCartQty(row.item.id, row.item.qty - 1)}
@@ -207,7 +207,7 @@
 											<span class="w-7 text-center text-[12px] font-medium text-foreground">{row.item.qty}</span>
 											<button
 												type="button"
-												class="grid size-8 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)]"
+												class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)] sm:size-8"
 												aria-label="Increase quantity"
 												onclick={() => setCartQty(row.item.id, row.item.qty + 1)}
 											>
@@ -224,7 +224,7 @@
 										<button
 											type="button"
 											aria-label={`Remove ${row.product.title}`}
-											class="ml-auto inline-flex items-center gap-1 text-[11px] text-[var(--black-alpha-40)] transition-colors hover:text-[var(--accent-crimson)]"
+											class="ml-auto inline-flex items-center gap-1 text-[11px] text-[var(--black-alpha-56)] transition-colors hover:text-[var(--accent-crimson)]"
 											onclick={() => removeFromCart(row.item.id)}
 										>
 											<Trash2 class="size-3" />
@@ -293,11 +293,11 @@
 
 					<!-- Trust note -->
 					<div class="mt-3 flex items-center justify-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white px-4 py-3">
-						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-40)]">
+						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-56)]">
 							<Package class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Genuine parts
 						</span>
 						<span class="text-[var(--border-muted)]">|</span>
-						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-40)]">
+						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-56)]">
 							<Truck class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Fast dispatch
 						</span>
 					</div>

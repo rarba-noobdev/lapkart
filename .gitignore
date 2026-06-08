@@ -54,3 +54,24 @@ dev-server.*.log
 api/api-server.*.log
 
 .vercel
+
+# Abandoned mobile SPA
+src/mobile/
+vite.mobile.config.ts
+
+# Temp assets & screenshots
+mobile-device-*.png
+mobile-device-*.xml
+mobile-preview-*.png
+assets/
+
+# Capacitor web build artifacts
+www/assets/
+www/fonts/
+www/robots.txt
+
+# Sensitive files
+rzp-key.csv
+
+# One-time scripts
+scripts/

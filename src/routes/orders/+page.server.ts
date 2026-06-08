@@ -8,7 +8,7 @@ function parsePage(value: string | null) {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-export const load: PageServerLoad = async ({ depends, locals, parent, url }) => {
+export const load: PageServerLoad = async ({ depends, locals, parent, url, setHeaders }) => {
 	const { user, role } = await parent();
 
 	if (!user) {
@@ -19,6 +19,7 @@ export const load: PageServerLoad = async ({ depends, locals, parent, url }) => 
 		redirect(307, '/admin');
 	}
 
+	setHeaders({ 'cache-control': 'private, max-age=30' });
 	depends(`orders:user:${user.id}`);
 
 	const result = await listOrdersPageForUser(user.id, locals.supabase, {

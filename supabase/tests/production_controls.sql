@@ -7,11 +7,7 @@ declare
   expected_roles text[] := array[
     'admin',
     'user',
-    'owner',
-    'catalog_manager',
-    'order_manager',
-    'support',
-    'viewer'
+    'owner'
   ];
 begin
   if exists (
@@ -22,7 +18,7 @@ begin
     from pg_enum
     where enumtypid = 'public.app_role'::regtype
   ) then
-    raise exception 'PRODUCTION_CONTROLS_TEST_FAILED: app_role enum is missing staff roles';
+    raise exception 'PRODUCTION_CONTROLS_TEST_FAILED: app_role enum is missing required roles';
   end if;
 end $$;
 

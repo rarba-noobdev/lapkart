@@ -158,7 +158,7 @@
 </svelte:head>
 
 <div class="border-b border-[var(--border-faint)] bg-white">
-	<div class="container mx-auto px-4 py-3 sm:py-10">
+	<div class="container mx-auto px-3 py-1.5 sm:px-4 sm:py-10">
 		<nav
 			class="text-mono-x-small hidden tracking-[0.18em] text-[var(--black-alpha-48)] uppercase sm:block"
 		>
@@ -173,18 +173,19 @@
 			{/if}
 		</nav>
 
-		<div class="flex flex-wrap items-end justify-between gap-2 sm:mt-4 sm:gap-6">
+		<div class="flex items-center justify-between gap-2 sm:mt-4 sm:flex-wrap sm:items-end sm:gap-6">
 			<div class="min-w-0 flex-1">
-				<h1 class="sm:text-title-h3 text-[18px] leading-tight font-medium text-foreground">
+				<h1 class="text-[13px] leading-tight font-medium text-foreground sm:text-title-h3">
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
 						Results for "{q}"
 					{:else}
-						All components
+						All parts
 					{/if}
+					<span class="text-[11px] font-normal text-[var(--black-alpha-48)] sm:hidden">{productTotal}</span>
 				</h1>
-				<p class="sm:text-body-medium mt-0.5 text-[12px] text-[var(--black-alpha-56)] sm:mt-1">
+				<p class="mt-1 hidden text-body-medium text-[var(--black-alpha-56)] sm:block">
 					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
 						: ''}
@@ -198,7 +199,7 @@
 
 			<select
 				value={activeSort}
-				class="sm:text-body-medium h-8 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground sm:h-11 sm:px-3"
+				class="h-7 rounded-md border border-[var(--border-muted)] bg-white px-1.5 text-[11px] text-foreground sm:h-11 sm:px-3 sm:text-body-medium"
 				onchange={(event) =>
 					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
 			>
@@ -210,24 +211,24 @@
 
 		{#if appliedFilters.length > 0}
 			<div
-				class="mt-3 flex flex-wrap gap-1.5 sm:mt-6 sm:gap-2"
+				class="mt-1.5 flex flex-wrap gap-1.5 sm:mt-6 sm:gap-2"
 				in:fly={{ y: 4, duration: 180, easing: cubicOut }}
 			>
 				{#each appliedFilters as filter (filter.key)}
 					<button
 						type="button"
 						aria-label={`Remove ${filter.label} filter`}
-						class="text-label-small inline-flex h-8 items-center gap-2 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-3 text-[var(--heat-100)]"
+						class="text-label-small inline-flex h-6 items-center gap-1 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-2 text-[10px] text-[var(--heat-100)] sm:h-8 sm:gap-2 sm:px-3 sm:text-[13px]"
 						onclick={() => updateSearch({ [filter.key]: undefined })}
 					>
 						{filter.label}
-						<X class="size-3.5" />
+						<X class="size-2.5 sm:size-3" />
 					</button>
 				{/each}
 				<button
 					type="button"
 					aria-label="Clear all product filters"
-					class="text-label-small inline-flex h-8 items-center rounded-full border border-[var(--border-muted)] bg-white px-3 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+					class="text-label-small inline-flex h-6 items-center rounded-full border border-[var(--border-muted)] bg-white px-2 text-[10px] text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:h-8 sm:px-3 sm:text-[13px]"
 					onclick={clearFilters}
 				>
 					Clear all
@@ -238,16 +239,16 @@
 </div>
 
 <div
-	class="products-layout container mx-auto grid min-w-0 gap-3 overflow-hidden px-4 py-3 sm:gap-8 sm:py-10 lg:grid-cols-[240px_1fr]"
+	class="products-layout container mx-auto grid min-w-0 gap-2 overflow-hidden px-2 py-2 sm:gap-8 sm:px-4 sm:py-10 lg:grid-cols-[240px_1fr]"
 >
 	<div class="min-w-0 lg:hidden">
 		<div
-			class="scrollbar-hide -mx-4 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-4 pb-1.5 sm:gap-2 sm:pb-2"
+			class="scrollbar-hide -mx-2 flex snap-x snap-mandatory gap-1 overflow-x-auto px-2 sm:-mx-4 sm:gap-2 sm:px-4 sm:pb-2"
 		>
 			<a
 				href={resolve(q ? `/products?q=${encodeURIComponent(q)}` : '/products')}
 				aria-current={!category ? 'page' : undefined}
-				class={`shrink-0 snap-start rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
+				class={`shrink-0 snap-start rounded-full border px-2 py-1 text-[10px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
 					!category
 						? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 						: 'border-[var(--border-muted)] bg-white text-foreground'
@@ -263,7 +264,7 @@
 							: `/products?category=${item.slug}`
 					)}
 					aria-current={category === item.slug ? 'page' : undefined}
-					class={`shrink-0 snap-start rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
+					class={`shrink-0 snap-start rounded-full border px-2 py-1 text-[10px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
 						category === item.slug
 							? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 							: 'border-[var(--border-muted)] bg-white text-foreground'
@@ -272,34 +273,24 @@
 					{item.name}
 				</a>
 			{/each}
-		</div>
 
-		<!-- Collapsible mobile filter -->
-		<button
-			type="button"
-			class="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--border-faint)] bg-white px-3 py-2 text-left transition-colors hover:border-[var(--heat-20)] sm:mt-3 sm:px-4 sm:py-3"
-			onclick={() => (mobileFiltersOpen = !mobileFiltersOpen)}
-			aria-expanded={mobileFiltersOpen}
-		>
-			<span
-				class="text-mono-x-small flex items-center gap-2 tracking-[0.18em] text-[var(--black-alpha-48)] uppercase"
+			<button
+				type="button"
+				class="shrink-0 snap-start rounded-full border border-[var(--border-muted)] bg-white px-2 py-1 text-[10px] font-medium text-[var(--black-alpha-56)] transition-colors sm:px-4 sm:py-2 sm:text-[13px]"
+				onclick={() => (mobileFiltersOpen = !mobileFiltersOpen)}
+				aria-expanded={mobileFiltersOpen}
 			>
-				<SlidersHorizontal class="size-3" /> Refine Results
-				{#if appliedFilters.length > 0}
-					<span
-						class="rounded-full bg-[var(--heat-100)] px-1.5 py-0.5 text-[10px] font-bold text-white"
-					>
-						{appliedFilters.length}
-					</span>
-				{/if}
-			</span>
-			<span
-				class="inline-flex transition-transform duration-200"
-				style:transform={mobileFiltersOpen ? 'rotate(180deg)' : 'rotate(0)'}
-			>
-				<ChevronDown class="size-4 text-[var(--black-alpha-40)]" />
-			</span>
-		</button>
+				<span class="flex items-center gap-1">
+					<SlidersHorizontal class="size-2.5 sm:size-3" />
+					Filters
+					{#if appliedFilters.length > 0}
+						<span class="flex size-4 items-center justify-center rounded-full bg-[var(--heat-100)] text-[8px] font-bold text-white">
+							{appliedFilters.length}
+						</span>
+					{/if}
+				</span>
+			</button>
+		</div>
 
 		{#if mobileFiltersOpen}
 			<div
@@ -552,7 +543,7 @@
 		{/if}
 		{#if sorted.length === 0}
 			<div
-				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center"
+				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-8 text-center sm:p-16"
 				in:fly={{ y: 8, duration: 240, easing: cubicOut }}
 			>
 				<p class="text-label-small text-[var(--heat-100)]">No matching parts</p>
@@ -630,8 +621,8 @@
 	.product-grid {
 		display: grid;
 		min-width: 0;
-		grid-template-columns: minmax(0, 1fr);
-		gap: 12px;
+		grid-template-columns: 1fr;
+		gap: 6px;
 	}
 
 	@media (min-width: 640px) {

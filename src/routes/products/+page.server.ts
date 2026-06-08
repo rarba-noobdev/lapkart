@@ -25,8 +25,10 @@ function parsePage(value: string | null) {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-export const load: PageServerLoad = async ({ depends, locals, url }) => {
+export const load: PageServerLoad = async ({ depends, locals, url, setHeaders }) => {
 	depends('app:products');
+
+	setHeaders({ 'cache-control': 'private, max-age=60' });
 
 	const category = url.searchParams.get('category') ?? '';
 	const query = url.searchParams.get('q') ?? '';

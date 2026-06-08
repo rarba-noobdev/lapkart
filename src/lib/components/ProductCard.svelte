@@ -12,7 +12,7 @@
 <a
 	href={resolve(`/product/${product.id}`)}
 	aria-label={`${product.title} by ${product.brand}`}
-	class="product-card group relative flex w-full flex-col overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white"
+	class="product-card group relative flex w-full overflow-hidden rounded-md border border-[var(--border-faint)] bg-white sm:flex-col sm:rounded-lg"
 >
 	{#if discount >= 30}
 		<span
@@ -34,26 +34,25 @@
 			fetchpriority={eager ? 'high' : 'auto'}
 			decoding="async"
 		/>
-		<span class="pointer-events-none absolute inset-0" style="border-bottom:1px solid var(--border-faint)"></span>
 	</div>
 
-	<div class="flex flex-1 flex-col px-2.5 py-2 sm:px-4 sm:py-3">
-		<p class="truncate font-mono text-[10px] uppercase tracking-[0.12em] sm:text-[11px]" style="color:var(--black-alpha-48)">
+	<div class="flex flex-1 flex-col justify-center px-2.5 py-2 sm:px-4 sm:py-3">
+		<p class="truncate font-mono text-[9px] uppercase tracking-[0.12em] sm:text-[11px]" style="color:var(--black-alpha-56)">
 			{product.brand}
 		</p>
-		<h3 class="mt-0.5 line-clamp-2 text-[12px] font-medium leading-snug sm:text-[13px]" style="color:var(--foreground);min-height:2.6em">
+		<h3 class="mt-0.5 line-clamp-2 text-[11px] font-medium leading-snug sm:text-[13px]" style="color:var(--foreground)">
 			{product.title}
 		</h3>
 
 		<div class="mt-1 flex items-center gap-1 sm:gap-1.5">
-			<Star class="size-3 sm:size-3.5" style="fill:var(--accent-honey);color:var(--accent-honey)" />
-			<span class="text-[11px] sm:text-[12px]" style="color:var(--foreground)">{product.rating.toFixed(1)}</span>
-			<span class="text-[10px] sm:text-[11px]" style="color:var(--black-alpha-40)">({product.reviews.toLocaleString('en-IN')})</span>
+			<Star class="size-2.5 sm:size-3.5" style="fill:var(--accent-honey);color:var(--accent-honey)" />
+			<span class="text-[10px] sm:text-[12px]" style="color:var(--foreground)">{product.rating.toFixed(1)}</span>
+			<span class="hidden text-[11px] sm:inline" style="color:var(--black-alpha-48)">({product.reviews.toLocaleString('en-IN')})</span>
 		</div>
 
-		<div class="mt-auto flex items-baseline gap-1.5 pt-2 sm:gap-2 sm:pt-3" style="border-top:1px solid var(--border-faint)">
+		<div class="mt-1.5 flex items-baseline gap-1.5 sm:mt-auto sm:gap-2 sm:border-t sm:border-[var(--border-faint)] sm:pt-3">
 			<span class="text-[13px] font-semibold sm:text-[15px]" style="color:var(--foreground)">{formatINR(product.price)}</span>
-			<span class="text-[11px] line-through sm:text-[12px]" style="color:var(--black-alpha-40)">{formatINR(product.mrp)}</span>
+			<span class="text-[10px] line-through sm:text-[12px]" style="color:var(--black-alpha-48)">{formatINR(product.mrp)}</span>
 		</div>
 	</div>
 </a>
@@ -61,10 +60,19 @@
 <style>
 	.product-card-media {
 		position: relative;
-		width: 100%;
+		width: 100px;
+		height: 100px;
+		flex-shrink: 0;
 		overflow: hidden;
-		aspect-ratio: 4 / 3;
 		background: var(--background-lighter);
+	}
+
+	@media (min-width: 640px) {
+		.product-card-media {
+			width: 100%;
+			height: auto;
+			aspect-ratio: 4 / 3;
+		}
 	}
 
 	.product-card-image {
@@ -72,7 +80,7 @@
 		width: 100%;
 		height: 100%;
 		object-fit: contain;
-		padding: 10px;
+		padding: 6px;
 	}
 
 	@media (min-width: 640px) {

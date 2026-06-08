@@ -41,7 +41,7 @@ type AuthenticatedUser = {
 	email: string | null;
 };
 
-type StaffRole = 'owner' | 'admin' | 'catalog_manager' | 'order_manager' | 'support' | 'viewer';
+type StaffRole = 'owner' | 'admin';
 type AppRole = StaffRole | 'user';
 type StaffPermission =
 	| 'read_admin'
@@ -61,14 +61,7 @@ type AuthenticatedStaff = AuthenticatedUser & {
 	role: StaffRole;
 };
 
-const staffRoleValues = new Set<StaffRole>([
-	'owner',
-	'admin',
-	'catalog_manager',
-	'order_manager',
-	'support',
-	'viewer'
-]);
+const staffRoleValues = new Set<StaffRole>(['owner', 'admin']);
 
 const staffPermissions: Record<StaffRole, Set<StaffPermission>> = {
 	owner: new Set([
@@ -98,11 +91,7 @@ const staffPermissions: Record<StaffRole, Set<StaffPermission>> = {
 		'manage_settings',
 		'view_monitoring',
 		'import_export'
-	]),
-	catalog_manager: new Set(['read_admin', 'manage_catalog', 'import_export']),
-	order_manager: new Set(['read_admin', 'manage_orders', 'manage_fulfillment', 'manage_refunds']),
-	support: new Set(['read_admin', 'manage_support', 'manage_orders']),
-	viewer: new Set(['read_admin', 'view_monitoring'])
+	])
 };
 
 type CheckoutProductRow = {
@@ -344,9 +333,7 @@ const productUpdateSchema = productUpsertSchema
 
 const adminUserUpdateSchema = z
 	.object({
-		role: z
-			.enum(['owner', 'admin', 'catalog_manager', 'order_manager', 'support', 'viewer', 'user'])
-			.optional(),
+		role: z.enum(['owner', 'admin', 'user']).optional(),
 		fullName: nullableTrimmedString(160),
 		phone: nullableTrimmedString(30)
 	})

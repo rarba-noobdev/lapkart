@@ -26,6 +26,7 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string, 
 	})) as RazorpayOrderResponse;
 
 	return {
+		key_id: config.razorpayKeyId,
 		order_id: order.id,
 		amount: order.amount,
 		currency: order.currency

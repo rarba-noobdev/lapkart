@@ -71,9 +71,9 @@
 		<div class="relative z-10 max-w-md">
 			<h2 class="text-[32px] font-medium leading-[1.15] tracking-tight text-white xl:text-[38px]">
 				Genuine laptop parts,<br />
-				<span class="gradient-text">shipped fast.</span>
+				<span class="text-[var(--heat-100)]">shipped fast.</span>
 			</h2>
-			<p class="mt-3 text-[14px] leading-relaxed text-white/50 xl:text-[15px]">
+			<p class="mt-3 text-[14px] leading-relaxed text-white/60 xl:text-[15px]">
 				RAM, SSDs, batteries, displays — with fitment guidance and same-day dispatch from verified inventory.
 			</p>
 
@@ -84,7 +84,7 @@
 					</div>
 					<div>
 						<p class="text-[13px] font-medium text-white">Genuine parts</p>
-						<p class="text-[11px] text-white/40">OEM-verified with grade transparency</p>
+						<p class="text-[11px] text-white/55">OEM-verified with grade transparency</p>
 					</div>
 				</div>
 				<div class="flex items-center gap-3">
@@ -93,7 +93,7 @@
 					</div>
 					<div>
 						<p class="text-[13px] font-medium text-white">Same-day dispatch</p>
-						<p class="text-[11px] text-white/40">In-stock items ship from local inventory</p>
+						<p class="text-[11px] text-white/55">In-stock items ship from local inventory</p>
 					</div>
 				</div>
 				<div class="flex items-center gap-3">
@@ -102,14 +102,14 @@
 					</div>
 					<div>
 						<p class="text-[13px] font-medium text-white">DOA replacements</p>
-						<p class="text-[11px] text-white/40">Clear return windows on every order</p>
+						<p class="text-[11px] text-white/55">Clear return windows on every order</p>
 					</div>
 				</div>
 			</div>
 		</div>
 
 		<!-- Footer -->
-		<div class="relative z-10 flex items-center justify-between text-[10px] tracking-[0.12em] text-white/30 uppercase">
+		<div class="relative z-10 flex items-center justify-between text-[10px] tracking-[0.12em] text-white/45 uppercase">
 			<span>&copy; {new Date().getFullYear()} LapKart</span>
 			<div class="flex gap-5">
 				<a href={resolve('/terms')} class="transition-colors hover:text-white/60">Terms</a>

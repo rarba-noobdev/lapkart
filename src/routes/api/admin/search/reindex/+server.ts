@@ -8,7 +8,7 @@ import { isOwnerOrAdmin } from '$lib/roles';
 
 export const POST: RequestHandler = async ({ locals }) => {
 	const role = await locals.getRole();
-	if (!isOwnerOrAdmin(role) && role !== 'catalog_manager') error(403, 'Catalog access required');
+	if (!isOwnerOrAdmin(role)) error(403, 'Catalog access required');
 
 	const configured = await ensureProductsCollection();
 	if (!configured) {

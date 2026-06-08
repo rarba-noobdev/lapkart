@@ -146,15 +146,15 @@
 
 				<div class="mt-4 grid grid-cols-3 gap-2 border-t border-[var(--border-faint)] pt-4">
 					<div>
-						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Orders</p>
+						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-56)] uppercase">Orders</p>
 						<p class="mt-0.5 text-[16px] font-semibold text-foreground">{orderCount}</p>
 					</div>
 					<div>
-						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Spent</p>
+						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-56)] uppercase">Spent</p>
 						<p class="mt-0.5 text-[16px] font-semibold text-foreground">{formattedSpend}</p>
 					</div>
 					<div>
-						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Phone</p>
+						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-56)] uppercase">Phone</p>
 						<p class="mt-0.5 truncate text-[13px] font-medium text-foreground">{phoneValue || '—'}</p>
 					</div>
 				</div>
@@ -166,7 +166,7 @@
 					href={resolve('/products')}
 					class="flex items-center gap-3 border-b border-[var(--border-faint)] px-4 py-3 text-[13px] font-medium text-foreground transition-colors hover:bg-[var(--background-lighter)] hover:text-[var(--heat-100)]"
 				>
-					<ShoppingBag class="size-4 text-[var(--black-alpha-40)]" />
+					<ShoppingBag class="size-4 text-[var(--black-alpha-56)]" />
 					Shop parts
 					<ChevronRight class="ml-auto size-3.5 text-[var(--black-alpha-24)]" />
 				</a>
@@ -174,7 +174,7 @@
 					href={resolve('/cart')}
 					class="flex items-center gap-3 px-4 py-3 text-[13px] font-medium text-foreground transition-colors hover:bg-[var(--background-lighter)] hover:text-[var(--heat-100)]"
 				>
-					<Package class="size-4 text-[var(--black-alpha-40)]" />
+					<Package class="size-4 text-[var(--black-alpha-56)]" />
 					View cart
 					<ChevronRight class="ml-auto size-3.5 text-[var(--black-alpha-24)]" />
 				</a>
@@ -184,7 +184,7 @@
 			<div class="hidden rounded-lg border border-[var(--border-faint)] bg-white lg:block">
 				<div class="border-b border-[var(--border-faint)] px-4 py-3">
 					<h2 class="flex items-center gap-2 text-[13px] font-medium text-foreground">
-						<User class="size-4 text-[var(--black-alpha-40)]" />
+						<User class="size-4 text-[var(--black-alpha-56)]" />
 						Account details
 					</h2>
 				</div>
@@ -221,7 +221,7 @@
 							<span class="mb-1 flex items-center justify-between text-[11px] font-medium text-[var(--black-alpha-56)]">
 								Phone
 								{#if phoneLocked}
-									<span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--black-alpha-40)]">
+									<span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--black-alpha-56)]">
 										<Lock class="size-2.5" /> Locked
 									</span>
 								{/if}
@@ -241,12 +241,12 @@
 								/>
 							</div>
 							{#if phoneLocked}
-								<p class="mt-1 text-[10px] text-[var(--black-alpha-40)]">Locked after first purchase.</p>
+								<p class="mt-1 text-[10px] text-[var(--black-alpha-56)]">Locked after first purchase.</p>
 							{/if}
 						</label>
 
 						<div class="flex items-center gap-2 rounded-md bg-[var(--background-lighter)] px-3 py-2">
-							<Mail class="size-3.5 text-[var(--black-alpha-40)]" />
+							<Mail class="size-3.5 text-[var(--black-alpha-56)]" />
 							<div>
 								<p class="text-[11px] text-[var(--black-alpha-48)]">Email</p>
 								<p class="text-[12px] font-medium text-foreground">{data.user.email}</p>
@@ -313,7 +313,7 @@
 											{order.status.replaceAll('_', ' ')}
 										</span>
 									</div>
-									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)] sm:text-[12px]">
+									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-56)] sm:text-[12px]">
 										{new Date(order.createdAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
 										{#if order.items.length > 0}
 											· {order.items.length} item{order.items.length > 1 ? 's' : ''}
@@ -355,7 +355,7 @@
 							<h3 class="text-[13px] font-medium text-foreground">
 								{editingAddress ? 'Edit address' : 'Add new address'}
 							</h3>
-							<button type="button" onclick={cancelForm} class="text-[var(--black-alpha-40)] hover:text-foreground">
+							<button type="button" onclick={cancelForm} class="text-[var(--black-alpha-56)] hover:text-foreground">
 								<X class="size-4" />
 							</button>
 						</div>
@@ -558,7 +558,7 @@
 									{:else}
 										<button
 											type="button"
-											class="ml-auto inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-[var(--black-alpha-40)] transition-colors hover:bg-[var(--accent-crimson)]/8 hover:text-[var(--accent-crimson)]"
+											class="ml-auto inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-[var(--black-alpha-56)] transition-colors hover:bg-[var(--accent-crimson)]/8 hover:text-[var(--accent-crimson)]"
 											onclick={() => (deletingId = addr.id)}
 										>
 											<Trash2 class="size-3" />
@@ -610,7 +610,7 @@
 							<span class="mb-1 flex items-center justify-between text-[11px] font-medium text-[var(--black-alpha-56)]">
 								Phone
 								{#if phoneLocked}
-									<span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--black-alpha-40)]">
+									<span class="inline-flex items-center gap-0.5 text-[9px] text-[var(--black-alpha-56)]">
 										<Lock class="size-2.5" /> Locked
 									</span>
 								{/if}
@@ -630,15 +630,15 @@
 								/>
 							</div>
 							{#if phoneLocked}
-								<p class="mt-1 text-[10px] text-[var(--black-alpha-40)]">Locked after first purchase.</p>
+								<p class="mt-1 text-[10px] text-[var(--black-alpha-56)]">Locked after first purchase.</p>
 							{/if}
 						</label>
 					</div>
 
 					<div class="mt-4 rounded-md bg-[var(--background-lighter)] p-3">
-						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-40)] uppercase">Email address</p>
+						<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-56)] uppercase">Email address</p>
 						<p class="mt-0.5 text-[13px] font-medium text-foreground">{data.user.email}</p>
-						<p class="mt-1 text-[10px] text-[var(--black-alpha-40)]">Managed by your auth provider.</p>
+						<p class="mt-1 text-[10px] text-[var(--black-alpha-56)]">Managed by your auth provider.</p>
 					</div>
 
 					<div class="mt-5 flex justify-end border-t border-[var(--border-faint)] pt-4">
@@ -656,3 +656,6 @@
 		</div>
 	</div>
 </section>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>

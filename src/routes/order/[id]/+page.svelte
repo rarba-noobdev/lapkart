@@ -352,7 +352,7 @@
 		<div class="grid gap-1.5 sm:grid-cols-2">
 			{#each details as detail (detail.label)}
 				<div class="detail-cell">
-					<p class="text-[9px] font-semibold tracking-[0.14em] text-[var(--black-alpha-40)] uppercase">
+					<p class="text-[9px] font-semibold tracking-[0.14em] text-[var(--black-alpha-56)] uppercase">
 						{detail.label}
 					</p>
 					<p class="mt-0.5 text-[12px] font-medium text-foreground">{detail.value}</p>
@@ -465,14 +465,14 @@
 								</div>
 								<div class="min-w-0 flex-1">
 									<p class="line-clamp-2 text-[13px] font-semibold leading-5 text-foreground">{item.title}</p>
-									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
+									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-56)]">
 										{item.brand || 'LapKart'} &middot; Qty {item.qty}
 									</p>
 								</div>
 								<div class="text-right">
 									<p class="text-[13px] font-semibold text-foreground">{formatINR(item.price * item.qty)}</p>
 									{#if item.qty > 1}
-										<p class="text-[11px] text-[var(--black-alpha-40)]">{formatINR(item.price)} ea</p>
+										<p class="text-[11px] text-[var(--black-alpha-56)]">{formatINR(item.price)} ea</p>
 									{/if}
 								</div>
 							</div>
@@ -588,6 +588,9 @@
 		</div>
 	{/if}
 </section>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>
 
 <style>
 	/* ── Panels ── */

@@ -313,6 +313,14 @@
 	textarea {
 		-webkit-tap-highlight-color: transparent;
 	}
+	/* Prevent iOS Safari auto-zoom: inputs/selects must be ≥16px on mobile */
+	@media (max-width: 767px) {
+		input,
+		select,
+		textarea {
+			font-size: max(16px, 1em);
+		}
+	}
 	img,
 	video {
 		user-select: none;
@@ -1024,6 +1032,14 @@
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
+
+	/* Prevent iOS Safari auto-zoom on input focus (requires ≥16px) */
+	@media (max-width: 767px) {
+		.input-field {
+			font-size: 16px;
+			min-height: 44px;
+		}
+	}
 }
 
 /* ----- Admin console motion / decor (Firecrawl-inspired) ----- */
@@ -1166,8 +1182,7 @@
 
 	/* Stagger reveal helper — different from motion-list (bigger delay window) */
 	.reveal-stagger > * {
-		opacity: 0;
-		animation: motion-section-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+		animation: motion-section-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 	.reveal-stagger > *:nth-child(1) {
 		animation-delay: 60ms;

@@ -7,7 +7,8 @@
 		PackageSearch,
 		ReceiptText,
 		ShoppingCart,
-		Truck
+		Truck,
+		UserRound
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { getAuthContext } from '$lib/auth-context';
@@ -32,7 +33,8 @@
 		{ label: 'Home', href: '/', icon: Home },
 		{ label: 'Shop', href: '/products', icon: PackageSearch },
 		{ label: 'Cart', href: '/cart', icon: ShoppingCart, badge: cartBadge },
-		{ label: 'Orders', href: '/orders', icon: ReceiptText }
+		{ label: 'Orders', href: '/orders', icon: ReceiptText },
+		{ label: 'Account', href: auth.user ? '/profile' : '/login', icon: UserRound }
 	]);
 
 	const adminTabs: MobileTab[] = [
@@ -47,6 +49,9 @@
 	function isActive(href: string) {
 		const target = new URL(href, page.url.origin);
 		if (target.pathname === '/') return page.url.pathname === '/';
+		if (target.pathname === '/profile' || target.pathname === '/login') {
+			return page.url.pathname === '/profile' || page.url.pathname === '/login';
+		}
 		if (target.pathname !== page.url.pathname) return false;
 		const targetSection = target.searchParams.get('section');
 		if (target.pathname === '/admin') {
@@ -63,7 +68,7 @@
 </script>
 
 {#if mounted}
-	<nav class="mobile-tabbar" aria-label="Mobile primary navigation">
+	<nav class="mobile-tabbar" aria-label="Mobile primary navigation" data-sveltekit-preload-data="tap">
 		{#each tabs as tab (tab.href)}
 			{@const Icon = tab.icon}
 			<a href={resolve(tab.href as '/')} aria-current={isActive(tab.href) ? 'page' : undefined}>
@@ -89,7 +94,7 @@
 		left: 16px;
 		z-index: 50;
 		display: none;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(5, minmax(0, 1fr));
 		border: 1px solid var(--border-muted);
 		border-radius: 999px;
 		background: #ffffff;

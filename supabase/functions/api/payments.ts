@@ -64,6 +64,7 @@ export async function createRazorpayOrder(amountPaise: number, receipt: string, 
 	}
 
 	return {
+		key_id: config.razorpayKeyId,
 		order_id: String(data.id ?? ''),
 		amount: Number(data.amount ?? amountPaise),
 		currency: String(data.currency ?? currency)

@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { resolve } from '$app/paths';
 	import {
 		ArrowUpRight,
@@ -115,10 +115,10 @@
 	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
-<!-- â”€â”€â”€ Breadcrumb â”€â”€â”€ -->
-<nav class="container mx-auto px-4 pt-4 pb-1 md:pt-5">
+<!-- â"€â"€â"€ Breadcrumb â"€â"€â"€ -->
+<nav class="container mx-auto hidden px-4 pt-4 pb-1 md:block md:pt-5">
 	<ol
-		class="text-mono-x-small flex flex-wrap items-center gap-1 tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+		class="text-mono-x-small flex flex-wrap items-center gap-1 tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
 	>
 		<li><a href={resolve('/')} class="transition-colors hover:text-[var(--heat-100)]">home</a></li>
 		<li><ChevronRight class="size-3 text-[var(--black-alpha-20)]" /></li>
@@ -132,28 +132,28 @@
 	</ol>
 </nav>
 
-<!-- â”€â”€â”€ Product layout: two-panel card â”€â”€â”€ -->
-<section class="container mx-auto px-4 pb-36 md:pb-14 lg:pb-14">
+<!-- â"€â"€â"€ Product layout: two-panel card â"€â"€â"€ -->
+<section class="container mx-auto px-0 pb-8 md:px-4 md:pb-14 lg:pb-14">
 	<div
-		class="motion-section mt-3 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)] md:mt-4"
+		class="motion-section overflow-hidden bg-white md:mt-4 md:rounded-lg md:border md:border-[var(--border-faint)] md:shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)]"
 	>
 		<div class="grid lg:grid-cols-2">
-			<!-- â”€â”€ LEFT PANEL: Gallery â”€â”€ -->
+			<!-- â"€â"€ LEFT PANEL: Gallery â"€â"€ -->
 			<div
 				class="relative border-b border-[var(--border-faint)] bg-[var(--background-lighter)] lg:border-r lg:border-b-0"
 			>
-				<div class="sticky top-20 p-4 sm:p-6 md:p-8">
+				<div class="sticky top-10 p-2 sm:p-6 md:top-20 md:p-8">
 					<!-- Discount badge -->
 					{#if discount >= 10}
 						<span
-							class="text-mono-x-small absolute top-4 left-4 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2.5 py-1 font-medium tracking-wide text-white shadow-[0_2px_8px_0_var(--heat-40)] sm:top-6 sm:left-6"
+							class="text-mono-x-small absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2.5 py-1 font-medium tracking-wide text-white shadow-[0_2px_8px_0_var(--heat-40)] sm:top-6 sm:left-6"
 						>
 							-{discount}% off
 						</span>
 					{/if}
 
 					<!-- Main image -->
-					<div class="flex aspect-[16/10] items-center justify-center sm:aspect-[5/4]">
+					<div class="flex aspect-square items-center justify-center sm:aspect-[5/4]">
 						{#key activeImage}
 							<img
 								src={activeImage}
@@ -168,13 +168,13 @@
 
 					<!-- Thumbnail row -->
 					{#if galleryImages.length > 1}
-						<div class="mt-4 flex justify-center gap-2">
+						<div class="mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mt-4 sm:justify-center sm:gap-2 sm:px-0">
 							{#each galleryImages as image, index (image)}
 								<button
 									type="button"
 									aria-label="Show product image {index + 1}"
 									aria-pressed={activeImage === image}
-									class="size-14 shrink-0 overflow-hidden rounded-lg border-2 bg-white p-1 transition-all duration-200
+									class="size-12 shrink-0 overflow-hidden rounded-md border-2 bg-white p-0.5 transition-all duration-200 sm:size-14 sm:rounded-lg sm:p-1
 										{activeImage === image
 										? 'border-[var(--heat-100)] shadow-[0_0_0_2px_var(--heat-8)]'
 										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
@@ -194,8 +194,8 @@
 				</div>
 			</div>
 
-			<!-- â”€â”€ RIGHT PANEL: Product info â”€â”€ -->
-			<div class="p-5 sm:p-6 md:p-8 lg:p-8 xl:p-10">
+			<!-- â"€â"€ RIGHT PANEL: Product info â"€â"€ -->
+			<div class="px-4 py-4 sm:p-6 md:p-8 lg:p-8 xl:p-10">
 				<!-- Brand -->
 				<p class="text-mono-x-small tracking-[0.18em] text-[var(--heat-100)] uppercase">
 					{product.brand}
@@ -235,7 +235,7 @@
 					{/if}
 				</div>
 
-				<!-- â”€â”€ Price â”€â”€ -->
+				<!-- â"€â"€ Price â"€â"€ -->
 				<div class="mt-4 border-t border-b border-[var(--border-faint)] py-4">
 					<div class="flex flex-wrap items-baseline gap-2.5">
 						<span
@@ -252,16 +252,16 @@
 							</span>
 						{/if}
 					</div>
-					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-40)] uppercase">
+					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-56)] uppercase">
 						Inclusive of taxes / Free delivery on orders above {formatINR(999)}
 					</p>
 				</div>
 
-				<!-- â”€â”€ Highlights â”€â”€ -->
+				<!-- â"€â"€ Highlights â"€â"€ -->
 				{#if highlights.length > 0}
 					<div class="mt-4">
 						<h2
-							class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+							class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
 						>
 							Highlights
 						</h2>
@@ -277,8 +277,8 @@
 					</div>
 				{/if}
 
-				<!-- â”€â”€ Trust promises (inline) â”€â”€ -->
-				<div class="mt-5 flex flex-wrap gap-x-5 gap-y-2">
+				<!-- â"€â"€ Trust promises (inline) â"€â"€ -->
+				<div class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 sm:mt-5 sm:gap-x-5 sm:gap-y-2">
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
@@ -299,11 +299,11 @@
 					</span>
 				</div>
 
-				<!-- â”€â”€ Add-to-cart action â”€â”€ -->
-				<div class="mt-7 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+				<!-- â"€â"€ Add-to-cart action â"€â"€ -->
+				<div class="mt-5 grid gap-3 sm:mt-7 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
 					<!-- Quantity controls -->
 					<div
-						class="grid h-10 grid-cols-[40px_1fr_40px] overflow-hidden rounded-md border border-[var(--border-muted)] sm:w-32"
+						class="grid h-11 grid-cols-[44px_1fr_44px] overflow-hidden rounded-md border border-[var(--border-muted)] sm:h-10 sm:w-32 sm:grid-cols-[40px_1fr_40px]"
 					>
 						<button
 							type="button"
@@ -335,7 +335,7 @@
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
-						class="button button-primary text-label-small inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-6 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit sm:flex-none"
+						class="button button-primary text-label-small inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-md px-6 text-white disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-fit sm:flex-none"
 						onclick={handleAddToCart}
 					>
 						{#if added}
@@ -360,17 +360,17 @@
 		</div>
 	</div>
 
-	<!-- â”€â”€â”€ Specifications table (below the card) â”€â”€â”€ -->
+	<!-- â"€â"€â"€ Specifications table (below the card) â"€â"€â"€ -->
 	<div
-		class="mt-4 overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
+		class="mt-0 overflow-hidden border-t border-[var(--border-faint)] bg-white md:mt-4 md:rounded-lg md:border md:shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
 	>
-		<div class="border-b border-[var(--border-faint)] px-5 py-4 sm:px-6 md:px-8">
+		<div class="border-b border-[var(--border-faint)] px-4 py-3 sm:px-6 sm:py-4 md:px-8">
 			<h2 class="text-label-large text-foreground">Specifications</h2>
 		</div>
 		<div class="divide-y divide-[var(--border-faint)]">
 			{#each specs as spec (spec.label)}
 				<div
-					class="grid grid-cols-[110px_1fr] gap-4 px-5 py-3 sm:grid-cols-[140px_1fr] sm:px-6 md:px-8"
+					class="grid grid-cols-[90px_1fr] gap-3 px-4 py-2.5 sm:grid-cols-[140px_1fr] sm:gap-4 sm:px-6 sm:py-3 md:px-8"
 				>
 					<span class="text-body-small text-[var(--black-alpha-48)]">{spec.label}</span>
 					<span class="text-body-small text-foreground">{spec.value}</span>
@@ -379,10 +379,10 @@
 		</div>
 	</div>
 
-	<!-- â”€â”€â”€ Related products â”€â”€â”€ -->
+	<!-- â"€â"€â"€ Related products â"€â"€â"€ -->
 	{#if related.length > 0}
-		<section class="mt-10 md:mt-14">
-			<div class="mb-5 flex items-end justify-between gap-4">
+		<section class="mt-6 px-4 md:mt-14 md:px-0">
+			<div class="mb-3 flex items-end justify-between gap-4 sm:mb-5">
 				<div>
 					<h2 class="text-title-h4 font-display text-foreground">Similar products</h2>
 					<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">
@@ -399,7 +399,7 @@
 					/>
 				</a>
 			</div>
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+			<div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
 				{#each related as item (item.id)}
 					<div animate:flip={{ duration: 180 }}>
 						<ProductCard product={item} />
@@ -410,30 +410,3 @@
 	{/if}
 </section>
 
-<!-- â”€â”€â”€ Sticky mobile CTA â”€â”€â”€ -->
-<div
-	class="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-faint)] bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.04)] lg:hidden"
->
-	<div class="container mx-auto flex items-center gap-3 px-4 py-2.5">
-		<div class="min-w-0 flex-1">
-			<p class="text-label-medium truncate text-foreground">{formatINR(product.price)}</p>
-			{#if discount > 0}
-				<p class="text-mono-x-small text-[var(--accent-forest)]">{discount}% off</p>
-			{/if}
-		</div>
-		<button
-			type="button"
-			disabled={product.stock <= 0}
-			class="button button-primary text-label-small inline-flex h-10 items-center gap-1.5 rounded-md px-6 text-white disabled:opacity-50"
-			onclick={handleAddToCart}
-		>
-			{#if added}
-				<Check class="size-3.5" />
-				Added
-			{:else}
-				<ShoppingCart class="size-3.5" />
-				Add to cart
-			{/if}
-		</button>
-	</div>
-</div>

@@ -150,3 +150,6 @@
 		{/if}
 	{/if}
 </section>
+
+<!-- Bottom spacer for mobile tab bar -->
+<div class="h-24 md:hidden"></div>

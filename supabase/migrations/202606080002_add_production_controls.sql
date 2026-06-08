@@ -51,14 +51,7 @@ for select
 using (
   private.has_any_role(
     (select auth.uid()),
-    array[
-      'owner'::public.app_role,
-      'admin'::public.app_role,
-      'catalog_manager'::public.app_role,
-      'order_manager'::public.app_role,
-      'support'::public.app_role,
-      'viewer'::public.app_role
-    ]
+    array['owner'::public.app_role, 'admin'::public.app_role]
   )
 );
 
@@ -160,7 +153,7 @@ for select
 using (
   private.has_any_role(
     (select auth.uid()),
-    array['owner'::public.app_role, 'admin'::public.app_role, 'viewer'::public.app_role]
+    array['owner'::public.app_role, 'admin'::public.app_role]
   )
 );
 
@@ -189,7 +182,7 @@ for select
 using (
   private.has_any_role(
     (select auth.uid()),
-    array['owner'::public.app_role, 'admin'::public.app_role, 'catalog_manager'::public.app_role]
+    array['owner'::public.app_role, 'admin'::public.app_role]
   )
 );
 

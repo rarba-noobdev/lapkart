@@ -108,7 +108,7 @@
 						displays, and replacement hardware.
 					{/if}
 				</p>
-				<p class="text-mono-x-small mt-6 tracking-[0.16em] text-white/40 uppercase">
+				<p class="text-mono-x-small mt-6 tracking-[0.16em] text-white/50 uppercase">
 					{isAdmin ? 'Admin-only session' : 'Fast dispatch, secure checkout, verified sourcing'}
 				</p>
 			</div>
@@ -116,7 +116,7 @@
 			<div class="grid grid-cols-2 gap-8 sm:grid-cols-4">
 				{#each footerColumns as column (column.title)}
 					<div>
-						<h3 class="text-mono-x-small mb-4 tracking-[0.18em] text-white/40 uppercase">
+						<h3 class="text-mono-x-small mb-4 tracking-[0.18em] text-white/50 uppercase">
 							{column.title}
 						</h3>
 						<ul class="space-y-2.5">
@@ -140,10 +140,10 @@
 		</div>
 
 		<div class="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
-			<p class="text-mono-x-small tracking-[0.16em] text-white/40 uppercase">
+			<p class="text-mono-x-small tracking-[0.16em] text-white/50 uppercase">
 				2026 LapKart. {isAdmin ? 'Operations console.' : 'Genuine parts marketplace.'}
 			</p>
-			<div class="text-mono-x-small tracking-wider text-white/40 uppercase">
+			<div class="text-mono-x-small tracking-wider text-white/50 uppercase">
 				Chennai service desk | Monday to Saturday
 			</div>
 		</div>

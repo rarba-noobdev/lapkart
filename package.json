@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"build:mobile": "vite build --config vite.mobile.config.ts",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -13,6 +14,9 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"cap:sync": "cap sync",
+		"cap:copy:android": "cap copy android",
+		"android:bundle": "npm run build:mobile && cap copy android",
+		"android:apk": "npm run android:bundle && cd android && gradlew.bat assembleDebug",
 		"android:add": "cap add android",
 		"android:open": "cap open android",
 		"android:run": "cap run android",
@@ -22,7 +26,9 @@
 	},
 	"dependencies": {
 		"@capacitor/android": "^8.4.0",
+		"@capacitor/app": "^8.1.0",
 		"@capacitor/core": "^8.4.0",
+		"@capacitor/haptics": "^8.0.2",
 		"@lucide/svelte": "^1.17.0",
 		"@supabase/ssr": "^0.10.3",
 		"@supabase/supabase-js": "^2.107.0",
@@ -30,6 +36,7 @@
 		"typesense": "^3.0.6"
 	},
 	"devDependencies": {
+		"@capacitor/assets": "^3.0.5",
 		"@capacitor/cli": "^8.4.0",
 		"@eslint/js": "^10.0.1",
 		"@sveltejs/adapter-auto": "^7.0.1",
@@ -45,6 +52,7 @@
 		"globals": "^17.4.0",
 		"open-design-ade": "^0.4.2",
 		"open-design-mcp": "^0.16.1",
+		"playwright": "^1.60.0",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",
 		"prettier-plugin-tailwindcss": "^0.7.2",
