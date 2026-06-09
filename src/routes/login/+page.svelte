@@ -4,6 +4,8 @@
 	import {
 		ArrowRight,
 		BadgeCheck,
+		Eye,
+		EyeOff,
 		Flame,
 		LoaderCircle,
 		Lock,
@@ -22,6 +24,7 @@
 	let loading = $state(false);
 	let oauthLoading = $state(false);
 	let password = $state('');
+	let showPassword = $state(false);
 	let activeMessage = $derived(form?.mode === mode ? (form?.message ?? null) : null);
 	let isSuccessMessage = $derived(Boolean(form?.success && form?.mode === mode));
 	let fullNameValue = $derived(form?.mode === mode ? (form?.fullName ?? '') : '');
@@ -199,7 +202,19 @@
 						</span>
 						<div class="relative">
 							<Lock class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--black-alpha-32)] pointer-events-none" />
-							<input bind:value={password} name="password" type="password" minlength="8" autocomplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder="••••••••" class="input-field !h-10 pl-10 text-[13px]" required />
+							<input bind:value={password} name="password" type={showPassword ? 'text' : 'password'} minlength="8" autocomplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder="••••••••" class="input-field !h-10 pl-10 pr-10 text-[13px]" required />
+							<button
+								type="button"
+								onclick={() => (showPassword = !showPassword)}
+								class="absolute top-1/2 right-3 -translate-y-1/2 text-[var(--black-alpha-32)] transition-colors hover:text-foreground"
+								aria-label={showPassword ? 'Hide password' : 'Show password'}
+							>
+								{#if showPassword}
+									<EyeOff class="size-4" />
+								{:else}
+									<Eye class="size-4" />
+								{/if}
+							</button>
 						</div>
 					</label>
 
