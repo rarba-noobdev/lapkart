@@ -8,10 +8,51 @@
 		/>
 		<meta name="theme-color" content="#fa5d19" />
 		<title>LapKart</title>
-		<script type="module" crossorigin src="/assets/index-HTEEk_TM.js"></script>
-		<link rel="stylesheet" crossorigin href="/assets/index-DUq4SBXt.css">
+		<style>
+			#app-boot {
+				position: fixed;
+				inset: 0;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 18px;
+				background: #ffffff;
+				font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+				z-index: 9999;
+			}
+			#app-boot .boot-mark {
+				font-size: 26px;
+				font-weight: 800;
+				letter-spacing: -0.02em;
+				color: #1a1a1a;
+			}
+			#app-boot .boot-mark b {
+				color: #fa5d19;
+			}
+			#app-boot .boot-spinner {
+				width: 34px;
+				height: 34px;
+				border-radius: 50%;
+				border: 3px solid rgba(250, 93, 25, 0.2);
+				border-top-color: #fa5d19;
+				animation: boot-spin 0.7s linear infinite;
+			}
+			@keyframes boot-spin {
+				to {
+					transform: rotate(360deg);
+				}
+			}
+		</style>
+		<script type="module" crossorigin src="/assets/index-k-Xi1vma.js"></script>
+		<link rel="stylesheet" crossorigin href="/assets/index-RHUWcpIU.css">
 	</head>
 	<body>
-		<div id="app"></div>
+		<div id="app">
+			<div id="app-boot">
+				<span class="boot-mark">lap<b>kart</b></span>
+				<span class="boot-spinner" role="status" aria-label="Loading"></span>
+			</div>
+		</div>
 	</body>
 </html>

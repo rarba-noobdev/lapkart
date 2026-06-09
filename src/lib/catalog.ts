@@ -20,7 +20,10 @@ export const categories: Category[] = [
 	{ slug: 'palmrests', name: 'Palmrests' },
 	{ slug: 'hinges', name: 'Hinges' },
 	{ slug: 'speakers', name: 'Speakers' },
-	{ slug: 'hdd_boards', name: 'HDD Boards' }
+	{ slug: 'hdd_boards', name: 'HDD Boards' },
+	{ slug: 'ics', name: 'ICs & Chips' },
+	{ slug: 'power_buttons', name: 'Power Buttons' },
+	{ slug: 'flex_cables', name: 'Flex Cables' }
 ];
 
 export type Product = {
