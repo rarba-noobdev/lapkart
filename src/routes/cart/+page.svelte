@@ -41,9 +41,18 @@
 
 	onMount(() => {
 		const unsubscribe = cartState.subscribe((current) => {
-			if (current.hydrated) {
-				void loadProducts(current.items.map((item) => item.id));
+			if (!current.hydrated) return;
+			const ids = current.items.map((item) => item.id);
+			// Only fetch when an item we don't already have appears. Quantity changes
+			// and removals reuse the loaded products, so we skip the network round-trip
+			// and the loading skeleton — otherwise the list remounts and the entry
+			// transition replays, which reads as a jitter on every +/- or remove.
+			const missing = ids.filter((id) => !products.some((product) => product.id === id));
+			if (missing.length === 0) {
+				loading = false;
+				return;
 			}
+			void loadProducts(ids);
 		});
 
 		hydrateCart();
