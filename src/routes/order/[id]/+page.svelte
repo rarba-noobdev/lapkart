@@ -20,11 +20,11 @@
 		ReceiptText,
 		RefreshCw,
 		ShieldCheck,
-		Truck
+		Truck,
+		XCircle
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { cubicOut, quintOut } from 'svelte/easing';
-	import { fade, fly } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 
 	type TimelineStep = {
 		key: string;
@@ -78,6 +78,14 @@
 			: []
 	);
 	const timeline = $derived(order ? buildTimeline(order) : []);
+	const closedState = $derived.by<'cancelled' | 'returned' | null>(() => {
+		if (!order) return null;
+		const status = order.status.toLowerCase();
+		if (status === 'returned' || (order.shipment?.status?.toLowerCase() ?? '').startsWith('rto'))
+			return 'returned';
+		if (['cancelled', 'failed', 'payment_failed', 'refunded'].includes(status)) return 'cancelled';
+		return null;
+	});
 	const primaryActionLabel = $derived(
 		order?.shipment?.trackingUrl
 			? 'Track shipment'
@@ -361,22 +369,20 @@
 	</span>
 {/snippet}
 
-{#snippet detailGrid(title: string, icon: typeof Package, details: DetailPair[], delay: number)}
+{#snippet detailGrid(title: string, icon: typeof Package, details: DetailPair[])}
 	{@const Icon = icon}
-	<section class="panel" in:fly={{ y: 10, duration: 380, delay, easing: quintOut }}>
+	<section class="panel p-4">
 		<div class="mb-3 flex items-center gap-2.5">
 			<div class="icon-box">
 				<Icon class="size-3.5" strokeWidth={2} />
 			</div>
-			<h2 class="text-[13px] font-semibold text-foreground">{title}</h2>
+			<h2 class="text-label-small font-semibold text-foreground">{title}</h2>
 		</div>
 		<div class="grid gap-1.5 sm:grid-cols-2">
 			{#each details as detail (detail.label)}
 				<div class="detail-cell">
-					<p class="text-[9px] font-semibold tracking-[0.14em] text-[var(--black-alpha-56)] uppercase">
-						{detail.label}
-					</p>
-					<p class="mt-0.5 text-[12px] font-medium text-foreground">{detail.value}</p>
+					<p class="cell-label">{detail.label}</p>
+					<p class="mt-0.5 text-body-small font-medium break-words text-foreground">{detail.value}</p>
 				</div>
 			{/each}
 		</div>
@@ -385,17 +391,14 @@
 
 <section class="mx-auto w-full max-w-[1120px] px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
 	{#if order}
-		<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+		<div class="motion-section grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
 			<!-- Main Column -->
 			<div class="min-w-0 space-y-4">
 				<!-- Hero -->
-				<header class="hero" in:fly={{ y: 12, duration: 400, easing: quintOut }}>
+				<header class="hero">
 					<div class="hero-grain"></div>
 					<div class="relative p-4 sm:p-5">
-						<a
-							href={resolve('/orders')}
-							class="back-link"
-						>
+						<a href={resolve('/orders')} class="back-link motion-soft-link">
 							<ArrowLeft class="size-3.5" strokeWidth={2} />
 							Orders
 						</a>
@@ -403,7 +406,7 @@
 						<div class="mt-4 flex flex-wrap items-end justify-between gap-4">
 							<div class="min-w-0">
 								<div class="flex items-center gap-2">
-									<h1 class="text-[28px] font-bold tracking-tight text-foreground sm:text-[34px]">
+									<h1 class="text-title-h4 font-bold tracking-tight text-foreground">
 										#{shortOrderId}
 									</h1>
 									<button
@@ -416,12 +419,18 @@
 									</button>
 								</div>
 								{#if copiedOrderId}
-									<p class="mt-1 text-[11px] font-medium text-[var(--heat-100)]" transition:fade={{ duration: 200 }}>
+									<p
+										class="mt-1 text-label-x-small font-medium text-[var(--heat-100)]"
+										transition:fade={{ duration: 200 }}
+									>
 										Copied
 									</p>
 								{/if}
-								<p class="mt-1 text-[12px] text-[var(--black-alpha-48)]">
-									{new Date(order.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+								<p class="mt-1 text-body-small text-[var(--black-alpha-56)]">
+									{new Date(order.createdAt).toLocaleString('en-IN', {
+										dateStyle: 'medium',
+										timeStyle: 'short'
+									})}
 								</p>
 							</div>
 
@@ -430,25 +439,39 @@
 									{@render statusPill(orderStatusLabel, order.status)}
 									{@render statusPill(paymentStatusLabel, order.paymentStatus)}
 								</div>
-								<span class="text-[22px] font-bold text-foreground">{formatINR(order.total)}</span>
+								<span class="text-title-h5 font-bold text-foreground">{formatINR(order.total)}</span>
 							</div>
 						</div>
 					</div>
 				</header>
 
+				{#if closedState}
+					<div class="closed-banner" role="status">
+						<XCircle class="size-4 shrink-0" strokeWidth={2} />
+						<div>
+							<p class="text-label-small font-semibold">
+								{closedState === 'returned' ? 'Order returned' : 'Order cancelled'}
+							</p>
+							<p class="banner-sub text-body-small">
+								{closedState === 'returned'
+									? 'This order was returned. No further delivery updates will follow.'
+									: 'This order was cancelled. No delivery is scheduled.'}
+							</p>
+						</div>
+					</div>
+				{/if}
+
 				<!-- Timeline -->
-				<section class="panel p-4 sm:p-5" in:fly={{ y: 10, duration: 400, delay: 60, easing: quintOut }}>
+				<section class="panel p-4 sm:p-5">
 					<div class="mb-4 flex items-center justify-between gap-3">
-						<h2 class="text-[13px] font-semibold text-foreground">Delivery timeline</h2>
-						<span class="rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] font-medium text-[var(--black-alpha-48)]">
-							{shipmentStatusLabel}
-						</span>
+						<h2 class="text-label-small font-semibold text-foreground">Delivery timeline</h2>
+						<span class="status-chip">{shipmentStatusLabel}</span>
 					</div>
 
 					<div class="tl-grid" style={`--tl-count: ${timeline.length}`}>
 						{#each timeline as step, index (step.key)}
 							{@const Icon = stepIcon(step.state)}
-							<div class="tl-step" in:fly={{ y: 8, duration: 340, delay: 80 + index * 50, easing: quintOut }}>
+							<div class="tl-step">
 								<div class={`tl-dot ${stepTone(step.state)}`}>
 									<Icon class="size-3.5" strokeWidth={2.5} />
 								</div>
@@ -456,8 +479,8 @@
 									<div class="tl-line" class:complete={step.state === 'complete'}></div>
 								{/if}
 								<div class="tl-text">
-									<p class="text-[12px] font-semibold text-foreground">{step.label}</p>
-									<p class="text-[11px] text-[var(--black-alpha-48)]">{step.detail}</p>
+									<p class="text-label-x-small font-semibold text-foreground">{step.label}</p>
+									<p class="text-label-x-small text-[var(--black-alpha-56)]">{step.detail}</p>
 								</div>
 							</div>
 						{/each}
@@ -465,35 +488,36 @@
 				</section>
 
 				<!-- Items -->
-				<section class="panel overflow-hidden" in:fly={{ y: 10, duration: 400, delay: 100, easing: quintOut }}>
+				<section class="panel overflow-hidden">
 					<div class="flex items-center gap-2.5 border-b border-[var(--border-faint)] px-4 py-3">
 						<div class="icon-box">
 							<Package class="size-3.5" strokeWidth={2} />
 						</div>
-						<h2 class="text-[13px] font-semibold text-foreground">
+						<h2 class="text-label-small font-semibold text-foreground">
 							{itemCount} item{itemCount === 1 ? '' : 's'}
 						</h2>
 					</div>
 
-					<div class="divide-y divide-[var(--border-faint)]">
-						{#each order.items as item, index (item.id)}
-							<div
-								class="item-row"
-								in:fly={{ y: 8, duration: 300, delay: 130 + index * 40, easing: quintOut }}
-							>
+					<div class="motion-list divide-y divide-[var(--border-faint)]">
+						{#each order.items as item (item.id)}
+							<div class="item-row">
 								<div class="item-img">
 									<img src={item.image} alt={item.title} class="max-h-full w-full object-contain" loading="lazy" />
 								</div>
 								<div class="min-w-0 flex-1">
-									<p class="line-clamp-2 text-[13px] font-semibold leading-5 text-foreground">{item.title}</p>
-									<p class="mt-0.5 text-[11px] text-[var(--black-alpha-56)]">
+									<p class="line-clamp-2 text-body-small font-semibold text-foreground">{item.title}</p>
+									<p class="mt-0.5 text-label-x-small text-[var(--black-alpha-56)]">
 										{item.brand || 'LapKart'} &middot; Qty {item.qty}
 									</p>
 								</div>
 								<div class="text-right">
-									<p class="text-[13px] font-semibold text-foreground">{formatINR(item.price * item.qty)}</p>
+									<p class="text-body-small font-semibold text-foreground">
+										{formatINR(item.price * item.qty)}
+									</p>
 									{#if item.qty > 1}
-										<p class="text-[11px] text-[var(--black-alpha-56)]">{formatINR(item.price)} ea</p>
+										<p class="text-label-x-small text-[var(--black-alpha-56)]">
+											{formatINR(item.price)} ea
+										</p>
 									{/if}
 								</div>
 							</div>
@@ -503,17 +527,17 @@
 
 				<!-- Shipping + Payment -->
 				<div class="grid gap-4 xl:grid-cols-2">
-					{@render detailGrid('Shipping', Truck, shippingDetails, 140)}
-					{@render detailGrid('Payment', CreditCard, paymentDetails, 170)}
+					{@render detailGrid('Shipping', Truck, shippingDetails)}
+					{@render detailGrid('Payment', CreditCard, paymentDetails)}
 				</div>
 			</div>
 
 			<!-- Sidebar -->
-			<aside class="space-y-3 lg:sticky lg:top-20 lg:h-fit" in:fly={{ x: 14, duration: 420, delay: 80, easing: quintOut }}>
+			<aside class="space-y-3 lg:sticky lg:top-20 lg:h-fit">
 				<!-- Primary Action -->
 				<div class="panel p-4">
 					<div class="mb-3 flex items-center justify-between gap-3">
-						<h2 class="text-[13px] font-semibold text-foreground">{primaryActionLabel}</h2>
+						<h2 class="text-label-small font-semibold text-foreground">{primaryActionLabel}</h2>
 						<div class="icon-box">
 							<Truck class="size-3.5" strokeWidth={2} />
 						</div>
@@ -549,20 +573,20 @@
 						<div class="icon-box">
 							<ReceiptText class="size-3.5" strokeWidth={2} />
 						</div>
-						<h2 class="text-[13px] font-semibold text-foreground">Summary</h2>
+						<h2 class="text-label-small font-semibold text-foreground">Summary</h2>
 					</div>
-					<div class="space-y-2 text-[12px]">
-						<div class="flex justify-between text-[var(--black-alpha-48)]">
+					<div class="space-y-2 text-body-small">
+						<div class="flex justify-between text-[var(--black-alpha-56)]">
 							<span>Subtotal</span>
 							<span class="font-medium text-foreground">{formatINR(subtotal)}</span>
 						</div>
-						<div class="flex justify-between text-[var(--black-alpha-48)]">
+						<div class="flex justify-between text-[var(--black-alpha-56)]">
 							<span>Shipping</span>
 							<span class="font-medium text-foreground">{formatINR(order.shipping)}</span>
 						</div>
 						<div class="flex justify-between border-t border-[var(--border-faint)] pt-2">
 							<span class="font-semibold text-foreground">Total</span>
-							<span class="text-[16px] font-bold text-foreground">{formatINR(order.total)}</span>
+							<span class="text-label-large font-bold text-foreground">{formatINR(order.total)}</span>
 						</div>
 					</div>
 				</div>
@@ -573,14 +597,14 @@
 						<div class="icon-box">
 							<MapPin class="size-3.5" strokeWidth={2} />
 						</div>
-						<h2 class="text-[13px] font-semibold text-foreground">Delivery address</h2>
+						<h2 class="text-label-small font-semibold text-foreground">Delivery address</h2>
 					</div>
 					<div class="detail-cell">
 						{#each addressLines as line (line)}
-							<p class="text-[12px] leading-5 text-foreground">{line}</p>
+							<p class="text-body-small leading-5 text-foreground">{line}</p>
 						{/each}
 						{#if addressLines.length === 0}
-							<p class="text-[12px] text-[var(--black-alpha-48)]">Address pending</p>
+							<p class="text-body-small text-[var(--black-alpha-56)]">Address pending</p>
 						{/if}
 					</div>
 				</div>
@@ -600,8 +624,11 @@
 			<div class="flex items-center gap-3 text-[var(--accent-crimson)]">
 				<CalendarClock class="size-5 shrink-0" strokeWidth={2} />
 				<div>
-					<p class="text-[14px] font-semibold">Order not found</p>
-					<a href={resolve('/orders')} class="mt-1 inline-flex items-center gap-1 text-[12px] text-[var(--heat-100)]">
+					<p class="text-label-medium font-semibold">Order not found</p>
+					<a
+						href={resolve('/orders')}
+						class="motion-soft-link mt-1 inline-flex items-center gap-1 text-body-small text-[var(--heat-100)]"
+					>
 						Back to orders <ChevronRight class="size-3.5" strokeWidth={2} />
 					</a>
 				</div>
@@ -676,6 +703,45 @@
 		border: 1px solid var(--border-faint);
 		background: var(--background-lighter);
 		padding: 8px 10px;
+	}
+
+	.cell-label {
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--black-alpha-56);
+	}
+
+	.closed-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		border-radius: 10px;
+		border: 1px solid color-mix(in srgb, var(--accent-crimson) 30%, transparent);
+		background: color-mix(in srgb, var(--accent-crimson) 7%, var(--card));
+		padding: 12px 14px;
+		color: var(--accent-crimson);
+	}
+	.closed-banner :global(svg) {
+		margin-top: 1px;
+	}
+	.banner-sub {
+		margin-top: 1px;
+		color: color-mix(in srgb, var(--accent-crimson) 78%, var(--fg-strong));
+	}
+
+	.status-chip {
+		display: inline-flex;
+		align-items: center;
+		border-radius: 999px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 3px 10px;
+		font-size: 10px;
+		font-weight: 500;
+		text-transform: capitalize;
+		color: var(--black-alpha-56);
 	}
 
 	.back-link {
