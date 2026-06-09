@@ -1958,6 +1958,10 @@ export type Database = {
 			[_ in never]: never;
 		};
 		Functions: {
+			active_category_counts: {
+				Args: Record<string, never>;
+				Returns: { category: string; count: number }[];
+			};
 			admin_cancel_order: {
 				Args: {
 					p_admin_user_id: string;

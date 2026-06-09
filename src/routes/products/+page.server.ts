@@ -56,15 +56,13 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 			locals.supabase
 		),
 		locals.supabase
-			.from('products')
-			.select('category')
-			.eq('status', 'active')
+			.rpc('active_category_counts')
 			.then(({ data }) => data ?? [])
 	]);
 
 	const categoryCounts: Record<string, number> = {};
 	for (const row of categoryCountRows) {
-		categoryCounts[row.category] = (categoryCounts[row.category] ?? 0) + 1;
+		categoryCounts[row.category] = Number(row.count);
 	}
 
 	return {
