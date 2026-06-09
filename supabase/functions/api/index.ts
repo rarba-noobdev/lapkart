@@ -918,10 +918,20 @@ function orderStatusFromShipmentStatus(shipmentStatus: string): string | null {
 		case 'in_transit':
 		case 'pickup_scheduled':
 			return 'shipped';
+		case 'cancelled':
+		case 'rto_initiated':
+		case 'rto_delivered':
+		case 'lost':
+		case 'damaged':
+			return 'cancelled';
+		case 'returned':
+			return 'returned';
 		default:
 			return null;
 	}
 }
+
+const TERMINAL_ORDER_STATUSES = ['cancelled', 'returned', 'refunded'];
 
 // Auto-advances the order status from Shiprocket logistics events. Only moves
 // forward through ready_for_delivery -> shipped -> out_for_delivery -> delivered
@@ -940,6 +950,17 @@ async function propagateShipmentStatusToOrder(
 		.maybeSingle();
 	if (error || !order) return;
 	const currentStatus = String(order.status ?? '').toLowerCase();
+	// Never override an already-terminal order (avoids double-cancel/refund churn).
+	if (TERMINAL_ORDER_STATUSES.includes(currentStatus)) return;
+	// Terminal shipment outcomes (cancelled/returned) bypass the forward-only
+	// progression gate so a Shiprocket-side cancellation is always reflected.
+	if (TERMINAL_ORDER_STATUSES.includes(nextOrderStatus)) {
+		await adminDb
+			.from('orders')
+			.update({ status: nextOrderStatus, updated_at: new Date().toISOString() })
+			.eq('id', orderId);
+		return;
+	}
 	const progressiveStates = [
 		'pending',
 		'processing',
@@ -1138,6 +1159,16 @@ async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
 		.select('*')
 		.single();
 	if (error) throw error;
+
+	// Sync the order status when tracking is refreshed so a Shiprocket-side
+	// cancellation/return reflects on the order without waiting for a webhook.
+	if (typeof updates.status === 'string' && updatedShipment?.order_id) {
+		await propagateShipmentStatusToOrder(
+			adminDb,
+			String(updatedShipment.order_id),
+			updates.status
+		);
+	}
 
 	return { shipment: updatedShipment, tracking: response };
 }

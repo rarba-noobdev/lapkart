@@ -123,42 +123,63 @@
 		const shipmentStatus = currentOrder.shipment?.status?.toLowerCase() ?? '';
 		const hasShipment = Boolean(currentOrder.shipment);
 		const delivered = orderStatus === 'delivered' || shipmentStatus === 'delivered';
-		const failed = ['cancelled', 'failed', 'payment_failed', 'refunded', 'returned'].includes(orderStatus);
+		const outForDelivery =
+			orderStatus === 'out_for_delivery' || shipmentStatus === 'out_for_delivery';
+		const cancelled = ['cancelled', 'failed', 'payment_failed', 'refunded'].includes(orderStatus);
+		const returned = orderStatus === 'returned' || shipmentStatus.startsWith('rto');
+
+		const placedStep: TimelineStep = {
+			key: 'placed',
+			label: 'Order placed',
+			detail: new Date(currentOrder.createdAt).toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric'
+			}),
+			state: 'complete'
+		};
+		const paymentComplete = isComplete(paymentStatus, ['paid', 'captured', 'verified']);
+		const paidStep: TimelineStep = {
+			key: 'paid',
+			label: 'Payment verified',
+			detail: formatStatusLabel(currentOrder.paymentStatus),
+			state: paymentComplete ? 'complete' : cancelled ? 'problem' : 'active'
+		};
+
+		// Terminal failure: stop the happy path and surface the cancellation/return.
+		if (cancelled || returned) {
+			return [
+				placedStep,
+				paidStep,
+				{
+					key: 'closed',
+					label: returned ? 'Returned' : 'Cancelled',
+					detail: formatStatusLabel(currentOrder.status),
+					state: 'problem'
+				}
+			];
+		}
 
 		return [
+			placedStep,
+			paidStep,
 			{
-				key: 'placed',
-				label: 'Order placed',
-				detail: new Date(currentOrder.createdAt).toLocaleDateString('en-IN', {
-					day: '2-digit',
-					month: 'short',
-					year: 'numeric'
-				}),
-				state: 'complete'
+				key: 'ready',
+				label: 'Ready for delivery',
+				detail: hasShipment ? courierLabel : 'Assigning driver',
+				state: hasShipment ? 'complete' : 'active'
 			},
 			{
-				key: 'paid',
-				label: 'Payment verified',
-				detail: formatStatusLabel(currentOrder.paymentStatus),
-				state: isComplete(paymentStatus, ['paid', 'captured', 'verified']) ? 'complete' : failed ? 'problem' : 'active'
-			},
-			{
-				key: 'packed',
-				label: 'Packed',
-				detail: hasShipment ? courierLabel : 'Awaiting courier',
-				state: hasShipment ? 'complete' : failed ? 'problem' : 'active'
-			},
-			{
-				key: 'transit',
-				label: 'In transit',
-				detail: hasShipment ? shipmentStatusLabel : 'Pending AWB',
-				state: delivered ? 'complete' : hasShipment ? 'active' : 'waiting'
+				key: 'out_for_delivery',
+				label: 'Out for delivery',
+				detail: hasShipment ? shipmentStatusLabel : 'Pending dispatch',
+				state: delivered ? 'complete' : outForDelivery ? 'active' : hasShipment ? 'active' : 'waiting'
 			},
 			{
 				key: 'delivered',
 				label: 'Delivered',
 				detail: delivered ? 'Package delivered' : 'Pending',
-				state: delivered ? 'complete' : failed ? 'problem' : 'waiting'
+				state: delivered ? 'complete' : 'waiting'
 			}
 		];
 	}
@@ -424,7 +445,7 @@
 						</span>
 					</div>
 
-					<div class="tl-grid">
+					<div class="tl-grid" style={`--tl-count: ${timeline.length}`}>
 						{#each timeline as step, index (step.key)}
 							{@const Icon = stepIcon(step.state)}
 							<div class="tl-step" in:fly={{ y: 8, duration: 340, delay: 80 + index * 50, easing: quintOut }}>
@@ -798,7 +819,7 @@
 	/* ── Timeline ── */
 	.tl-grid {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(var(--tl-count, 5), minmax(0, 1fr));
 	}
 
 	.tl-step {
