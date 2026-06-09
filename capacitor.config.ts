@@ -22,10 +22,12 @@ const config: CapacitorConfig = {
 	},
 	plugins: {
 		SplashScreen: {
-			// Keep the native splash up until the web layer signals it is mounted
-			// (SplashScreen.hide() in main.ts) so the first frame is never blank.
-			launchShowDuration: 3000,
-			launchAutoHide: false,
+			// Auto-hide on a short timer so the native splash can never get stuck
+			// (a non-auto-hiding splash strands users on the gray system splash if
+			// the JS hide() is delayed). main.ts also calls hide() on mount for an
+			// earlier handoff; the white in-app boot loader covers the rest.
+			launchShowDuration: 700,
+			launchAutoHide: true,
 			launchFadeOutDuration: 250,
 			backgroundColor: '#FFFFFF',
 			showSpinner: true,
