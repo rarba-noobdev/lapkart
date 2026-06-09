@@ -220,7 +220,7 @@ export const manualOrderStatusOptions = [
 	{ value: 'pending', label: 'Pending' },
 	{ value: 'processing', label: 'Processing' },
 	{ value: 'confirmed', label: 'Confirmed' },
-	{ value: 'packed', label: 'Packed' },
+	{ value: 'ready_for_delivery', label: 'Ready for delivery' },
 	{ value: 'shipped', label: 'Shipped' },
 	{ value: 'out_for_delivery', label: 'Out for delivery' },
 	{ value: 'delivered', label: 'Delivered' },
@@ -393,7 +393,7 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 		'pending',
 		'processing',
 		'confirmed',
-		'packed',
+		'ready_for_delivery',
 		'shipped',
 		'out_for_delivery',
 		'delivered'
@@ -402,7 +402,8 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 	const currentIndex = progressiveStates.indexOf(currentStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
 
-	if (nextStatus === 'cancelled') return !adminShipmentStarted(order);
+	if (nextStatus === 'cancelled')
+		return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
 	if (currentIndex === -1 || nextIndex === -1) return false;
 	return nextIndex > currentIndex;
@@ -410,11 +411,7 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 
 export function canAdminCancelOrder(order: AdminOrderRecord) {
 	const status = order.status.toLowerCase();
-	return (
-		!isTerminalOrder(order) &&
-		!adminShipmentStarted(order) &&
-		!['shipped', 'out_for_delivery', 'delivered'].includes(status)
-	);
+	return !isTerminalOrder(order) && !['out_for_delivery', 'delivered'].includes(status);
 }
 
 export function canAdminReturnOrder(order: AdminOrderRecord) {
@@ -426,7 +423,7 @@ export function nextProgressiveOrderStatus(order: AdminOrderRecord) {
 		'pending',
 		'processing',
 		'confirmed',
-		'packed',
+		'ready_for_delivery',
 		'shipped',
 		'out_for_delivery',
 		'delivered'

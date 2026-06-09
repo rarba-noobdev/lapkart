@@ -5,6 +5,8 @@ import { autocompleteOlaPlaces, getOlaDeliveryRoute, reverseGeocodeOlaPlace } fr
 import { createRazorpayOrder, createRazorpayRefund, verifyRazorpaySignature } from './payments.ts';
 import {
 	assignShiprocketAwb,
+	cancelShiprocketOrder,
+	cancelShiprocketShipment,
 	createShiprocketOrder,
 	createShiprocketReturnOrder,
 	generateShiprocketLabels,
@@ -904,6 +906,59 @@ function normalizeShipmentStatus(status: string) {
 	return 'in_transit';
 }
 
+// Maps a normalized shipment status onto the customer-facing order status.
+// Returns null when the shipment status should not move the order forward.
+function orderStatusFromShipmentStatus(shipmentStatus: string): string | null {
+	switch (shipmentStatus) {
+		case 'out_for_delivery':
+			return 'out_for_delivery';
+		case 'delivered':
+			return 'delivered';
+		case 'shipped':
+		case 'in_transit':
+		case 'pickup_scheduled':
+			return 'shipped';
+		default:
+			return null;
+	}
+}
+
+// Auto-advances the order status from Shiprocket logistics events. Only moves
+// forward through ready_for_delivery -> shipped -> out_for_delivery -> delivered
+// and never overrides a manual/terminal state (cancelled, returned, refunded).
+async function propagateShipmentStatusToOrder(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	orderId: string,
+	normalizedShipmentStatus: string
+) {
+	const nextOrderStatus = orderStatusFromShipmentStatus(normalizedShipmentStatus);
+	if (!nextOrderStatus) return;
+	const { data: order, error } = await adminDb
+		.from('orders')
+		.select('status')
+		.eq('id', orderId)
+		.maybeSingle();
+	if (error || !order) return;
+	const currentStatus = String(order.status ?? '').toLowerCase();
+	const progressiveStates = [
+		'pending',
+		'processing',
+		'confirmed',
+		'ready_for_delivery',
+		'shipped',
+		'out_for_delivery',
+		'delivered'
+	];
+	const currentIndex = progressiveStates.indexOf(currentStatus);
+	const nextIndex = progressiveStates.indexOf(nextOrderStatus);
+	if (currentIndex === -1) return;
+	if (nextIndex <= currentIndex) return;
+	await adminDb
+		.from('orders')
+		.update({ status: nextOrderStatus, updated_at: new Date().toISOString() })
+		.eq('id', orderId);
+}
+
 async function sha256Hex(value: string) {
 	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
 	return Array.from(new Uint8Array(digest))
@@ -1179,6 +1234,140 @@ async function createShiprocketShipmentForOrder(
 	});
 
 	return { shipment, shiprocket: response };
+}
+
+// Immediately creates the Shiprocket shipment and assigns an AWB the moment an
+// order is placed, then marks the order ready_for_delivery so a courier pickup
+// is dispatched without manual fulfillment steps. Non-fatal: any failure leaves
+// the order in 'confirmed' so it surfaces in the fulfillment queue for a retry.
+async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, orderId: string) {
+	if (config.razorpayKeyId.startsWith('rzp_test_') && !config.allowShiprocketWithTestPayments) {
+		return;
+	}
+	try {
+		const { shipment } = await createShiprocketShipmentForOrder(adminDb, { orderId });
+		if (!shipment?.shiprocket_shipment_id) {
+			throw new Error('Shiprocket shipment id missing after creation');
+		}
+		const awbResponse = await assignShiprocketAwb({
+			shipment_id: shipment.shiprocket_shipment_id,
+			courier_id: shipment.courier_company_id ?? undefined
+		});
+		const awbData = getAwbData(awbResponse);
+		if (Number(awbResponse.awb_assign_status ?? 1) !== 1) {
+			throw new Error(
+				firstString(awbData.awb_assign_error, awbResponse.message) ??
+					'Shiprocket AWB assignment failed'
+			);
+		}
+		const awbCode = firstString(awbData.awb_code, shipment.awb_code);
+		const courierName = firstString(awbData.courier_name, shipment.courier_name);
+		const courierCompanyId = Number(awbData.courier_company_id ?? shipment.courier_company_id);
+		await adminDb
+			.from('shipments')
+			.update({
+				status: 'awb_assigned',
+				awb_code: awbCode,
+				courier_company_id: Number.isFinite(courierCompanyId) ? courierCompanyId : null,
+				courier_name: courierName,
+				raw_awb_response: awbResponse,
+				raw_payload: awbResponse,
+				last_status_at: new Date().toISOString()
+			})
+			.eq('id', shipment.id);
+		await adminDb
+			.from('orders')
+			.update({ status: 'ready_for_delivery', updated_at: new Date().toISOString() })
+			.eq('id', orderId);
+	} catch (autoFulfillError) {
+		await logMonitoringEvent({
+			source: 'shiprocket.auto_fulfill',
+			severity: 'warning',
+			message: 'Automatic shipment creation on order placement failed',
+			requestKey: orderId,
+			metadata: {
+				orderId,
+				error: autoFulfillError instanceof Error ? autoFulfillError.message : String(autoFulfillError)
+			}
+		});
+	}
+}
+
+// Cancels the live Shiprocket shipment for an order before the DB cancellation
+// runs, so a courier is not dispatched for a cancelled order. Non-fatal: a
+// logistics API failure is logged but does not block the order cancellation.
+async function cancelOrderShipmentOnShiprocket(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	orderId: string
+) {
+	try {
+		const { data: shipment } = await adminDb
+			.from('shipments')
+			.select('id,awb_code,shiprocket_order_id,status')
+			.eq('order_id', orderId)
+			.eq('provider', 'shiprocket')
+			.eq('shipping_direction', 'outbound')
+			.order('created_at', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+		if (!shipment) return;
+		const srOrderId = Number(shipment.shiprocket_order_id);
+		const hasSrOrderId = Number.isFinite(srOrderId);
+
+		// Release the AWB first (frees the courier assignment), then cancel the
+		// Shiprocket order so it leaves the open queue in the panel/app. Each call
+		// is independent: a failure in one must not skip the other or the DB write.
+		if (shipment.awb_code) {
+			try {
+				await cancelShiprocketShipment([String(shipment.awb_code)]);
+			} catch (awbCancelError) {
+				await logMonitoringEvent({
+					source: 'shiprocket.cancel',
+					severity: 'warning',
+					message: 'Shiprocket AWB cancellation failed during order cancellation',
+					requestKey: orderId,
+					metadata: {
+						orderId,
+						awb: String(shipment.awb_code),
+						error: awbCancelError instanceof Error ? awbCancelError.message : String(awbCancelError)
+					}
+				});
+			}
+		}
+		if (hasSrOrderId) {
+			try {
+				await cancelShiprocketOrder([srOrderId]);
+			} catch (orderCancelError) {
+				await logMonitoringEvent({
+					source: 'shiprocket.cancel',
+					severity: 'warning',
+					message: 'Shiprocket order cancellation failed during order cancellation',
+					requestKey: orderId,
+					metadata: {
+						orderId,
+						shiprocketOrderId: srOrderId,
+						error:
+							orderCancelError instanceof Error ? orderCancelError.message : String(orderCancelError)
+					}
+				});
+			}
+		}
+		await adminDb
+			.from('shipments')
+			.update({ status: 'cancelled', last_status_at: new Date().toISOString() })
+			.eq('id', shipment.id);
+	} catch (cancelError) {
+		await logMonitoringEvent({
+			source: 'shiprocket.cancel',
+			severity: 'warning',
+			message: 'Shiprocket shipment cancellation failed during order cancellation',
+			requestKey: orderId,
+			metadata: {
+				orderId,
+				error: cancelError instanceof Error ? cancelError.message : String(cancelError)
+			}
+		});
+	}
 }
 
 async function syncShiprocketPickupLocations(addresses: ShiprocketPickupAddress[]) {
@@ -1564,13 +1753,29 @@ function canRequestCancellation(
 			'return_approved',
 			'return_received',
 			'returned',
+			'out_for_delivery',
 			'delivered',
 			'refunded'
 		].includes(orderStatus)
 	) {
 		return false;
 	}
-	return !isShipmentStarted(shipment);
+	return !isShipmentPastCancelPoint(shipment);
+}
+
+function isShipmentPastCancelPoint(shipment: Record<string, unknown> | null | undefined) {
+	if (!shipment) return false;
+	const status = String(shipment.status ?? '').toLowerCase();
+	return [
+		'out_for_delivery',
+		'delivered',
+		'rto_initiated',
+		'rto_in_transit',
+		'rto_delivered',
+		'lost',
+		'damaged',
+		'closed'
+	].includes(status);
 }
 
 function canRequestReturn(
@@ -1608,21 +1813,21 @@ function canRequestReturn(
 function canTransitionManualOrderStatus(
 	currentStatus: string,
 	nextStatus: string,
-	shipmentStarted: boolean
+	_shipmentStarted: boolean
 ) {
 	if (currentStatus === nextStatus) return true;
 	const progressiveStates = [
 		'pending',
 		'processing',
 		'confirmed',
-		'packed',
+		'ready_for_delivery',
 		'shipped',
 		'out_for_delivery',
 		'delivered'
 	];
 	const currentIndex = progressiveStates.indexOf(currentStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
-	if (nextStatus === 'cancelled') return !shipmentStarted;
+	if (nextStatus === 'cancelled') return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
 	if (currentIndex === -1 || nextIndex === -1) return false;
 	return nextIndex > currentIndex;
@@ -2085,6 +2290,7 @@ function parseBoundedInteger(
 ) {
 	const min = options.min ?? 1;
 	const max = options.max ?? 100;
+	if (value === null || value.trim() === '') return fallback;
 	const parsed = Number(value);
 	if (!Number.isInteger(parsed)) return fallback;
 	return Math.min(max, Math.max(min, parsed));
@@ -2320,6 +2526,7 @@ async function handle(req: Request) {
 			},
 			{ onConflict: 'order_id' }
 		);
+		await autoFulfillOrder(adminDb, finalOrderId);
 
 		return json(req, 201, { orderId: finalOrderId, summary, codReference });
 	}
@@ -2558,6 +2765,7 @@ async function handle(req: Request) {
 			},
 			{ onConflict: 'order_id' }
 		);
+		await autoFulfillOrder(adminDb, finalOrderId);
 		return json(req, 200, { verified: true, orderId: finalOrderId });
 	}
 
@@ -3296,6 +3504,7 @@ async function handle(req: Request) {
 			if (!reason || reason.length < 3) {
 				throw new HttpError(400, 'Add a clear reason before approving cancellation');
 			}
+			await cancelOrderShipmentOnShiprocket(adminDb, currentRequest.order_id);
 			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
 				p_order_id: currentRequest.order_id,
 				p_admin_user_id: adminUser.id,
@@ -4157,12 +4366,14 @@ async function handle(req: Request) {
 			].join('|');
 		const idempotencyKey = await sha256Hex(idempotencySeed);
 		let shipmentId: string | null = null;
+		let shipmentOrderId: string | null = null;
 		if (awb || Number.isFinite(shiprocketShipmentId)) {
-			let query = adminDb.from('shipments').select('id').limit(1);
+			let query = adminDb.from('shipments').select('id,order_id').limit(1);
 			if (awb) query = query.eq('awb_code', awb);
 			else query = query.eq('shiprocket_shipment_id', shiprocketShipmentId);
 			const { data } = await query.maybeSingle();
 			shipmentId = data?.id ?? null;
+			shipmentOrderId = data?.order_id ?? null;
 		}
 		const { data: webhookEvent, error: webhookEventError } = await adminDb
 			.from('provider_webhook_events')
@@ -4204,14 +4415,18 @@ async function handle(req: Request) {
 			raw_payload: body
 		});
 		if (shipmentId) {
+			const normalizedShipmentStatus = normalizeShipmentStatus(status);
 			await adminDb
 				.from('shipments')
 				.update({
-					status: normalizeShipmentStatus(status),
+					status: normalizedShipmentStatus,
 					last_status_at: new Date().toISOString(),
 					raw_payload: body
 				})
 				.eq('id', shipmentId);
+			if (shipmentOrderId) {
+				await propagateShipmentStatusToOrder(adminDb, shipmentOrderId, normalizedShipmentStatus);
+			}
 		}
 		await adminDb
 			.from('provider_webhook_events')
@@ -5312,6 +5527,7 @@ async function handle(req: Request) {
 			if ('payment_status' in payload) {
 				throw new HttpError(400, 'Use the cancellation workflow before changing payment state');
 			}
+			await cancelOrderShipmentOnShiprocket(adminDb, orderId);
 			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
 				p_order_id: orderId,
 				p_admin_user_id: adminUser.id,

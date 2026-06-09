@@ -5,7 +5,6 @@
 	import { getAuthContext } from '$lib/auth-context';
 	import {
 		adminReasonRequired,
-		adminShipmentStarted,
 		canAdminCancelOrder,
 		canAdminReturnOrder,
 		canTransitionManualOrderStatusClient,
@@ -758,7 +757,7 @@
 										<button
 											type="button"
 											class="inline-flex h-7 items-center justify-center rounded-md bg-[var(--accent-crimson)] px-2.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:opacity-90 disabled:opacity-50"
-											disabled={workflowAction !== null || adminShipmentStarted(selectedOrder)}
+											disabled={workflowAction !== null || !canAdminCancelOrder(selectedOrder)}
 											onclick={() =>
 												void runWorkflowAction(
 													'cancel-approve',
@@ -1236,3 +1235,4 @@
 		</div>
 	</section>
 </div>
+

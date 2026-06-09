@@ -200,6 +200,20 @@ export async function assignShiprocketAwb(payload: ShiprocketAwbPayload) {
 	});
 }
 
+export async function cancelShiprocketOrder(orderIds: number[]) {
+	return shiprocketRequest<Record<string, unknown>>('/orders/cancel', {
+		method: 'POST',
+		body: JSON.stringify({ ids: orderIds })
+	});
+}
+
+export async function cancelShiprocketShipment(awbs: string[]) {
+	return shiprocketRequest<Record<string, unknown>>('/orders/cancel/shipment', {
+		method: 'POST',
+		body: JSON.stringify({ awbs })
+	});
+}
+
 export async function generateShiprocketLabels(shipmentIds: number[]) {
 	return shiprocketRequest<Record<string, unknown>>('/courier/generate/label', {
 		method: 'POST',
