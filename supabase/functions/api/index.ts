@@ -1249,10 +1249,19 @@ async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, or
 		if (!shipment?.shiprocket_shipment_id) {
 			throw new Error('Shiprocket shipment id missing after creation');
 		}
-		const awbResponse = await assignShiprocketAwb({
+		const preferredCourierId =
+			typeof shipment.courier_company_id === 'number' ? shipment.courier_company_id : undefined;
+		// Try the courier the customer picked at checkout first. If Shiprocket
+		// rejects it (e.g. "Selected courier not available between <pin> and
+		// <pin>"), retry letting Shiprocket auto-assign its recommended courier so
+		// a transient courier outage does not block the whole shipment.
+		let awbResponse = await assignShiprocketAwb({
 			shipment_id: shipment.shiprocket_shipment_id,
-			courier_id: shipment.courier_company_id ?? undefined
+			courier_id: preferredCourierId
 		});
+		if (Number(awbResponse.awb_assign_status ?? 1) !== 1 && preferredCourierId !== undefined) {
+			awbResponse = await assignShiprocketAwb({ shipment_id: shipment.shiprocket_shipment_id });
+		}
 		const awbData = getAwbData(awbResponse);
 		if (Number(awbResponse.awb_assign_status ?? 1) !== 1) {
 			throw new Error(
@@ -1275,6 +1284,40 @@ async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, or
 				last_status_at: new Date().toISOString()
 			})
 			.eq('id', shipment.id);
+
+		// Schedule the courier pickup immediately so the order is genuinely ready
+		// for pickup the moment it is placed — no manual "schedule pickup" step.
+		// Pickup requires an assigned AWB (done above). Non-fatal on its own: the
+		// order is still ready_for_delivery and pickup can be retried from the desk.
+		if (awbCode) {
+			try {
+				const pickupResponse = await requestShiprocketPickup(shipment.shiprocket_shipment_id);
+				const pickupData = getPickupData(pickupResponse);
+				await adminDb
+					.from('shipments')
+					.update({
+						status: 'pickup_scheduled',
+						pickup_scheduled_date: toDateOnly(
+							pickupData.pickup_scheduled_date ?? pickupResponse.pickup_scheduled_date
+						),
+						raw_payload: pickupResponse,
+						last_status_at: new Date().toISOString()
+					})
+					.eq('id', shipment.id);
+			} catch (pickupError) {
+				await logMonitoringEvent({
+					source: 'shiprocket.auto_fulfill',
+					severity: 'warning',
+					message: 'Automatic pickup scheduling on order placement failed',
+					requestKey: orderId,
+					metadata: {
+						orderId,
+						error: pickupError instanceof Error ? pickupError.message : String(pickupError)
+					}
+				});
+			}
+		}
+
 		await adminDb
 			.from('orders')
 			.update({ status: 'ready_for_delivery', updated_at: new Date().toISOString() })

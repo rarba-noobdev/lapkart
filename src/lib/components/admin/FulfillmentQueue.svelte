@@ -330,6 +330,8 @@
 						{@const trackingKey = `${order.id}:tracking`}
 						{@const busy = activeAction?.startsWith(order.id) ?? false}
 						{@const latest = latestTracking(order)}
+						{@const shipmentCancelled =
+							shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
 
 						<tr
 							class={`border-b border-[var(--border-faint)] align-top transition-colors last:border-b-0 ${
@@ -396,7 +398,7 @@
 								{#if latest?.location}
 									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-48)]">{latest.location}</p>
 								{/if}
-								{#if shipment?.trackingUrl}
+								{#if shipment?.trackingUrl && !shipmentCancelled}
 									<button
 										type="button"
 										class="text-[12px] font-medium mt-1 inline-block text-[var(--heat-100)] hover:underline"
@@ -416,7 +418,13 @@
 										Details
 									</button>
 
-									{#if !shipment}
+									{#if shipmentCancelled}
+										<span
+											class="text-[10px] tracking-[0.14em] inline-flex h-7 items-center rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 uppercase text-[var(--accent-crimson)]"
+										>
+											Cancelled
+										</span>
+									{:else if !shipment}
 										<button
 											type="button"
 											class="button button-primary inline-flex h-7 items-center justify-center rounded-md px-2.5 text-[12px] font-medium text-white disabled:opacity-50"
@@ -432,7 +440,7 @@
 										</button>
 									{/if}
 
-									{#if shipment && !shipment.awbCode}
+									{#if shipment && !shipment.awbCode && !shipmentCancelled}
 										<button
 											type="button"
 											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -452,7 +460,7 @@
 										</button>
 									{/if}
 
-									{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate}
+									{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate && !shipmentCancelled}
 										<button
 											type="button"
 											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -468,7 +476,7 @@
 										</button>
 									{/if}
 
-									{#if shipment?.shiprocketShipmentId}
+									{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
 										<button
 											type="button"
 											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -509,6 +517,8 @@
 		{@const trackingKey = `${detailOrder.id}:tracking`}
 		{@const latest = latestTracking(detailOrder)}
 		{@const busy = activeAction?.startsWith(detailOrder.id) ?? false}
+		{@const shipmentCancelled =
+			shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
 
 		<div class="fixed inset-0 z-50">
 			<button
@@ -696,7 +706,7 @@
 							{#if latest?.location}
 								<p class="text-[12px] mt-0.5 text-[var(--black-alpha-48)]">{latest.location}</p>
 							{/if}
-							{#if shipment?.trackingUrl}
+							{#if shipment?.trackingUrl && !shipmentCancelled}
 								<button
 									type="button"
 									class="text-[12px] font-medium mt-2 inline-block text-[var(--heat-100)] hover:underline"
@@ -710,7 +720,13 @@
 						<div class="rounded-lg border border-[var(--heat-20)] bg-white p-4">
 							<p class="text-[12px] font-medium text-foreground">Fulfillment actions</p>
 							<div class="mt-2.5 flex flex-wrap gap-1.5">
-								{#if !shipment}
+								{#if shipmentCancelled}
+									<span
+										class="text-[12px] rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-3 py-1.5 text-[var(--accent-crimson)]"
+									>
+										Shipment cancelled — no further actions.
+									</span>
+								{:else if !shipment}
 									<button
 										type="button"
 										class="button button-primary inline-flex h-8 items-center justify-center rounded-md px-3 text-[12px] font-medium text-white disabled:opacity-50"
@@ -725,7 +741,7 @@
 										{activeAction === createKey ? 'Creating...' : 'Create shipment'}
 									</button>
 								{/if}
-								{#if shipment && !shipment.awbCode}
+								{#if shipment && !shipment.awbCode && !shipmentCancelled}
 									<button
 										type="button"
 										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -744,7 +760,7 @@
 												: 'Assign AWB'}
 									</button>
 								{/if}
-								{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate}
+								{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate && !shipmentCancelled}
 									<button
 										type="button"
 										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -759,7 +775,7 @@
 										{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
 									</button>
 								{/if}
-								{#if shipment?.shiprocketShipmentId}
+								{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
 									<button
 										type="button"
 										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
@@ -770,7 +786,7 @@
 										{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
 									</button>
 								{/if}
-								{#if shipment?.manifestUrl}
+								{#if shipment?.manifestUrl && !shipmentCancelled}
 									<button
 										type="button"
 										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
@@ -779,7 +795,7 @@
 										Open manifest
 									</button>
 								{/if}
-								{#if shipment?.labelUrl}
+								{#if shipment?.labelUrl && !shipmentCancelled}
 									<button
 										type="button"
 										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
