@@ -43,17 +43,60 @@
 					transform: rotate(360deg);
 				}
 			}
+			#app-boot .boot-error {
+				display: none;
+				max-width: 88%;
+				font-size: 12px;
+				line-height: 1.4;
+				color: #b91c1c;
+				white-space: pre-wrap;
+				word-break: break-word;
+				text-align: center;
+			}
 		</style>
-		
+		<script type="module" src="/assets/index-BanTgG29.js"></script>
+		<link rel="stylesheet" href="/assets/index-B5F8YRh9.css">
 	</head>
 	<body>
 		<div id="app">
 			<div id="app-boot">
 				<span class="boot-mark">lap<b>kart</b></span>
 				<span class="boot-spinner" role="status" aria-label="Loading"></span>
+				<pre class="boot-error" id="boot-error"></pre>
 			</div>
 		</div>
-		<script id="vite-legacy-polyfill" src="/assets/polyfills-legacy-xS0f7Ix1.js"></script>
-		<script id="vite-legacy-entry" data-src="/assets/index-legacy-BQ8kkKBQ.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+		<script>
+			(function () {
+				function showBootError(label, detail) {
+					var box = document.getElementById('boot-error');
+					var spin = document.querySelector('#app-boot .boot-spinner');
+					if (!box) return;
+					if (spin) spin.style.display = 'none';
+					box.style.display = 'block';
+					box.textContent = label + '\n' + detail;
+				}
+				window.addEventListener('error', function (e) {
+					showBootError(
+						'Boot error',
+						(e.message || 'script error') +
+							(e.filename ? '\n' + e.filename + ':' + e.lineno : '')
+					);
+				});
+				window.addEventListener('unhandledrejection', function (e) {
+					var r = e.reason;
+					showBootError('Boot rejection', (r && (r.message || r.toString())) || 'unknown');
+				});
+				// Watchdog: if the Svelte shell never removed this loader, the bundle
+				// failed to execute. Surface that instead of spinning forever.
+				setTimeout(function () {
+					if (document.getElementById('app-boot')) {
+						showBootError(
+							'App did not start',
+							'Bundle loaded but did not mount within 8s.\nUA: ' + navigator.userAgent
+						);
+					}
+				}, 8000);
+			})();
+		</script>
 	</body>
 </html>

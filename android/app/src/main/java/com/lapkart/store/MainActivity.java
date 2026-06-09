@@ -8,6 +8,7 @@ import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Bridge;
+import com.getcapacitor.BridgeWebViewClient;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -39,7 +40,11 @@ public class MainActivity extends BridgeActivity {
         WebView webView = bridge.getWebView();
         if (webView == null) return;
 
-        webView.setWebViewClient(new android.webkit.WebViewClient() {
+        // Subclass Capacitor's BridgeWebViewClient so the local-server asset
+        // interception (shouldInterceptRequest serving https://localhost from the
+        // bundled www/) stays intact. A plain WebViewClient would replace it and
+        // send https://localhost to the network -> net::ERR_CONNECTION_REFUSED.
+        webView.setWebViewClient(new BridgeWebViewClient(bridge) {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
