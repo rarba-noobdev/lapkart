@@ -4522,32 +4522,45 @@ async function handle(req: Request) {
 	if (req.method === 'GET' && path === '/admin/analytics') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'read_admin');
-		const [orders, products, users, cancellations, returnsResult, refunds] = await Promise.all([
-			adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
-			adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
-			adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
-			adminDb
-				.from('order_cancellation_requests')
-				.select('id,order_id,status,reason,requested_at,resolved_at')
-				.order('requested_at', { ascending: false })
-				.limit(100),
-			adminDb
-				.from('return_requests')
-				.select('id,order_id,status,requested_at,resolved_at')
-				.order('requested_at', { ascending: false })
-				.limit(100),
-			adminDb
-				.from('refunds')
-				.select('id,order_id,amount,status,created_at,processed_at')
-				.order('created_at', { ascending: false })
-				.limit(100)
-		]);
+		const [orders, products, users, cancellations, returnsResult, refunds, shipments, support] =
+			await Promise.all([
+				adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
+				adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
+				adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
+				adminDb
+					.from('order_cancellation_requests')
+					.select('id,order_id,status,reason,requested_at,resolved_at')
+					.order('requested_at', { ascending: false })
+					.limit(100),
+				adminDb
+					.from('return_requests')
+					.select('id,order_id,status,requested_at,resolved_at')
+					.order('requested_at', { ascending: false })
+					.limit(100),
+				adminDb
+					.from('refunds')
+					.select('id,order_id,amount,status,created_at,processed_at')
+					.order('created_at', { ascending: false })
+					.limit(100),
+				adminDb
+					.from('shipments')
+					.select('id,status', { count: 'exact', head: false })
+					.eq('shipping_direction', 'outbound')
+					.in('status', ['created', 'awb_assigned'])
+					.limit(1000),
+				adminDb
+					.from('product_questions')
+					.select('id', { count: 'exact', head: true })
+					.eq('status', 'pending')
+			]);
 		if (orders.error) throw orders.error;
 		if (products.error) throw products.error;
 		if (users.error) throw users.error;
 		if (cancellations.error) throw cancellations.error;
 		if (returnsResult.error) throw returnsResult.error;
 		if (refunds.error) throw refunds.error;
+		if (shipments.error) throw shipments.error;
+		if (support.error) throw support.error;
 		const orderRows = orders.data ?? [];
 		const cancellationRows = cancellations.data ?? [];
 		const returnRows = returnsResult.data ?? [];
@@ -4561,6 +4574,14 @@ async function handle(req: Request) {
 				String(order.status ?? '').toLowerCase()
 			)
 		).length;
+		const ordersAwaitingConfirmation = orderRows.filter((order) =>
+			['pending', 'processing', 'confirmed'].includes(String(order.status ?? '').toLowerCase())
+		).length;
+		const pickupsPending = shipments.count ?? (shipments.data ?? []).length;
+		const lowStock = (products.data ?? []).filter(
+			(product) => typeof product.stock === 'number' && product.stock <= 5
+		).length;
+		const openSupport = support.count ?? 0;
 		const buildPeriodReport = (id: string, label: string, start: Date) => {
 			const inPeriod = (value: unknown) => {
 				const date = new Date(String(value));
@@ -4617,6 +4638,10 @@ async function handle(req: Request) {
 			revenue,
 			deliveredOrders,
 			pendingFulfillment,
+			ordersAwaitingConfirmation,
+			pickupsPending,
+			lowStock,
+			openSupport,
 			periodReports: [
 				buildPeriodReport('daily', 'Today', periodStart(0)),
 				buildPeriodReport('weekly', 'Last 7 days', periodStart(6)),

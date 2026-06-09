@@ -14,7 +14,6 @@
 		Activity,
 		ArrowUpRight,
 		Boxes,
-		ChevronRight,
 		Flame,
 		LayoutDashboard,
 		LifeBuoy,
@@ -45,14 +44,9 @@
 		}
 	});
 
-	type AdminView =
-		| 'overview'
-		| 'catalog'
-		| 'orders'
-		| 'fulfillment'
-		| 'users'
-		| 'promos'
-		| 'support';
+	type AdminView = 'overview' | 'catalog' | 'operations' | 'users' | 'promos' | 'support';
+
+	type OperationsSection = 'orders' | 'fulfillment';
 
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
@@ -66,6 +60,10 @@
 		revenue: number;
 		deliveredOrders: number;
 		pendingFulfillment: number;
+		ordersAwaitingConfirmation: number;
+		pickupsPending: number;
+		lowStock: number;
+		openSupport: number;
 		periodReports: Array<{
 			id: 'daily' | 'weekly' | 'monthly';
 			label: string;
@@ -224,12 +222,20 @@
 
 	const tabs: Array<{ id: AdminView; label: string; icon: typeof LayoutDashboard }> = [
 		{ id: 'overview', label: 'Overview', icon: LayoutDashboard },
+		{ id: 'operations', label: 'Operations', icon: Package },
 		{ id: 'catalog', label: 'Catalog', icon: Boxes },
-		{ id: 'orders', label: 'Orders', icon: Package },
-		{ id: 'fulfillment', label: 'Fulfillment', icon: Truck },
 		{ id: 'users', label: 'Users', icon: Users },
 		{ id: 'promos', label: 'Promos', icon: Tag },
 		{ id: 'support', label: 'Support', icon: LifeBuoy }
+	];
+
+	const operationsSections: Array<{
+		id: OperationsSection;
+		label: string;
+		icon: typeof LayoutDashboard;
+	}> = [
+		{ id: 'orders', label: 'Orders', icon: Package },
+		{ id: 'fulfillment', label: 'Fulfillment', icon: Truck }
 	];
 
 	const overviewIcons: Record<string, typeof TrendingUp> = {
@@ -255,6 +261,8 @@
 	const initialView = viewFromSearch(page.url.searchParams.get('section'));
 	let view = $state<AdminView>(initialView);
 	let prevView = $state<AdminView>(initialView);
+	let operationsSection = $state<OperationsSection>('orders');
+	let ordersInitialFilter = $state<string | null>(null);
 	let mountedViews = $state<AdminView[]>(
 		initialView === 'overview' ? ['overview'] : ['overview', initialView]
 	);
@@ -343,6 +351,46 @@
 
 	const maxMonthlyRevenue = $derived(
 		Math.max(...(analytics?.monthlySeries ?? []).map((m) => m.revenue), 1)
+	);
+
+	const needsActionCards = $derived(
+		[
+			{
+				id: 'confirm',
+				label: 'Orders to confirm',
+				count: analytics?.ordersAwaitingConfirmation ?? 0,
+				hint: 'Awaiting confirmation',
+				action: () => openOperations('orders', 'needs-action')
+			},
+			{
+				id: 'pickups',
+				label: 'Pickups pending',
+				count: analytics?.pickupsPending ?? 0,
+				hint: 'AWB assigned, not picked up',
+				action: () => openOperations('fulfillment')
+			},
+			{
+				id: 'cancellations',
+				label: 'Cancellations to review',
+				count: analytics?.cancellationReport.pending ?? 0,
+				hint: 'Pending approval',
+				action: () => openOperations('orders', 'needs-action')
+			},
+			{
+				id: 'stock',
+				label: 'Low stock',
+				count: analytics?.lowStock ?? 0,
+				hint: '5 units or fewer',
+				action: () => setView('catalog')
+			},
+			{
+				id: 'support',
+				label: 'Open support',
+				count: analytics?.openSupport ?? 0,
+				hint: 'Unanswered questions',
+				action: () => setView('support')
+			}
+		].filter((card) => card.count > 0)
 	);
 
 	function emptyProductEditor(): ProductEditorState {
@@ -650,6 +698,12 @@
 		if (nextView === 'overview') nextUrl.searchParams.delete('section');
 		else nextUrl.searchParams.set('section', nextView);
 		window.history.replaceState(window.history.state, '', nextUrl);
+	}
+
+	function openOperations(section: OperationsSection, ordersFilter: string | null = null) {
+		operationsSection = section;
+		if (section === 'orders') ordersInitialFilter = ordersFilter;
+		setView('operations');
 	}
 
 	function scheduleAdminRealtimeRefresh(
@@ -978,11 +1032,8 @@
 					{/if}
 					<tab.icon class="size-[18px]" strokeWidth={1.8} />
 					<span class="sidebar-label">{tab.label}</span>
-					{#if tab.id === 'fulfillment' && (analytics?.pendingFulfillment ?? 0) > 0}
+					{#if tab.id === 'operations' && (analytics?.pendingFulfillment ?? 0) > 0}
 						<span class="sidebar-badge">{analytics?.pendingFulfillment}</span>
-					{/if}
-					{#if tab.id === 'orders'}
-						<ChevronRight class="sidebar-chevron size-3.5" />
 					{/if}
 				</button>
 			{/each}
@@ -1064,6 +1115,45 @@
 									>
 										<ShieldAlert class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
 										<span>{overviewError}</span>
+									</div>
+								{/if}
+
+								<!-- Needs action -->
+								{#if needsActionCards.length}
+									<div in:fly={{ y: 12, duration: 300 }}>
+										<p
+											class="mb-2 text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
+										>
+											Needs action
+										</p>
+										<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+											{#each needsActionCards as card, idx (card.id)}
+												<button
+													type="button"
+													class="group flex items-center justify-between rounded-lg border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4 text-left transition-colors hover:border-[var(--heat-100)]"
+													in:fly={{ y: 12, duration: 250, delay: idx * 50 }}
+													onclick={card.action}
+												>
+													<div>
+														<p
+															class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
+														>
+															{card.label}
+														</p>
+														<p
+															class="mt-1.5 text-[24px] font-semibold tracking-tight text-foreground"
+														>
+															{card.count}
+														</p>
+														<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">{card.hint}</p>
+													</div>
+													<ArrowUpRight
+														class="size-4 text-[var(--heat-100)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+														strokeWidth={2.5}
+													/>
+												</button>
+											{/each}
+										</div>
 									</div>
 								{/if}
 
@@ -1234,7 +1324,7 @@
 											<button
 												type="button"
 												class="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[var(--heat-100)] transition-colors hover:text-[var(--heat-120)]"
-												onclick={() => setView('fulfillment')}
+												onclick={() => openOperations('fulfillment')}
 											>
 												Open queue <ArrowUpRight class="size-3" strokeWidth={2.5} />
 											</button>
@@ -1764,10 +1854,47 @@
 									</div>
 								</div>
 							{/if}
-						{:else if view === 'orders'}
-							<AdminOrdersManager />
-						{:else if view === 'fulfillment'}
-							<FulfillmentQueue />
+						{:else if view === 'operations'}
+							<!-- OPERATIONS TAB (orders + fulfillment) -->
+							<div class="space-y-4">
+								<div
+									class="inline-flex rounded-lg border border-[var(--border-faint)] bg-white p-1"
+									role="tablist"
+									aria-label="Operations sections"
+								>
+									{#each operationsSections as section (section.id)}
+										<button
+											type="button"
+											role="tab"
+											aria-selected={operationsSection === section.id}
+											class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors {operationsSection ===
+											section.id
+												? 'bg-[var(--heat-100)] text-white'
+												: 'text-[var(--black-alpha-56)] hover:text-foreground'}"
+											onclick={() => (operationsSection = section.id)}
+										>
+											<section.icon class="size-3.5" strokeWidth={2} />
+											{section.label}
+											{#if section.id === 'fulfillment' && (analytics?.pendingFulfillment ?? 0) > 0}
+												<span
+													class="ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold {operationsSection ===
+													section.id
+														? 'bg-white/20 text-white'
+														: 'bg-[var(--heat-8)] text-[var(--heat-100)]'}"
+												>
+													{analytics?.pendingFulfillment}
+												</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
+
+								{#if operationsSection === 'orders'}
+									<AdminOrdersManager initialFilter={ordersInitialFilter} />
+								{:else}
+									<FulfillmentQueue />
+								{/if}
+							</div>
 						{:else if view === 'users'}
 							<!-- USERS TAB -->
 							{#if usersLoading && !users.length}

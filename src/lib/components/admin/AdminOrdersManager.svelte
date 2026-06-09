@@ -28,6 +28,31 @@
 
 	const auth = getAuthContext();
 
+	let { initialFilter = null }: { initialFilter?: string | null } = $props();
+
+	type OrderStatusFilter = 'all' | 'needs-action' | 'in-transit' | 'delivered' | 'cancelled';
+
+	const statusFilters: Array<{ id: OrderStatusFilter; label: string }> = [
+		{ id: 'all', label: 'All' },
+		{ id: 'needs-action', label: 'Needs action' },
+		{ id: 'in-transit', label: 'In transit' },
+		{ id: 'delivered', label: 'Delivered' },
+		{ id: 'cancelled', label: 'Cancelled' }
+	];
+
+	const statusFilterGroups: Record<Exclude<OrderStatusFilter, 'all'>, string[]> = {
+		'needs-action': [
+			'pending',
+			'processing',
+			'confirmed',
+			'cancellation_requested',
+			'return_requested'
+		],
+		'in-transit': ['ready_for_delivery', 'shipped', 'out_for_delivery'],
+		delivered: ['delivered'],
+		cancelled: ['cancelled', 'returned', 'refunded']
+	};
+
 	type AdminOrderPatch = {
 		id: string;
 		status?: string | null;
@@ -42,19 +67,36 @@
 	let refundSaving = $state(false);
 	let workflowAction = $state<string | null>(null);
 	let search = $state('');
+	let statusFilter = $state<OrderStatusFilter>('all');
+	let appliedInitialFilter: string | null = null;
 	let selectedId = $state<string | null>(null);
+
+	$effect(() => {
+		if (initialFilter !== appliedInitialFilter) {
+			appliedInitialFilter = initialFilter;
+			if (initialFilter && statusFilters.some((filter) => filter.id === initialFilter)) {
+				statusFilter = initialFilter as OrderStatusFilter;
+			}
+		}
+	});
 	let editor = $state<OrderEditorState>(emptyOrderEditor());
 	let refundEditor = $state<RefundEditorState>(emptyRefundEditor());
 	let confirmingManualState = $state(false);
 	let realtimeRefreshTimer: number | null = null;
 
-	const filteredOrders = $derived.by(() =>
-		orders.filter((order) =>
-			`${order.id} ${order.userEmail ?? ''} ${order.shippingName ?? ''} ${order.shippingCity ?? ''}`
-				.toLowerCase()
-				.includes(search.toLowerCase())
-		)
-	);
+	const filteredOrders = $derived.by(() => {
+		const term = search.toLowerCase();
+		const group = statusFilter === 'all' ? null : statusFilterGroups[statusFilter];
+		return orders.filter((order) => {
+			const matchesSearch =
+				`${order.id} ${order.userEmail ?? ''} ${order.shippingName ?? ''} ${order.shippingCity ?? ''}`
+					.toLowerCase()
+					.includes(term);
+			if (!matchesSearch) return false;
+			if (!group) return true;
+			return group.includes(String(order.status ?? '').toLowerCase());
+		});
+	});
 
 	const selectedOrder = $derived(orders.find((order) => order.id === selectedId) ?? null);
 	const selectedOrderLocked = $derived(selectedOrder ? isTerminalOrder(selectedOrder) : false);
@@ -421,7 +463,22 @@
 			placeholder="Search order, customer, email, or city"
 		/>
 
-		<div class="flex max-h-[calc(100vh-220px)] flex-col gap-1.5 overflow-y-auto pr-1 pb-10">
+		<div class="mt-2 flex flex-wrap gap-1.5">
+			{#each statusFilters as filter (filter.id)}
+				<button
+					type="button"
+					class="inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors {statusFilter ===
+					filter.id
+						? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
+						: 'border-[var(--border-muted)] bg-white text-[var(--black-alpha-56)] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]'}"
+					onclick={() => (statusFilter = filter.id)}
+				>
+					{filter.label}
+				</button>
+			{/each}
+		</div>
+
+		<div class="mt-2 flex max-h-[calc(100vh-220px)] flex-col gap-1.5 overflow-y-auto pr-1 pb-10">
 			{#if loading && !orders.length}
 				<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
 					Loading orders...
