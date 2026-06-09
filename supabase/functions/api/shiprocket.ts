@@ -239,6 +239,13 @@ export async function getShiprocketTracking(shipmentId: number) {
 	return shiprocketRequest<Record<string, unknown>>(`/courier/track/shipment/${shipmentId}`);
 }
 
+// Fetches the live Shiprocket order (incl. its shipment's awb/courier). Used to
+// recover the real AWB when /courier/assign/awb reports it was already assigned
+// but returns no awb payload, so the local record never desyncs.
+export async function getShiprocketOrderDetails(orderId: number) {
+	return shiprocketRequest<Record<string, unknown>>(`/orders/show/${orderId}`);
+}
+
 export async function getShiprocketPickupLocations() {
 	return shiprocketRequest<{
 		data?: {

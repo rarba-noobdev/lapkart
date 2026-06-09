@@ -12,6 +12,7 @@ import {
 	generateShiprocketLabels,
 	generateShiprocketManifest,
 	getShiprocketDeliveryQuotes,
+	getShiprocketOrderDetails,
 	getShiprocketPickupLocations,
 	getShiprocketToken,
 	getShiprocketTracking,
@@ -1069,6 +1070,88 @@ function getAwbData(response: Record<string, unknown>) {
 		: nestedResponse;
 }
 
+// Shiprocket's "already assigned" reply when a shipment already has an AWB, e.g.
+// "AWB is already assigned with awb - 1091390175423 and status - AWB ASSIGNED".
+const SHIPROCKET_ALREADY_ASSIGNED_RE = /already assigned with awb\s*-\s*([A-Za-z0-9]+)/i;
+
+function awbAssignMessage(response: Record<string, unknown>) {
+	return firstString(response.message, asRecord(response.response).message) ?? '';
+}
+
+// /courier/assign/awb returns awb_assign_status: 1 on a fresh assignment. When
+// the shipment already carries an AWB it returns status 0 with the message
+// above — that is NOT a failure, the AWB exists. Treat both as success so a
+// retry (e.g. courier fallback) does not throw away a valid assignment.
+function awbAssignSucceeded(response: Record<string, unknown>) {
+	if (Number(response.awb_assign_status ?? 0) === 1) return true;
+	return SHIPROCKET_ALREADY_ASSIGNED_RE.test(awbAssignMessage(response));
+}
+
+// Pulls the live AWB + courier off a Shiprocket order so the local shipment
+// record never desyncs (the "already assigned" reply carries no courier data).
+async function getShiprocketShipmentFacts(shiprocketOrderId: number) {
+	const details = await getShiprocketOrderDetails(shiprocketOrderId);
+	const data = asRecord(details.data);
+	const shipments = data.shipments;
+	const shipment = Array.isArray(shipments)
+		? asRecord(shipments[0])
+		: asRecord(shipments);
+	const courierCompanyId = Number(shipment.courier_company_id ?? shipment.courier_id);
+	return {
+		awbCode: firstString(shipment.awb, shipment.awb_code, data.awb_code),
+		courierName: firstString(shipment.courier, shipment.courier_name, data.courier_name),
+		courierCompanyId: Number.isFinite(courierCompanyId) ? courierCompanyId : undefined
+	};
+}
+
+// Resolves the assigned AWB/courier from an assign response, falling back to the
+// live Shiprocket order when the response omits them (the "already assigned"
+// case). Returns the shipment's existing values when nothing better is found.
+async function resolveAssignedAwb(
+	response: Record<string, unknown>,
+	shipment: {
+		shiprocket_order_id?: unknown;
+		awb_code?: unknown;
+		courier_name?: unknown;
+		courier_company_id?: unknown;
+	}
+) {
+	const awbData = getAwbData(response);
+	let awbCode = firstString(awbData.awb_code);
+	let courierName = firstString(awbData.courier_name);
+	let courierCompanyId = Number(awbData.courier_company_id);
+	if (!awbCode) {
+		const match = awbAssignMessage(response).match(SHIPROCKET_ALREADY_ASSIGNED_RE);
+		if (match) awbCode = match[1];
+	}
+	const shiprocketOrderId = Number(shipment.shiprocket_order_id);
+	if ((!awbCode || !courierName) && Number.isFinite(shiprocketOrderId)) {
+		try {
+			const facts = await getShiprocketShipmentFacts(shiprocketOrderId);
+			awbCode = firstString(awbCode, facts.awbCode);
+			courierName = firstString(courierName, facts.courierName);
+			if (!Number.isFinite(courierCompanyId) && facts.courierCompanyId !== undefined) {
+				courierCompanyId = facts.courierCompanyId;
+			}
+		} catch (lookupError) {
+			console.warn(
+				'Could not resolve AWB from Shiprocket order details',
+				lookupError instanceof Error ? lookupError.message : lookupError
+			);
+		}
+	}
+	const existingCourierId = Number(shipment.courier_company_id);
+	return {
+		awbCode: firstString(awbCode, shipment.awb_code),
+		courierName: firstString(courierName, shipment.courier_name),
+		courierCompanyId: Number.isFinite(courierCompanyId)
+			? courierCompanyId
+			: Number.isFinite(existingCourierId)
+				? existingCourierId
+				: null
+	};
+}
+
 function getPickupData(response: Record<string, unknown>) {
 	const nestedResponse = asRecord(response.response);
 	return Object.keys(nestedResponse).length ? nestedResponse : response;
@@ -1290,25 +1373,25 @@ async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, or
 			shipment_id: shipment.shiprocket_shipment_id,
 			courier_id: preferredCourierId
 		});
-		if (Number(awbResponse.awb_assign_status ?? 1) !== 1 && preferredCourierId !== undefined) {
+		if (!awbAssignSucceeded(awbResponse) && preferredCourierId !== undefined) {
 			awbResponse = await assignShiprocketAwb({ shipment_id: shipment.shiprocket_shipment_id });
 		}
-		const awbData = getAwbData(awbResponse);
-		if (Number(awbResponse.awb_assign_status ?? 1) !== 1) {
+		if (!awbAssignSucceeded(awbResponse)) {
 			throw new Error(
-				firstString(awbData.awb_assign_error, awbResponse.message) ??
+				firstString(getAwbData(awbResponse).awb_assign_error, awbResponse.message) ??
 					'Shiprocket AWB assignment failed'
 			);
 		}
-		const awbCode = firstString(awbData.awb_code, shipment.awb_code);
-		const courierName = firstString(awbData.courier_name, shipment.courier_name);
-		const courierCompanyId = Number(awbData.courier_company_id ?? shipment.courier_company_id);
+		const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(
+			awbResponse,
+			shipment
+		);
 		await adminDb
 			.from('shipments')
 			.update({
 				status: 'awb_assigned',
 				awb_code: awbCode,
-				courier_company_id: Number.isFinite(courierCompanyId) ? courierCompanyId : null,
+				courier_company_id: courierCompanyId,
 				courier_name: courierName,
 				raw_awb_response: awbResponse,
 				raw_payload: awbResponse,
@@ -1388,12 +1471,27 @@ async function cancelOrderShipmentOnShiprocket(
 		const srOrderId = Number(shipment.shiprocket_order_id);
 		const hasSrOrderId = Number.isFinite(srOrderId);
 
+		// The local awb_code can be missing if an earlier assignment desynced
+		// (Shiprocket assigned an AWB but the response was misread). Recover the
+		// real AWB from the live order so the courier assignment is actually freed.
+		let awbCode = firstString(shipment.awb_code);
+		if (!awbCode && hasSrOrderId) {
+			try {
+				awbCode = (await getShiprocketShipmentFacts(srOrderId)).awbCode;
+			} catch (lookupError) {
+				console.warn(
+					'Could not resolve AWB for cancellation',
+					lookupError instanceof Error ? lookupError.message : lookupError
+				);
+			}
+		}
+
 		// Release the AWB first (frees the courier assignment), then cancel the
 		// Shiprocket order so it leaves the open queue in the panel/app. Each call
 		// is independent: a failure in one must not skip the other or the DB write.
-		if (shipment.awb_code) {
+		if (awbCode) {
 			try {
-				await cancelShiprocketShipment([String(shipment.awb_code)]);
+				await cancelShiprocketShipment([String(awbCode)]);
 			} catch (awbCancelError) {
 				await logMonitoringEvent({
 					source: 'shiprocket.cancel',
@@ -1402,7 +1500,7 @@ async function cancelOrderShipmentOnShiprocket(
 					requestKey: orderId,
 					metadata: {
 						orderId,
-						awb: String(shipment.awb_code),
+						awb: String(awbCode),
 						error: awbCancelError instanceof Error ? awbCancelError.message : String(awbCancelError)
 					}
 				});
@@ -3877,22 +3975,23 @@ async function handle(req: Request) {
 		if (!shipment?.shiprocket_shipment_id) {
 			throw new HttpError(400, 'Shipment does not have a Shiprocket shipment id');
 		}
-		const response = await assignShiprocketAwb({
+		const requestedCourierId = input.courierId ?? shipment.courier_company_id ?? undefined;
+		let response = await assignShiprocketAwb({
 			shipment_id: shipment.shiprocket_shipment_id,
-			courier_id: input.courierId ?? shipment.courier_company_id ?? undefined
+			courier_id: requestedCourierId
 		});
-		const awbData = getAwbData(response);
-		if (Number(response.awb_assign_status ?? 1) !== 1) {
+		// If the requested courier is not serviceable on this lane, let Shiprocket
+		// pick its recommended courier instead of failing the whole assignment.
+		if (!awbAssignSucceeded(response) && requestedCourierId !== undefined) {
+			response = await assignShiprocketAwb({ shipment_id: shipment.shiprocket_shipment_id });
+		}
+		if (!awbAssignSucceeded(response)) {
 			throw new Error(
-				firstString(awbData.awb_assign_error, response.message) ??
+				firstString(getAwbData(response).awb_assign_error, response.message) ??
 					'Shiprocket AWB assignment failed'
 			);
 		}
-		const awbCode = firstString(awbData.awb_code, shipment.awb_code);
-		const courierName = firstString(awbData.courier_name, shipment.courier_name);
-		const courierCompanyId = Number(
-			awbData.courier_company_id ?? input.courierId ?? shipment.courier_company_id
-		);
+		const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(response, shipment);
 		const { data: updatedShipment, error: updateError } = await adminDb
 			.from('shipments')
 			.update({
@@ -4296,21 +4395,33 @@ async function handle(req: Request) {
 						if (!Number.isFinite(shiprocketShipmentId)) {
 							throw new Error('Shipment does not have a Shiprocket shipment id');
 						}
+						const requestedCourierId =
+							typeof shipment.courier_company_id === 'number'
+								? shipment.courier_company_id
+								: undefined;
 						response = await assignShiprocketAwb({
 							shipment_id: shiprocketShipmentId,
-							courier_id:
-								typeof shipment.courier_company_id === 'number'
-									? shipment.courier_company_id
-									: undefined
+							courier_id: requestedCourierId
 						});
-						const awbData = getAwbData(response);
-						const awbCode = firstString(awbData.awb_code, shipment.awb_code);
-						const courierName = firstString(awbData.courier_name, shipment.courier_name);
+						if (!awbAssignSucceeded(response) && requestedCourierId !== undefined) {
+							response = await assignShiprocketAwb({ shipment_id: shiprocketShipmentId });
+						}
+						if (!awbAssignSucceeded(response)) {
+							throw new Error(
+								firstString(getAwbData(response).awb_assign_error, response.message) ??
+									'Shiprocket AWB assignment failed'
+							);
+						}
+						const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(
+							response,
+							shipment
+						);
 						await adminDb
 							.from('shipments')
 							.update({
 								status: 'awb_assigned',
 								awb_code: awbCode,
+								courier_company_id: courierCompanyId,
 								courier_name: courierName,
 								raw_awb_response: response,
 								raw_payload: response,
