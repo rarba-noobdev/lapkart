@@ -1825,8 +1825,14 @@ app.post('/logistics/events', webhookLimiter, async (req, res, next) => {
 			});
 			return;
 		}
-		const token = req.header('x-lapkart-logistics-token') ?? req.query.token;
-		if (token !== config.shiprocketWebhookToken) {
+		// Header-only: a token in req.query.token would leak the secret into
+		// access logs and Referer headers. Constant-time compare avoids leaking
+		// the token via response timing.
+		const token = req.header('x-lapkart-logistics-token') ?? '';
+		const expected = config.shiprocketWebhookToken;
+		const tokenDigest = crypto.createHash('sha256').update(token).digest();
+		const expectedDigest = crypto.createHash('sha256').update(expected).digest();
+		if (!crypto.timingSafeEqual(tokenDigest, expectedDigest)) {
 			res.status(401).json({ error: 'Invalid webhook token' });
 			return;
 		}

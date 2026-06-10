@@ -988,6 +988,18 @@ async function sha256Hex(value: string) {
 		.join('');
 }
 
+// Constant-time secret comparison. Compares SHA-256 digests of both inputs so
+// the loop runs over a fixed length and reveals neither the secret's length nor
+// where a mismatch occurs via timing.
+async function timingSafeEqualSecret(a: string, b: string) {
+	const [da, db] = await Promise.all([sha256Hex(a), sha256Hex(b)]);
+	let diff = 0;
+	for (let i = 0; i < da.length; i += 1) {
+		diff |= da.charCodeAt(i) ^ db.charCodeAt(i);
+	}
+	return diff === 0;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -4533,8 +4545,10 @@ async function handle(req: Request) {
 				'SHIPROCKET_WEBHOOK_TOKEN is required before accepting logistics webhooks'
 			);
 		}
-		const token = req.headers.get('x-lapkart-logistics-token');
-		if (token !== config.shiprocketWebhookToken) throw new HttpError(401, 'Invalid webhook token');
+		const token = req.headers.get('x-lapkart-logistics-token') ?? '';
+		if (!(await timingSafeEqualSecret(token, config.shiprocketWebhookToken))) {
+			throw new HttpError(401, 'Invalid webhook token');
+		}
 		const body = asRecord(await req.json());
 		const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? '').trim() || null;
 		const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
