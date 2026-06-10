@@ -174,18 +174,74 @@
 		return order.shipment?.trackingActivities[0] ?? null;
 	}
 
+	// Queue broken down by next required step, so the desk can see at a glance
+	// where the work is stuck.
+	const stageCounts = $derived.by(() => {
+		let needsShipment = 0;
+		let awbPending = 0;
+		let pickupPending = 0;
+		let moving = 0;
+		for (const order of orders) {
+			const shipment = order.shipment;
+			if (!shipment) needsShipment++;
+			else if (!shipment.awbCode) awbPending++;
+			else if (!shipment.pickupScheduledDate) pickupPending++;
+			else moving++;
+		}
+		return { needsShipment, awbPending, pickupPending, moving };
+	});
+
+	const stageChips = $derived([
+		{ id: 'create', label: 'Need shipment', count: stageCounts.needsShipment, hot: true },
+		{ id: 'awb', label: 'AWB pending', count: stageCounts.awbPending, hot: true },
+		{ id: 'pickup', label: 'Pickup pending', count: stageCounts.pickupPending, hot: false },
+		{ id: 'moving', label: 'Moving', count: stageCounts.moving, hot: false }
+	]);
+
 	onMount(() => {
 		void refresh();
 		const channel = auth.supabase
 			.channel('admin-fulfillment-queue')
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_events' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_packages' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_batches' }, scheduleFulfillmentRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_batch_items' }, scheduleFulfillmentRefresh)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'orders' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'order_items' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'payments' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipments' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipment_events' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipment_packages' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipping_batches' },
+				scheduleFulfillmentRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'shipping_batch_items' },
+				scheduleFulfillmentRefresh
+			)
 			.subscribe();
 
 		return () => {
@@ -204,25 +260,35 @@
 				<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 					Fulfillment desk
 				</p>
-				<p class="text-[16px] font-medium mt-1 text-foreground">Shiprocket queue</p>
+				<p class="mt-1 text-[16px] font-medium text-foreground">Shiprocket queue</p>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-4">
 				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">Wallet</span>
-					<span class="text-[14px] font-medium text-foreground">{account ? formatINR(account.walletBalance) : '...'}</span>
+					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>Wallet</span
+					>
+					<span class="text-[14px] font-medium text-foreground"
+						>{account ? formatINR(account.walletBalance) : '...'}</span
+					>
 				</div>
 				<div class="h-4 w-px bg-[var(--border-faint)]"></div>
 				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">Pickup</span>
-					<span class="text-[14px] font-medium text-foreground">{account?.configuredPickupLocation || '...'}</span>
+					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>Pickup</span
+					>
+					<span class="text-[14px] font-medium text-foreground"
+						>{account?.configuredPickupLocation || '...'}</span
+					>
 					{#if account && !account.pickupLocationVerified}
 						<span class="text-[10px] text-[var(--accent-crimson)]">Not synced</span>
 					{/if}
 				</div>
 				<div class="h-4 w-px bg-[var(--border-faint)]"></div>
 				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">Queue</span>
+					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
+						>Queue</span
+					>
 					<span class="text-[14px] font-medium text-foreground">{orders.length}</span>
 				</div>
 				<button
@@ -236,10 +302,24 @@
 			</div>
 		</div>
 
+		<div class="mb-3 flex flex-wrap gap-2">
+			{#each stageChips as chip (chip.id)}
+				<span
+					class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium
+						{chip.count > 0 && chip.hot
+						? 'border-[var(--heat-20)] bg-[var(--heat-4)] text-[var(--heat-100)]'
+						: 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
+				>
+					<span class="font-mono tabular-nums">{chip.count}</span>
+					{chip.label}
+				</span>
+			{/each}
+		</div>
+
 		<div
 			class="flex flex-wrap items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
 		>
-			<span class="text-[10px] tracking-[0.14em] mr-1 text-[var(--black-alpha-48)] uppercase">
+			<span class="mr-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 				{selectedOrderIds.length} selected / {selectedOrdersWithoutShipment.length} need shipment
 			</span>
 
@@ -290,9 +370,7 @@
 		</div>
 
 		{#if error}
-			<div
-				class="text-[12px] mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-700"
-			>
+			<div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">
 				{error}
 			</div>
 		{/if}
@@ -354,17 +432,17 @@
 									<p class="text-[12px] font-medium text-foreground">
 										#{order.id.slice(0, 8).toUpperCase()}
 									</p>
-									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 										{order.shippingName || 'Customer'}
 									</p>
-									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 										{formatINR(Number(order.total ?? 0))}
 									</p>
-									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 										Placed {new Date(order.createdAt).toLocaleString('en-IN')}
 									</p>
 									<p
-										class="text-[10px] tracking-[0.14em] mt-1 text-[var(--black-alpha-48)] uppercase"
+										class="mt-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 									>
 										{order.items.length} item{order.items.length === 1 ? '' : 's'}
 									</p>
@@ -372,7 +450,7 @@
 							</td>
 							<td class="px-3 py-3">
 								<p class="text-[12px] font-medium text-foreground capitalize">{serviceType}</p>
-								<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 									{[order.shippingCity, order.shippingState, order.shippingPincode]
 										.filter(Boolean)
 										.join(', ') || 'Address pending'}
@@ -382,26 +460,26 @@
 								<p class="text-[12px] font-medium text-foreground capitalize">
 									{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
 								</p>
-								<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 									{shipment?.awbCode ? `AWB ${shipment.awbCode}` : 'AWB pending'}
 								</p>
 								{#if shipment?.courierName}
-									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-56)]">
+									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
 										{shipment.courierName}
 									</p>
 								{/if}
 							</td>
 							<td class="px-3 py-3">
-								<p class="text-[12px] max-w-[240px] text-[var(--black-alpha-72)]">
+								<p class="max-w-[240px] text-[12px] text-[var(--black-alpha-72)]">
 									{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
 								</p>
 								{#if latest?.location}
-									<p class="text-[12px] mt-0.5 text-[var(--black-alpha-48)]">{latest.location}</p>
+									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">{latest.location}</p>
 								{/if}
 								{#if shipment?.trackingUrl && !shipmentCancelled}
 									<button
 										type="button"
-										class="text-[12px] font-medium mt-1 inline-block text-[var(--heat-100)] hover:underline"
+										class="mt-1 inline-block text-[12px] font-medium text-[var(--heat-100)] hover:underline"
 										onclick={() => openExternal(shipment.trackingUrl)}
 									>
 										Live tracking
@@ -420,7 +498,7 @@
 
 									{#if shipmentCancelled}
 										<span
-											class="text-[10px] tracking-[0.14em] inline-flex h-7 items-center rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 uppercase text-[var(--accent-crimson)]"
+											class="inline-flex h-7 items-center rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 text-[10px] tracking-[0.14em] text-[var(--accent-crimson)] uppercase"
 										>
 											Cancelled
 										</span>
@@ -499,7 +577,7 @@
 
 			{#if !loading && !orders.length}
 				<p
-					class="text-[12px] rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] py-8 text-center text-[var(--black-alpha-56)]"
+					class="rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] py-8 text-center text-[12px] text-[var(--black-alpha-56)]"
 				>
 					No paid orders are waiting for fulfillment.
 				</p>
@@ -540,15 +618,16 @@
 					<div class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
 						<div class="flex flex-wrap items-start justify-between gap-3">
 							<div>
-								<p
-									class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-								>
+								<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 									Fulfillment detail
 								</p>
-								<h2 id="fulfillment-detail-title" class="text-[18px] font-semibold mt-1 text-foreground">
+								<h2
+									id="fulfillment-detail-title"
+									class="mt-1 text-[18px] font-semibold text-foreground"
+								>
 									#{detailOrder.id.slice(0, 8).toUpperCase()}
 								</h2>
-								<p class="text-[12px] mt-1 text-[var(--black-alpha-56)]">
+								<p class="mt-1 text-[12px] text-[var(--black-alpha-56)]">
 									{detailOrder.shippingName || 'Customer'} / {formatINR(
 										Number(detailOrder.total ?? 0)
 									)}
@@ -563,31 +642,31 @@
 									Close
 								</button>
 								<span
-									class="text-[10px] tracking-[0.14em] rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 uppercase"
+									class="rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] tracking-[0.14em] uppercase"
 								>
 									{serviceType}
 								</span>
 								{#if shipment?.status === 'delivered'}
 									<span
-										class="text-[10px] tracking-[0.14em] rounded-full border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/8 px-2.5 py-1 uppercase text-[var(--accent-forest)]"
+										class="rounded-full border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-forest)] uppercase"
 									>
 										{shipment.status}
 									</span>
 								{:else if shipment?.status === 'cancelled' || shipment?.status === 'rto'}
 									<span
-										class="text-[10px] tracking-[0.14em] rounded-full border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 py-1 uppercase text-[var(--accent-crimson)]"
+										class="rounded-full border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-crimson)] uppercase"
 									>
 										{shipment.status}
 									</span>
 								{:else if shipment?.status}
 									<span
-										class="text-[10px] tracking-[0.14em] rounded-full border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 px-2.5 py-1 uppercase text-[var(--accent-honey)]"
+										class="rounded-full border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-honey)] uppercase"
 									>
 										{shipment.status.replaceAll('_', ' ')}
 									</span>
 								{:else}
 									<span
-										class="text-[10px] tracking-[0.14em] rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 uppercase text-[var(--black-alpha-48)]"
+										class="rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 									>
 										not created
 									</span>
@@ -606,9 +685,9 @@
 										class="h-20 w-20 rounded-md border border-[var(--border-faint)] bg-white object-contain p-1.5"
 									/>
 									<div class="min-w-0">
-										<p class="text-[14px] font-medium line-clamp-2 text-foreground">{item.title}</p>
+										<p class="line-clamp-2 text-[14px] font-medium text-foreground">{item.title}</p>
 										<div
-											class="text-[10px] tracking-[0.14em] mt-1.5 flex flex-wrap gap-2 text-[var(--black-alpha-48)] uppercase"
+											class="mt-1.5 flex flex-wrap gap-2 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 										>
 											<span>{item.brand || 'Brand pending'}</span>
 											<span>SKU {item.sku || 'pending'}</span>
@@ -617,12 +696,10 @@
 									<div
 										class="rounded-md border border-[var(--border-faint)] bg-white px-3 py-1.5 text-center"
 									>
-										<p
-											class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-										>
+										<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 											Qty
 										</p>
-										<p class="text-[16px] font-medium mt-0.5 text-foreground">{item.qty}</p>
+										<p class="mt-0.5 text-[16px] font-medium text-foreground">{item.qty}</p>
 									</div>
 								</div>
 							{/each}
@@ -632,13 +709,13 @@
 					<div class="space-y-3">
 						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
 							<p class="text-[12px] font-medium text-foreground">Delivery</p>
-							<p class="text-[12px] mt-2 text-[var(--black-alpha-72)]">
+							<p class="mt-2 text-[12px] text-[var(--black-alpha-72)]">
 								{[detailOrder.shippingCity, detailOrder.shippingState, detailOrder.shippingPincode]
 									.filter(Boolean)
 									.join(', ') || 'Address pending'}
 							</p>
 							<p
-								class="text-[10px] tracking-[0.14em] mt-1.5 text-[var(--black-alpha-48)] uppercase"
+								class="mt-1.5 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
 							>
 								Service {serviceType}
 							</p>
@@ -650,48 +727,40 @@
 								<div
 									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
 								>
-									<p
-										class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
+									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 										Status
 									</p>
-									<p class="text-[12px] mt-1.5 text-foreground">
+									<p class="mt-1.5 text-[12px] text-foreground">
 										{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
 									</p>
 								</div>
 								<div
 									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
 								>
-									<p
-										class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
+									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 										AWB
 									</p>
-									<p class="text-[12px] mt-1.5 text-foreground">
+									<p class="mt-1.5 text-[12px] text-foreground">
 										{shipment?.awbCode || 'Pending'}
 									</p>
 								</div>
 								<div
 									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
 								>
-									<p
-										class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
+									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 										Courier
 									</p>
-									<p class="text-[12px] mt-1.5 text-foreground">
+									<p class="mt-1.5 text-[12px] text-foreground">
 										{shipment?.courierName || 'Pending'}
 									</p>
 								</div>
 								<div
 									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
 								>
-									<p
-										class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
+									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 										Pickup
 									</p>
-									<p class="text-[12px] mt-1.5 text-foreground">
+									<p class="mt-1.5 text-[12px] text-foreground">
 										{shipment?.pickupScheduledDate || 'Not scheduled'}
 									</p>
 								</div>
@@ -700,16 +769,16 @@
 
 						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
 							<p class="text-[12px] font-medium text-foreground">Tracking</p>
-							<p class="text-[12px] mt-2 text-[var(--black-alpha-72)]">
+							<p class="mt-2 text-[12px] text-[var(--black-alpha-72)]">
 								{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
 							</p>
 							{#if latest?.location}
-								<p class="text-[12px] mt-0.5 text-[var(--black-alpha-48)]">{latest.location}</p>
+								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">{latest.location}</p>
 							{/if}
 							{#if shipment?.trackingUrl && !shipmentCancelled}
 								<button
 									type="button"
-									class="text-[12px] font-medium mt-2 inline-block text-[var(--heat-100)] hover:underline"
+									class="mt-2 inline-block text-[12px] font-medium text-[var(--heat-100)] hover:underline"
 									onclick={() => openExternal(shipment.trackingUrl)}
 								>
 									Open live tracking
@@ -722,7 +791,7 @@
 							<div class="mt-2.5 flex flex-wrap gap-1.5">
 								{#if shipmentCancelled}
 									<span
-										class="text-[12px] rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-3 py-1.5 text-[var(--accent-crimson)]"
+										class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-3 py-1.5 text-[12px] text-[var(--accent-crimson)]"
 									>
 										Shipment cancelled — no further actions.
 									</span>

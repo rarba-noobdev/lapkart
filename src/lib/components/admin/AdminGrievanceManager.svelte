@@ -110,13 +110,18 @@
 
 	const STATUSES: GrievanceStatus[] = ['open', 'in_progress', 'resolved', 'closed'];
 	const pendingDeletions = $derived(deletionRequests.filter((r) => r.status === 'pending'));
+	const openGrievances = $derived(
+		grievances.filter((g) => g.status === 'open' || g.status === 'in_progress')
+	);
 
 	onMount(load);
 </script>
 
 <div class="space-y-8">
 	{#if error}
-		<p class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 px-3 py-2 text-[12px] text-[var(--accent-crimson)]">
+		<p
+			class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 px-3 py-2 text-[12px] text-[var(--accent-crimson)]"
+		>
 			{error}
 		</p>
 	{/if}
@@ -126,7 +131,9 @@
 		<h3 class="text-[14px] font-medium text-foreground">
 			Account deletion requests
 			{#if pendingDeletions.length > 0}
-				<span class="ml-1 rounded-full bg-[var(--accent-crimson)]/10 px-2 py-0.5 text-[11px] text-[var(--accent-crimson)]">
+				<span
+					class="ml-1 rounded-full bg-[var(--accent-crimson)]/10 px-2 py-0.5 text-[11px] text-[var(--accent-crimson)]"
+				>
 					{pendingDeletions.length} pending
 				</span>
 			{/if}
@@ -141,7 +148,9 @@
 				{#each pendingDeletions as req (req.id)}
 					<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
 						<p class="text-[12px] font-medium text-foreground">User {req.user_id.slice(0, 8)}</p>
-						<p class="text-[11px] text-[var(--black-alpha-48)]">Requested {fmt(req.requested_at)}</p>
+						<p class="text-[11px] text-[var(--black-alpha-48)]">
+							Requested {fmt(req.requested_at)}
+						</p>
 						{#if req.reason}
 							<p class="mt-1 text-[12px] text-[var(--black-alpha-56)]">"{req.reason}"</p>
 						{/if}
@@ -176,7 +185,16 @@
 
 	<!-- Grievances -->
 	<section>
-		<h3 class="text-[14px] font-medium text-foreground">Customer complaints</h3>
+		<h3 class="text-[14px] font-medium text-foreground">
+			Customer complaints
+			{#if openGrievances.length > 0}
+				<span
+					class="ml-1 rounded-full bg-[var(--heat-8)] px-2 py-0.5 text-[11px] text-[var(--heat-100)]"
+				>
+					{openGrievances.length} open
+				</span>
+			{/if}
+		</h3>
 		<div class="mt-3 space-y-2">
 			{#if loading}
 				<p class="text-[12px] text-[var(--black-alpha-48)]">Loading…</p>
@@ -193,11 +211,15 @@
 									{#if g.order_id}· Order #{g.order_id.slice(0, 8)}{/if}
 								</p>
 							</div>
-							<span class="shrink-0 rounded-full bg-[var(--background-base)] px-2.5 py-1 text-[10px] font-medium text-[var(--black-alpha-56)]">
+							<span
+								class="shrink-0 rounded-full bg-[var(--background-base)] px-2.5 py-1 text-[10px] font-medium text-[var(--black-alpha-56)]"
+							>
 								{GRIEVANCE_STATUS_LABEL[g.status]}
 							</span>
 						</div>
-						<p class="mt-2 text-[12px] leading-relaxed text-[var(--black-alpha-56)]">{g.description}</p>
+						<p class="mt-2 text-[12px] leading-relaxed text-[var(--black-alpha-56)]">
+							{g.description}
+						</p>
 						<textarea
 							bind:value={notes[g.id]}
 							rows="2"

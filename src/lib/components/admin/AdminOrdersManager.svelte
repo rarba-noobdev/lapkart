@@ -158,6 +158,32 @@
 			: paymentStatusOptions.map((option) => ({ ...option, disabled: false }))
 	);
 
+	const ORDER_TIMELINE = [
+		{ id: 'pending', label: 'Placed' },
+		{ id: 'confirmed', label: 'Confirmed' },
+		{ id: 'ready_for_delivery', label: 'Ready' },
+		{ id: 'shipped', label: 'Shipped' },
+		{ id: 'out_for_delivery', label: 'On the way' },
+		{ id: 'delivered', label: 'Delivered' }
+	];
+	const timelineIndex = $derived.by(() => {
+		if (!selectedOrder) return -1;
+		const status = String(selectedOrder.status ?? '').toLowerCase();
+		if (status === 'processing') return 0;
+		return ORDER_TIMELINE.findIndex((step) => step.id === status);
+	});
+	const timelineTerminal = $derived(
+		selectedOrder
+			? [
+					'cancelled',
+					'returned',
+					'refunded',
+					'cancellation_requested',
+					'return_requested'
+				].includes(String(selectedOrder.status ?? '').toLowerCase())
+			: false
+	);
+
 	function syncSelection(nextOrders: AdminOrderRecord[]) {
 		if (!nextOrders.length) {
 			selectedId = null;
@@ -729,6 +755,48 @@
 						</span>
 					</div>
 				</div>
+
+				<!-- Fulfilment progress timeline -->
+				{#if !timelineTerminal && timelineIndex >= 0}
+					<div
+						class="rounded-lg border border-[var(--border-muted)] bg-white px-4 py-3.5 shadow-sm"
+						in:fly={{ y: 8, duration: 200 }}
+					>
+						<div class="flex items-center">
+							{#each ORDER_TIMELINE as step, idx (step.id)}
+								<div class="flex items-center {idx < ORDER_TIMELINE.length - 1 ? 'flex-1' : ''}">
+									<div class="flex flex-col items-center gap-1.5">
+										<span
+											class="flex size-4 items-center justify-center rounded-full border-2 transition-colors
+												{idx < timelineIndex
+												? 'border-[var(--heat-100)] bg-[var(--heat-100)]'
+												: idx === timelineIndex
+													? 'border-[var(--heat-100)] bg-white'
+													: 'border-[var(--border-muted)] bg-white'}"
+										>
+											{#if idx === timelineIndex}
+												<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"
+												></span>
+											{/if}
+										</span>
+										<span
+											class="text-[9px] font-medium tracking-wide whitespace-nowrap uppercase
+												{idx <= timelineIndex ? 'text-foreground' : 'text-[var(--black-alpha-32)]'}"
+										>
+											{step.label}
+										</span>
+									</div>
+									{#if idx < ORDER_TIMELINE.length - 1}
+										<span
+											class="mx-1.5 mb-4 h-[2px] flex-1 rounded-full
+												{idx < timelineIndex ? 'bg-[var(--heat-100)]' : 'bg-[var(--border-muted)]'}"
+										></span>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				<!-- Order Status (merged Current State + Manual Override) -->
 				<section in:fly={{ y: 8, duration: 200 }}>

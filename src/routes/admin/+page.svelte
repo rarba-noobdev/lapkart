@@ -1341,7 +1341,9 @@
 													>
 														{card.label}
 													</p>
-													<p class="mt-2 text-[26px] font-semibold tracking-tight text-foreground">
+													<p
+														class="mt-2 text-[26px] font-semibold tracking-tight text-foreground tabular-nums"
+													>
 														{card.value}
 													</p>
 												</div>
@@ -1349,6 +1351,19 @@
 													<Icon class="size-4" strokeWidth={2} />
 												</div>
 											</div>
+											{#if card.id === 'revenue' && analytics?.monthlySeries?.length}
+												<div class="mt-3 flex items-end gap-px" style="height: 22px">
+													{#each analytics.monthlySeries.slice(-12) as month (month.month)}
+														<div
+															class="flex-1 rounded-t-[1px] bg-[var(--heat-100)]/25 transition-colors duration-300 group-hover:bg-[var(--heat-100)]/60"
+															style="height: {Math.max(
+																8,
+																(month.revenue / maxMonthlyRevenue) * 100
+															)}%"
+														></div>
+													{/each}
+												</div>
+											{/if}
 										</div>
 									{/each}
 								</div>
@@ -1420,13 +1435,21 @@
 										</div>
 										<div class="divide-y divide-[var(--border-faint)]">
 											{#each analytics?.recentOrders ?? [] as order, idx (order.id)}
-												<div
-													class="flex items-center justify-between px-4 py-3 transition-colors hover:bg-[var(--background-lighter)]"
+												<button
+													type="button"
+													class="group flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--background-lighter)]"
 													in:fly={{ x: -8, duration: 200, delay: idx * 30 }}
+													onclick={() => {
+														ordersInitialFilter = null;
+														ordersInitialSearch = order.shippingName ?? '';
+														ordersInitialSelectId = order.id;
+														operationsSection = 'orders';
+														setView('operations');
+													}}
 												>
 													<div class="flex items-center gap-2.5">
 														<div
-															class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-48)]"
+															class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-48)] transition-colors group-hover:bg-[var(--heat-8)] group-hover:text-[var(--heat-100)]"
 														>
 															{order.id.slice(0, 2).toUpperCase()}
 														</div>
@@ -1450,11 +1473,16 @@
 														>
 															{order.status}
 														</span>
-														<span class="text-[12px] font-medium text-foreground"
+														<span
+															class="font-mono text-[12px] font-medium text-foreground tabular-nums"
 															>{formatINR(order.total)}</span
 														>
+														<ArrowUpRight
+															class="size-3 text-[var(--black-alpha-24)] opacity-0 transition-opacity group-hover:opacity-100"
+															strokeWidth={2.5}
+														/>
 													</div>
-												</div>
+												</button>
 											{/each}
 											{#if (analytics?.recentOrders ?? []).length === 0}
 												<div
@@ -1664,9 +1692,18 @@
 																		: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
 																>{product.status}</span
 															>
-															<span class="text-[9px] text-[var(--black-alpha-32)]"
-																>Stock {product.stock}</span
+															<span
+																class="flex items-center gap-1 text-[9px] text-[var(--black-alpha-32)]"
 															>
+																<span
+																	class="size-1.5 rounded-full {product.stock <= 0
+																		? 'bg-[var(--accent-crimson)]'
+																		: product.stock <= 5
+																			? 'bg-[var(--accent-honey)]'
+																			: 'bg-[var(--accent-forest)]'}"
+																></span>
+																{product.stock} in stock
+															</span>
 														</div>
 													</div>
 												</button>
@@ -2136,12 +2173,24 @@
 															in:fly={{ x: -6, duration: 180, delay: Math.min(idx * 20, 200) }}
 														>
 															<td class="px-2 py-3">
-																<p class="text-[12px] font-medium text-foreground">
-																	{user.fullName || user.email || 'Unnamed'}
-																</p>
-																<p class="text-[10px] text-[var(--black-alpha-32)]">
-																	{user.email || 'No email'}
-																</p>
+																<div class="flex items-center gap-2.5">
+																	<span
+																		class="flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold uppercase
+																			{user.role !== 'user'
+																			? 'bg-[var(--heat-8)] text-[var(--heat-100)]'
+																			: 'bg-[var(--background-lighter)] text-[var(--black-alpha-40)]'}"
+																	>
+																		{(user.fullName || user.email || '?').slice(0, 2)}
+																	</span>
+																	<span class="min-w-0">
+																		<p class="truncate text-[12px] font-medium text-foreground">
+																			{user.fullName || user.email || 'Unnamed'}
+																		</p>
+																		<p class="truncate text-[10px] text-[var(--black-alpha-32)]">
+																			{user.email || 'No email'}
+																		</p>
+																	</span>
+																</div>
 															</td>
 															<td class="px-2 py-3">
 																<span
@@ -2353,9 +2402,29 @@
 																: `${formatINR(coupon.discountValue)} off`}
 														</span>
 													</span>
-													<span class="text-[12px] font-medium text-foreground"
-														>{coupon.usedCount}</span
-													>
+													<span class="text-right">
+														<span
+															class="font-mono text-[12px] font-medium text-foreground tabular-nums"
+														>
+															{coupon.usedCount}{coupon.usageLimit ? `/${coupon.usageLimit}` : ''}
+														</span>
+														{#if coupon.usageLimit}
+															<span
+																class="mt-1 block h-1 w-12 overflow-hidden rounded-full bg-[var(--background-lighter)]"
+															>
+																<span
+																	class="block h-full rounded-full {coupon.usedCount >=
+																	coupon.usageLimit
+																		? 'bg-[var(--accent-crimson)]'
+																		: 'bg-[var(--heat-100)]'}"
+																	style="width: {Math.min(
+																		100,
+																		(coupon.usedCount / coupon.usageLimit) * 100
+																	)}%"
+																></span>
+															</span>
+														{/if}
+													</span>
 													<span
 														class="rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
 														{coupon.active
