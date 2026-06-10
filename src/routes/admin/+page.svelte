@@ -292,6 +292,11 @@
 	let couponsError = $state<string | null>(null);
 
 	let productSearch = $state('');
+	let productPage = $state(1);
+	let productTotal = $state(0);
+	let productTotalPages = $state(1);
+	let productSearchTimer: number | null = null;
+	const PRODUCT_PAGE_SIZE = 60;
 	let selectedProductId = $state<string | 'new' | null>(null);
 	let productEditor = $state<ProductEditorState>(emptyProductEditor());
 	let productSaving = $state(false);
@@ -315,14 +320,6 @@
 		const prevIdx = tabs.findIndex((t) => t.id === prevView);
 		return currentIdx >= prevIdx ? 1 : -1;
 	});
-
-	const filteredProducts = $derived.by(() =>
-		products.filter((product) =>
-			`${product.title} ${product.brand} ${product.category} ${product.sku ?? ''}`
-				.toLowerCase()
-				.includes(productSearch.toLowerCase())
-		)
-	);
 
 	const filteredUsers = $derived.by(() =>
 		users.filter((user) =>
@@ -574,8 +571,20 @@
 		try {
 			productsLoading = true;
 			productsError = null;
-			const response = await requestAdmin<{ products: AdminProduct[] }>('/admin/products');
+			const params = new URLSearchParams({
+				page: String(productPage),
+				pageSize: String(PRODUCT_PAGE_SIZE)
+			});
+			const q = productSearch.trim();
+			if (q) params.set('q', q);
+			const response = await requestAdmin<{
+				products: AdminProduct[];
+				pagination?: { page: number; total: number; totalPages: number };
+			}>(`/admin/products?${params}`);
 			products = response.products ?? [];
+			productTotal = response.pagination?.total ?? products.length;
+			productTotalPages = response.pagination?.totalPages ?? 1;
+			if (productPage > productTotalPages) productPage = productTotalPages;
 			productsLoaded = true;
 			syncProductEditor();
 		} catch (loadError) {
@@ -583,6 +592,22 @@
 		} finally {
 			productsLoading = false;
 		}
+	}
+
+	function queueProductSearch() {
+		if (productSearchTimer) window.clearTimeout(productSearchTimer);
+		productSearchTimer = window.setTimeout(() => {
+			productSearchTimer = null;
+			productPage = 1;
+			void loadProducts(true);
+		}, 300);
+	}
+
+	function setProductPage(next: number) {
+		const target = Math.min(Math.max(1, next), productTotalPages);
+		if (target === productPage) return;
+		productPage = target;
+		void loadProducts(true);
 	}
 
 	async function syncProductSearchIndex() {
@@ -985,6 +1010,7 @@
 
 		return () => {
 			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			if (productSearchTimer) window.clearTimeout(productSearchTimer);
 			pendingRealtimeRefresh = {
 				analytics: false,
 				products: false,
@@ -1432,7 +1458,7 @@
 													<Boxes class="size-4 text-[var(--black-alpha-40)]" strokeWidth={2} />
 													<span class="text-[13px] font-medium text-foreground">Catalog</span>
 													<span class="text-[11px] text-[var(--black-alpha-32)]"
-														>{filteredProducts.length}/{products.length}</span
+														>{products.length} of {productTotal}</span
 													>
 												</div>
 												<button
@@ -1446,13 +1472,14 @@
 											</div>
 											<input
 												bind:value={productSearch}
+												oninput={queueProductSearch}
 												class="input-field h-8 text-[12px]"
-												placeholder="Search title, brand, SKU..."
+												placeholder="Search title, brand, SKU, category..."
 											/>
 										</div>
 
 										<div class="catalog-list">
-											{#each filteredProducts as product, idx (product.id)}
+											{#each products as product, idx (product.id)}
 												<button
 													type="button"
 													class="catalog-item {product.id === selectedProductId ? 'selected' : ''}"
@@ -1503,12 +1530,38 @@
 												</button>
 											{/each}
 
-											{#if !filteredProducts.length}
+											{#if !products.length}
 												<div class="p-4 text-center text-[12px] text-[var(--black-alpha-32)]">
 													{productsError || 'No products match.'}
 												</div>
 											{/if}
 										</div>
+
+										{#if productTotalPages > 1}
+											<div
+												class="flex items-center justify-between gap-2 border-t border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
+											>
+												<button
+													type="button"
+													class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+													disabled={productPage <= 1 || productsLoading}
+													onclick={() => setProductPage(productPage - 1)}
+												>
+													Prev
+												</button>
+												<span class="text-[11px] text-[var(--black-alpha-48)]">
+													Page {productPage} of {productTotalPages}
+												</span>
+												<button
+													type="button"
+													class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+													disabled={productPage >= productTotalPages || productsLoading}
+													onclick={() => setProductPage(productPage + 1)}
+												>
+													Next
+												</button>
+											</div>
+										{/if}
 									</aside>
 
 									<!-- Product editor -->

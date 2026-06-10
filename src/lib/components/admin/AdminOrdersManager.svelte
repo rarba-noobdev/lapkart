@@ -70,12 +70,19 @@
 	let statusFilter = $state<OrderStatusFilter>('all');
 	let appliedInitialFilter: string | null = null;
 	let selectedId = $state<string | null>(null);
+	let page = $state(1);
+	let total = $state(0);
+	let totalPages = $state(1);
+	let searchTimer: number | null = null;
+	const ORDERS_PAGE_SIZE = 50;
 
 	$effect(() => {
 		if (initialFilter !== appliedInitialFilter) {
 			appliedInitialFilter = initialFilter;
 			if (initialFilter && statusFilters.some((filter) => filter.id === initialFilter)) {
 				statusFilter = initialFilter as OrderStatusFilter;
+				page = 1;
+				void loadOrders(false);
 			}
 		}
 	});
@@ -84,19 +91,9 @@
 	let confirmingManualState = $state(false);
 	let realtimeRefreshTimer: number | null = null;
 
-	const filteredOrders = $derived.by(() => {
-		const term = search.toLowerCase();
-		const group = statusFilter === 'all' ? null : statusFilterGroups[statusFilter];
-		return orders.filter((order) => {
-			const matchesSearch =
-				`${order.id} ${order.userEmail ?? ''} ${order.shippingName ?? ''} ${order.shippingCity ?? ''}`
-					.toLowerCase()
-					.includes(term);
-			if (!matchesSearch) return false;
-			if (!group) return true;
-			return group.includes(String(order.status ?? '').toLowerCase());
-		});
-	});
+	// Search and status filtering run server-side so the full order history is
+	// reachable, not just the first page held in memory.
+	const filteredOrders = $derived(orders);
 
 	const selectedOrder = $derived(orders.find((order) => order.id === selectedId) ?? null);
 	const selectedOrderLocked = $derived(selectedOrder ? isTerminalOrder(selectedOrder) : false);
@@ -159,15 +156,51 @@
 		try {
 			if (showLoading) loading = true;
 			error = null;
-			const response = await requestAdmin<{ orders: AdminOrderRecord[] }>('/admin/orders');
+			const params = new URLSearchParams({
+				page: String(page),
+				pageSize: String(ORDERS_PAGE_SIZE)
+			});
+			const q = search.trim();
+			if (q) params.set('q', q);
+			if (statusFilter !== 'all') params.set('statuses', statusFilterGroups[statusFilter].join(','));
+			const response = await requestAdmin<{
+				orders: AdminOrderRecord[];
+				pagination?: { page: number; total: number; totalPages: number };
+			}>(`/admin/orders?${params}`);
 			const nextOrders = response.orders ?? [];
 			orders = nextOrders;
+			total = response.pagination?.total ?? nextOrders.length;
+			totalPages = response.pagination?.totalPages ?? 1;
+			if (page > totalPages) page = totalPages;
 			syncSelection(nextOrders);
 		} catch (requestError) {
 			error = requestError instanceof Error ? requestError.message : 'Could not load orders';
 		} finally {
 			if (showLoading) loading = false;
 		}
+	}
+
+	function queueSearch() {
+		if (searchTimer) window.clearTimeout(searchTimer);
+		searchTimer = window.setTimeout(() => {
+			searchTimer = null;
+			page = 1;
+			void loadOrders(false);
+		}, 300);
+	}
+
+	function setStatusFilter(next: OrderStatusFilter) {
+		if (next === statusFilter) return;
+		statusFilter = next;
+		page = 1;
+		void loadOrders(false);
+	}
+
+	function setPage(next: number) {
+		const target = Math.min(Math.max(1, next), totalPages);
+		if (target === page) return;
+		page = target;
+		void loadOrders(false);
 	}
 
 	function scheduleOrdersRefresh(delay = 350) {
@@ -434,6 +467,7 @@
 
 		return () => {
 			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
+			if (searchTimer) window.clearTimeout(searchTimer);
 			void auth.supabase.removeChannel(channel);
 		};
 	});
@@ -459,8 +493,9 @@
 
 		<input
 			bind:value={search}
+			oninput={queueSearch}
 			class="input-field !h-8 !text-[12px]"
-			placeholder="Search order, customer, email, or city"
+			placeholder="Search customer, phone, email, city, or pincode"
 		/>
 
 		<div class="mt-2 flex flex-wrap gap-1.5">
@@ -471,12 +506,36 @@
 					filter.id
 						? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
 						: 'border-[var(--border-muted)] bg-white text-[var(--black-alpha-56)] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]'}"
-					onclick={() => (statusFilter = filter.id)}
+					onclick={() => setStatusFilter(filter.id)}
 				>
 					{filter.label}
 				</button>
 			{/each}
 		</div>
+
+		{#if totalPages > 1 || total > orders.length}
+			<div class="mt-1 flex items-center justify-between gap-2">
+				<button
+					type="button"
+					class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+					disabled={page <= 1}
+					onclick={() => setPage(page - 1)}
+				>
+					Prev
+				</button>
+				<span class="text-[11px] text-[var(--black-alpha-48)]">
+					Page {page} of {totalPages} · {total} orders
+				</span>
+				<button
+					type="button"
+					class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+					disabled={page >= totalPages}
+					onclick={() => setPage(page + 1)}
+				>
+					Next
+				</button>
+			</div>
+		{/if}
 
 		<div class="mt-2 flex max-h-[calc(100vh-220px)] flex-col gap-1.5 overflow-y-auto pr-1 pb-10">
 			{#if loading && !orders.length}
