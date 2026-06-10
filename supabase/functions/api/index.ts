@@ -197,6 +197,7 @@ const uploadRateLimit = { limit: 12, windowMs: 60_000 };
 const webhookRateLimit = { limit: 120, windowMs: 60_000 };
 const checkoutSessionTtlMs = 20 * 60_000;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+const maxUploadBytes = 5 * 1024 * 1024;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 const featureFlagCache: { expiresAt: number; values: Map<string, boolean> } = {
 	expiresAt: 0,
@@ -2059,9 +2060,40 @@ function invoiceNumberForOrder(orderId: string) {
 	return `LK-${new Date().getFullYear()}-${orderId.slice(0, 8).toUpperCase()}`;
 }
 
-function assertUploadIsSafeImage(file: File) {
+function matchesImageSignature(type: string, bytes: Uint8Array): boolean {
+	const startsWith = (sig: number[]) => sig.every((b, i) => bytes[i] === b);
+	switch (type) {
+		case 'image/jpeg':
+			return startsWith([0xff, 0xd8, 0xff]);
+		case 'image/png':
+			return startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+		case 'image/webp':
+			// RIFF....WEBP
+			return startsWith([0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+		case 'image/avif': {
+			// ftyp box with avif/avis brand
+			if (bytes[4] !== 0x66 || bytes[5] !== 0x74 || bytes[6] !== 0x79 || bytes[7] !== 0x70) return false;
+			const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+			return brand === 'avif' || brand === 'avis';
+		}
+		default:
+			return false;
+	}
+}
+
+async function assertUploadIsSafeImage(file: File) {
 	if (!allowedImageMimeTypes.has(file.type)) {
 		throw new HttpError(400, 'Only JPEG, PNG, WebP, or AVIF images are allowed');
+	}
+	if (file.size === 0) {
+		throw new HttpError(400, 'Uploaded file is empty');
+	}
+	if (file.size > maxUploadBytes) {
+		throw new HttpError(400, 'Image must be 5MB or smaller');
+	}
+	const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+	if (!matchesImageSignature(file.type, header)) {
+		throw new HttpError(400, 'File contents do not match a valid image');
 	}
 }
 
@@ -4658,7 +4690,7 @@ async function handle(req: Request) {
 		const formData = await req.formData();
 		const fileValue = formData.get('file');
 		if (!(fileValue instanceof File)) throw new HttpError(400, 'file is required');
-		assertUploadIsSafeImage(fileValue);
+		await assertUploadIsSafeImage(fileValue);
 		const bucket = storageUploadMatch[1];
 		const pathValue = `${Date.now()}-${fileValue.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 		const { error } = await adminDb.storage.from(bucket).upload(pathValue, fileValue, {
