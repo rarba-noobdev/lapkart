@@ -1,11 +1,9 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import {
 		Flame,
-		Search,
 		ShoppingCart,
 		User,
 		LogOut,
@@ -16,22 +14,16 @@
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
 	import { isStaffRole } from '$lib/roles';
+	import SearchBar from '$lib/components/SearchBar.svelte';
 
 	const auth = getAuthContext();
 
 	let menuOpen = $state(false);
-	let query = $state('');
 
 	const cartCount = $derived($cartState.items.reduce((sum, item) => sum + item.qty, 0));
 	const activeUser = $derived(auth.user);
 	const activeRole = $derived(auth.role);
 	const isAdmin = $derived(isStaffRole(activeRole));
-
-	async function submitSearch(event: SubmitEvent) {
-		event.preventDefault();
-		const trimmed = query.trim();
-		await goto(resolve(trimmed ? `/products?q=${encodeURIComponent(trimmed)}` : '/products'));
-	}
 
 	function closeMenu() {
 		menuOpen = false;
@@ -103,25 +95,11 @@
 			</div>
 		</a>
 
-		<form onsubmit={submitSearch} class="hidden max-w-[520px] flex-1 md:block">
-			<label
-				class="group flex h-11 items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] transition-[border-color,background-color,box-shadow] focus-within:border-[var(--heat-100)] focus-within:bg-white focus-within:shadow-[0_0_0_3px_var(--heat-12)]"
-			>
-				<span class="sr-only">Search laptop parts</span>
-				<Search
-					class="ml-3 size-[15px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--heat-100)]"
-				/>
-				<input
-					bind:value={query}
-					type="search"
-					name="q"
-					autocomplete="off"
-					aria-label="Search laptop parts"
-					placeholder={isAdmin ? 'Search catalog preview' : 'Search RAM, SSDs, batteries'}
-					class="text-body-medium h-full flex-1 border-none bg-transparent px-3 outline-none placeholder:text-[var(--black-alpha-48)]"
-				/>
-			</label>
-		</form>
+		<SearchBar
+			size="lg"
+			placeholder={isAdmin ? 'Search catalog' : 'Search parts'}
+			class="hidden max-w-[520px] flex-1 md:block"
+		/>
 
 		<nav class="ml-auto flex items-center gap-1 sm:gap-3">
 			<a
@@ -238,22 +216,10 @@
 	</div>
 
 	<div class="border-t border-[var(--border-faint)] md:hidden">
-		<form onsubmit={submitSearch} class="container mx-auto px-4 py-2.5">
-			<label
-				class="flex h-11 items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] focus-within:border-[var(--heat-100)] focus-within:shadow-[0_0_0_3px_var(--heat-12)]"
-			>
-				<span class="sr-only">Search laptop parts</span>
-				<Search class="ml-3 size-[15px] text-[var(--black-alpha-40)]" />
-				<input
-					bind:value={query}
-					type="search"
-					name="q"
-					autocomplete="off"
-					aria-label="Search laptop parts"
-					placeholder={isAdmin ? 'Search catalog' : 'Search parts'}
-					class="text-body-medium h-full flex-1 border-none bg-transparent px-3 outline-none placeholder:text-[var(--black-alpha-48)]"
-				/>
-			</label>
-		</form>
+		<SearchBar
+			size="md"
+			placeholder={isAdmin ? 'Search catalog' : 'Search parts'}
+			class="container mx-auto px-4 py-2.5"
+		/>
 	</div>
 </header>

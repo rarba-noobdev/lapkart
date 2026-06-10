@@ -1,25 +1,45 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { page } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import { onMount } from 'svelte';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { setAuthContext } from '$lib/auth-context';
 	import type { LayoutProps } from './$types';
-	import { goto } from '$app/navigation';
-	import { Search } from '@lucide/svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import MobileTabBar from '$lib/components/MobileTabBar.svelte';
 	import NavigationLoader from '$lib/components/NavigationLoader.svelte';
+	import SearchBar from '$lib/components/SearchBar.svelte';
+	import RouteSkeleton from '$lib/components/RouteSkeleton.svelte';
 	import { hydrateCart } from '$lib/cart';
-
-	let mobileQuery = $state('');
 
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
 	const isAdminRoute = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
+
+	// Show a route-matched skeleton in <main> while a client navigation's load
+	// resolves, so tapping a tab swaps to a loading shell immediately instead of
+	// holding the previous page until the blocking server load returns. A short
+	// delay suppresses the skeleton for near-instant (preloaded/cached) navs so
+	// it never flashes.
+	const navTarget = $derived(navigating.to?.url.pathname ?? null);
+	const skeletonRoute = $derived.by(() => {
+		const path = navTarget;
+		if (!path) return null;
+		if (path === '/login' || path === '/admin' || path.startsWith('/admin/')) return null;
+		return path;
+	});
+	let showSkeleton = $state(false);
+	$effect(() => {
+		if (!skeletonRoute) {
+			showSkeleton = false;
+			return;
+		}
+		const timer = setTimeout(() => (showSkeleton = true), 90);
+		return () => clearTimeout(timer);
+	});
 
 	const auth = {
 		get supabase() {
@@ -119,22 +139,16 @@
 	{/if}
 	{#if !isLoginRoute && !isAdminRoute}
 		<div class="sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 backdrop-blur-xl px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 md:hidden">
-			<form onsubmit={(e) => { e.preventDefault(); void goto(`/products?q=${encodeURIComponent(mobileQuery.trim())}`); }}>
-				<label class="flex h-10 items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] focus-within:border-[var(--heat-100)] focus-within:shadow-[0_0_0_3px_var(--heat-12)]">
-					<Search class="ml-3 size-[15px] text-[var(--black-alpha-40)]" />
-					<input
-						bind:value={mobileQuery}
-						type="search"
-						name="q"
-						autocomplete="off"
-						placeholder="Search parts"
-						class="text-body-medium h-full flex-1 border-none bg-transparent px-3 outline-none placeholder:text-[var(--black-alpha-48)]"
-					/>
-				</label>
-			</form>
+			<SearchBar size="md" placeholder="Search parts" />
 		</div>
 	{/if}
-	<main class="flex min-w-0 w-full flex-1 flex-col">{@render children()}</main>
+	<main class="flex min-w-0 w-full flex-1 flex-col">
+		{#if showSkeleton && skeletonRoute}
+			<RouteSkeleton pathname={skeletonRoute} />
+		{:else}
+			{@render children()}
+		{/if}
+	</main>
 	{#if !isLoginRoute && !isAdminRoute}
 		<div class="hidden md:block">
 			<Footer />

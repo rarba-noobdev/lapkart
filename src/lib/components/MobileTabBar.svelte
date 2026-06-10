@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import {
 		Home,
 		LayoutDashboard,
@@ -46,18 +46,23 @@
 
 	const tabs = $derived<MobileTab[]>(isAdmin ? adminTabs : customerTabs);
 
+	// Drive the active state off the pending navigation target when a navigation
+	// is in flight, so the tab highlight switches the instant a tab is tapped
+	// instead of waiting for the destination's blocking server load to resolve.
+	const activeUrl = $derived(navigating.to?.url ?? page.url);
+
 	function isActive(href: string) {
-		const target = new URL(href, page.url.origin);
-		if (target.pathname === '/') return page.url.pathname === '/';
+		const target = new URL(href, activeUrl.origin);
+		if (target.pathname === '/') return activeUrl.pathname === '/';
 		if (target.pathname === '/profile' || target.pathname === '/login') {
-			return page.url.pathname === '/profile' || page.url.pathname === '/login';
+			return activeUrl.pathname === '/profile' || activeUrl.pathname === '/login';
 		}
-		if (target.pathname !== page.url.pathname) return false;
+		if (target.pathname !== activeUrl.pathname) return false;
 		const targetSection = target.searchParams.get('section');
 		if (target.pathname === '/admin') {
 			return targetSection
-				? page.url.searchParams.get('section') === targetSection
-				: !page.url.searchParams.get('section');
+				? activeUrl.searchParams.get('section') === targetSection
+				: !activeUrl.searchParams.get('section');
 		}
 		return true;
 	}
