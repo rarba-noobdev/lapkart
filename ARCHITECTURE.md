@@ -34,8 +34,7 @@ LapKart is a Vite React e-commerce frontend with a Node/Express API and Supabase
 ## Deployment
 
 - Frontend: Vercel using `vercel.json`.
-- API: Render using `render.yaml`.
-- Container: `Dockerfile` builds the API runtime.
+- API: Supabase Edge Function (`supabase/functions/api`), reached at `${SUPABASE_URL}/functions/v1/api`. `VITE_API_BASE_URL` points the client at it.
 
 ## Required Secrets
 
@@ -46,7 +45,7 @@ Frontend:
 - `VITE_API_BASE_URL`
 - `VITE_OLA_MAPS_API_KEY`
 
-API:
+Edge Function:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -55,6 +54,7 @@ API:
 - `SHIPROCKET_EMAIL`
 - `SHIPROCKET_PASSWORD`
 - `SHIPROCKET_PICKUP_LOCATION`
+- `SHIPROCKET_WEBHOOK_TOKEN`
 - `LAPKART_DISPATCH_PINCODE`
 - `LAPKART_DISPATCH_LATITUDE`
 - `LAPKART_DISPATCH_LONGITUDE`
