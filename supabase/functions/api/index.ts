@@ -890,6 +890,21 @@ function requireLivePaymentEnvironment() {
 	}
 }
 
+// Shiprocket webhook timestamps arrive as "23 05 2023 11:43:52"
+// (DD MM YYYY HH:mm:ss, IST). Fall back to native Date parsing for the other
+// ISO-ish fields ("2023-05-23 15:40:19").
+function parseShiprocketTimestamp(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	const m = trimmed.match(/^(\d{2}) (\d{2}) (\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
+	if (m) {
+		const date = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}+05:30`);
+		return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+	}
+	const date = new Date(trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T') + '+05:30');
+	return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 function normalizeShipmentStatus(status: string) {
 	const value = status.toLowerCase();
 	if (value.includes('delivered') && value.includes('rto')) return 'rto_delivered';
@@ -4577,35 +4592,71 @@ async function handle(req: Request) {
 				'SHIPROCKET_WEBHOOK_TOKEN is required before accepting logistics webhooks'
 			);
 		}
-		const token = req.headers.get('x-lapkart-logistics-token') ?? '';
+		// Shiprocket delivers the configured security token in the x-api-key
+		// header. The legacy custom header is still accepted for manual replays.
+		const token =
+			req.headers.get('x-api-key') ?? req.headers.get('x-lapkart-logistics-token') ?? '';
 		if (!(await timingSafeEqualSecret(token, config.shiprocketWebhookToken))) {
 			throw new HttpError(401, 'Invalid webhook token');
 		}
 		const body = asRecord(await req.json());
 		const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? '').trim() || null;
 		const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
+		const shiprocketOrderId = Number(body.sr_order_id ?? body.srOrderId);
+		const isReturn = Number(body.is_return ?? 0) === 1;
 		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
-		const statusTime = String(body.event_time ?? body.status_time ?? body.updated_at ?? '');
+		const statusCode = Number(body.current_status_id ?? body.status_code);
+		const statusTime =
+			parseShiprocketTimestamp(
+				String(body.event_time ?? body.status_time ?? body.updated_at ?? body.current_timestamp ?? '')
+			) ?? null;
+		const scans = Array.isArray(body.scans) ? body.scans.map(asRecord) : [];
+		const lastScan = scans.length ? scans[scans.length - 1] : null;
+		const location = String(body.location ?? lastScan?.location ?? '').trim() || null;
+		const message = String(body.message ?? lastScan?.activity ?? '').trim() || null;
+		const etd = String(body.etd ?? '').trim() || null;
 		const providerEventId = String(body.event_id ?? body.eventId ?? body.id ?? '').trim() || null;
+		// Shiprocket sends no event id, so dedupe on the full event identity.
+		// statusTime must participate or two same-status events (e.g. successive
+		// IN TRANSIT scans) collapse into one and later updates are dropped.
 		const idempotencySeed =
 			providerEventId ??
 			[
 				awb ?? '',
 				Number.isFinite(shiprocketShipmentId) ? String(shiprocketShipmentId) : '',
+				Number.isFinite(shiprocketOrderId) ? String(shiprocketOrderId) : '',
 				status,
-				statusTime
+				Number.isFinite(statusCode) ? String(statusCode) : '',
+				statusTime ?? '',
+				String(scans.length)
 			].join('|');
 		const idempotencyKey = await sha256Hex(idempotencySeed);
+		const direction = isReturn ? 'return' : 'outbound';
 		let shipmentId: string | null = null;
 		let shipmentOrderId: string | null = null;
-		if (awb || Number.isFinite(shiprocketShipmentId)) {
-			let query = adminDb.from('shipments').select('id,order_id').limit(1);
-			if (awb) query = query.eq('awb_code', awb);
-			else query = query.eq('shiprocket_shipment_id', shiprocketShipmentId);
-			const { data } = await query.maybeSingle();
-			shipmentId = data?.id ?? null;
-			shipmentOrderId = data?.order_id ?? null;
+		const matchShipment = async (
+			column: 'awb_code' | 'shiprocket_shipment_id' | 'shiprocket_order_id',
+			value: string | number
+		) => {
+			const { data } = await adminDb
+				.from('shipments')
+				.select('id,order_id')
+				.eq(column, value)
+				.eq('shipping_direction', direction)
+				.order('created_at', { ascending: false })
+				.limit(1)
+				.maybeSingle();
+			return data ?? null;
+		};
+		let matched = awb ? await matchShipment('awb_code', awb) : null;
+		if (!matched && Number.isFinite(shiprocketShipmentId)) {
+			matched = await matchShipment('shiprocket_shipment_id', shiprocketShipmentId);
 		}
+		if (!matched && Number.isFinite(shiprocketOrderId)) {
+			matched = await matchShipment('shiprocket_order_id', shiprocketOrderId);
+		}
+		shipmentId = matched?.id ?? null;
+		shipmentOrderId = matched?.order_id ?? null;
 		const { data: webhookEvent, error: webhookEventError } = await adminDb
 			.from('provider_webhook_events')
 			.insert({
@@ -4632,49 +4683,78 @@ async function handle(req: Request) {
 			}
 			throw webhookEventError;
 		}
-		await adminDb.from('shipment_events').insert({
-			shipment_id: shipmentId,
-			provider: 'shiprocket',
-			awb_code: awb,
-			status,
-			status_code: Number.isFinite(Number(body.current_status_id ?? body.status_code))
-				? Number(body.current_status_id ?? body.status_code)
-				: null,
-			status_time: statusTime ? new Date(statusTime).toISOString() : null,
-			location: body.location ? String(body.location) : null,
-			message: body.message ? String(body.message) : null,
-			raw_payload: body
-		});
-		if (shipmentId) {
-			const normalizedShipmentStatus = normalizeShipmentStatus(status);
-			await adminDb
-				.from('shipments')
-				.update({
+		// The payload is persisted above; processing failures must not bubble up
+		// as non-200 responses or Shiprocket marks the webhook as failing and may
+		// disable it. Log and acknowledge instead — the stored event allows replay.
+		try {
+			await adminDb.from('shipment_events').insert({
+				shipment_id: shipmentId,
+				provider: 'shiprocket',
+				awb_code: awb,
+				status,
+				status_code: Number.isFinite(statusCode) ? statusCode : null,
+				status_time: statusTime,
+				location,
+				message,
+				raw_payload: body
+			});
+			if (shipmentId) {
+				const normalizedShipmentStatus = normalizeShipmentStatus(status);
+				const shipmentPatch: Record<string, unknown> = {
 					status: normalizedShipmentStatus,
-					last_status_at: new Date().toISOString(),
+					last_status_at: statusTime ?? new Date().toISOString(),
 					raw_payload: body
-				})
-				.eq('id', shipmentId);
-			if (shipmentOrderId) {
-				await propagateShipmentStatusToOrder(adminDb, shipmentOrderId, normalizedShipmentStatus);
+				};
+				if (Number.isFinite(statusCode)) shipmentPatch.last_status_code = statusCode;
+				if (etd) {
+					const etdDate = new Date(etd.replace(' ', 'T'));
+					if (Number.isFinite(etdDate.getTime())) {
+						shipmentPatch.expected_delivery_date = etdDate.toISOString().slice(0, 10);
+					}
+				}
+				if (normalizedShipmentStatus === 'delivered') {
+					shipmentPatch.actual_delivery_at = statusTime ?? new Date().toISOString();
+				}
+				await adminDb.from('shipments').update(shipmentPatch).eq('id', shipmentId);
+				if (shipmentOrderId && !isReturn) {
+					await propagateShipmentStatusToOrder(adminDb, shipmentOrderId, normalizedShipmentStatus);
+				}
 			}
-		}
-		await adminDb
-			.from('provider_webhook_events')
-			.update({
-				processing_status: shipmentId ? 'processed' : 'ignored',
-				related_shipment_id: shipmentId,
-				processed_at: new Date().toISOString()
-			})
-			.eq('id', webhookEvent.id);
-		if (!shipmentId) {
+			await adminDb
+				.from('provider_webhook_events')
+				.update({
+					processing_status: shipmentId ? 'processed' : 'ignored',
+					related_shipment_id: shipmentId,
+					processed_at: new Date().toISOString()
+				})
+				.eq('id', webhookEvent.id);
+			if (!shipmentId) {
+				await logMonitoringEvent({
+					source: 'shiprocket.webhook',
+					severity: 'warning',
+					message: 'Shiprocket webhook did not match a shipment',
+					requestKey: idempotencyKey,
+					metadata: { providerEventId, awb, shiprocketShipmentId, shiprocketOrderId, status }
+				});
+			}
+		} catch (processingError) {
 			await logMonitoringEvent({
 				source: 'shiprocket.webhook',
-				severity: 'warning',
-				message: 'Shiprocket webhook did not match a shipment',
+				severity: 'error',
+				message: 'Shiprocket webhook processing failed after persisting the event',
 				requestKey: idempotencyKey,
-				metadata: { providerEventId, awb, shiprocketShipmentId, status }
+				metadata: {
+					providerEventId,
+					awb,
+					status,
+					webhookEventId: webhookEvent.id,
+					error: processingError instanceof Error ? processingError.message : String(processingError)
+				}
 			});
+			await adminDb
+				.from('provider_webhook_events')
+				.update({ processing_status: 'failed', processed_at: new Date().toISOString() })
+				.eq('id', webhookEvent.id);
 		}
 		return json(req, 200, { ok: true });
 	}
@@ -5444,6 +5524,10 @@ async function handle(req: Request) {
 		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
 		const q = escapeIlike(url.searchParams.get('q') ?? '');
 		const status = url.searchParams.get('status')?.trim().toLowerCase();
+		const statuses = (url.searchParams.get('statuses') ?? '')
+			.split(',')
+			.map((value) => value.trim().toLowerCase())
+			.filter(Boolean);
 		const paymentStatus = url.searchParams.get('paymentStatus')?.trim().toLowerCase();
 		const dateFrom = url.searchParams.get('from');
 		const dateTo = url.searchParams.get('to');
@@ -5459,6 +5543,7 @@ async function handle(req: Request) {
 			);
 		}
 		if (status) ordersQuery = ordersQuery.eq('status', status);
+		else if (statuses.length) ordersQuery = ordersQuery.in('status', statuses);
 		if (paymentStatus) ordersQuery = ordersQuery.eq('payment_status', paymentStatus);
 		if (dateFrom) ordersQuery = ordersQuery.gte('created_at', dateFrom);
 		if (dateTo) ordersQuery = ordersQuery.lte('created_at', dateTo);
