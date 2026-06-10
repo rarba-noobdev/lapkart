@@ -28,7 +28,15 @@
 
 	const auth = getAuthContext();
 
-	let { initialFilter = null }: { initialFilter?: string | null } = $props();
+	let {
+		initialFilter = null,
+		initialSearch = null,
+		initialSelectId = null
+	}: {
+		initialFilter?: string | null;
+		initialSearch?: string | null;
+		initialSelectId?: string | null;
+	} = $props();
 
 	type OrderStatusFilter = 'all' | 'needs-action' | 'in-transit' | 'delivered' | 'cancelled';
 
@@ -82,6 +90,22 @@
 			if (initialFilter && statusFilters.some((filter) => filter.id === initialFilter)) {
 				statusFilter = initialFilter as OrderStatusFilter;
 				page = 1;
+				void loadOrders(false);
+			}
+		}
+	});
+
+	// Deep-link from the command palette: apply a search term and pre-select a
+	// specific order once it appears in the results.
+	let appliedInitialSearch: string | null = null;
+	$effect(() => {
+		if (initialSearch !== appliedInitialSearch) {
+			appliedInitialSearch = initialSearch;
+			if (initialSearch !== null) {
+				search = initialSearch;
+				statusFilter = 'all';
+				page = 1;
+				if (initialSelectId) selectedId = initialSelectId;
 				void loadOrders(false);
 			}
 		}
@@ -162,7 +186,8 @@
 			});
 			const q = search.trim();
 			if (q) params.set('q', q);
-			if (statusFilter !== 'all') params.set('statuses', statusFilterGroups[statusFilter].join(','));
+			if (statusFilter !== 'all')
+				params.set('statuses', statusFilterGroups[statusFilter].join(','));
 			const response = await requestAdmin<{
 				orders: AdminOrderRecord[];
 				pagination?: { page: number; total: number; totalPages: number };
@@ -313,10 +338,13 @@
 		try {
 			saving = true;
 			error = null;
-			const response = await requestAdmin<{ order?: AdminOrderPatch }>(`/admin/orders/${editor.id}`, {
-				method: 'PATCH',
-				body: JSON.stringify(payload)
-			});
+			const response = await requestAdmin<{ order?: AdminOrderPatch }>(
+				`/admin/orders/${editor.id}`,
+				{
+					method: 'PATCH',
+					body: JSON.stringify(payload)
+				}
+			);
 			confirmingManualState = false;
 			if (response.order) {
 				patchOrderInMemory(response.order);
@@ -539,7 +567,9 @@
 
 		<div class="mt-2 flex max-h-[calc(100vh-220px)] flex-col gap-1.5 overflow-y-auto pr-1 pb-10">
 			{#if loading && !orders.length}
-				<div class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
+				<div
+					class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]"
+				>
 					Loading orders...
 				</div>
 			{:else if !filteredOrders.length}
@@ -629,41 +659,54 @@
 	</section>
 
 	<!-- ==================== DETAIL PANEL ==================== -->
-	<section class="flex flex-col gap-5 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-sm">
+	<section
+		class="flex flex-col gap-5 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
+	>
 		<div class="border-b border-[var(--border-muted)] bg-[var(--background-lighter)]/50 px-5 py-4">
 			<h3 class="text-[13px] font-medium text-foreground">Order Details</h3>
 		</div>
 
 		<div class="space-y-6 px-5 pb-6">
 			{#if error}
-				<div class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">
+				<div
+					class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
+				>
 					{error}
 				</div>
 			{/if}
 
 			{#if selectedOrder}
 				{#if selectedOrderLocked}
-					<div class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">
+					<div
+						class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
+					>
 						This order is in a terminal state. Status and payment edits are locked in the admin app.
 						Use the database only for an exceptional correction.
 					</div>
 				{/if}
 
 				<!-- Compact header row -->
-				<div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3" in:fly={{ y: 8, duration: 200 }}>
+				<div
+					class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3"
+					in:fly={{ y: 8, duration: 200 }}
+				>
 					<div>
 						<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">Order</p>
-						<p class="text-[13px] font-medium text-foreground">#{selectedOrder.id.slice(0, 8).toUpperCase()}</p>
+						<p class="text-[13px] font-medium text-foreground">
+							#{selectedOrder.id.slice(0, 8).toUpperCase()}
+						</p>
 					</div>
 					<div>
 						<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">Customer</p>
-						<p class="text-[13px] font-medium text-foreground">{selectedOrder.shippingName || 'Customer'}</p>
+						<p class="text-[13px] font-medium text-foreground">
+							{selectedOrder.shippingName || 'Customer'}
+						</p>
 					</div>
 					<div>
 						<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">Total</p>
 						<p class="text-[13px] font-medium text-foreground">{formatINR(selectedOrder.total)}</p>
 					</div>
-					<div class="flex flex-wrap items-center gap-1.5 ml-auto">
+					<div class="ml-auto flex flex-wrap items-center gap-1.5">
 						<span
 							class={`rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${
 								selectedOrder.status === 'cancelled'
@@ -745,7 +788,9 @@
 						<!-- Manual override controls -->
 						<div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
 							<label>
-								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Order Status</span>
+								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+									>Order Status</span
+								>
 								<select
 									bind:value={editor.status}
 									class="input-field mt-1 !h-8 !text-[12px]"
@@ -764,7 +809,9 @@
 							</label>
 
 							<label>
-								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Payment Status</span>
+								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+									>Payment Status</span
+								>
 								<select
 									bind:value={editor.paymentStatus}
 									class="input-field mt-1 !h-8 !text-[12px]"
@@ -780,10 +827,12 @@
 
 						{#if reasonRequiredForEdit}
 							<label class="mt-3 block">
-								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Reason for change</span>
+								<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+									>Reason for change</span
+								>
 								<textarea
 									bind:value={editor.reason}
-									class="input-field mt-1 !h-auto min-h-[64px] !text-[12px] py-2"
+									class="input-field mt-1 !h-auto min-h-[64px] py-2 !text-[12px]"
 									disabled={selectedOrderLocked}
 									placeholder="Required. Example: Customer requested..."
 								></textarea>
@@ -795,7 +844,9 @@
 						{/if}
 
 						{#if needsManualStateConfirmation && confirmingManualState}
-							<div class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-2.5 text-[12px] text-[var(--accent-crimson)]">
+							<div
+								class="mt-3 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-2.5 text-[12px] text-[var(--accent-crimson)]"
+							>
 								This will mark the order as {editor.status.replaceAll('_', ' ')}. Confirm only after
 								checking details.
 							</div>
@@ -841,7 +892,9 @@
 				{#if selectedOrder.cancellationRequest}
 					<section in:fly={{ y: 8, duration: 200 }}>
 						<h4 class="mb-3 text-[13px] font-medium text-foreground">Cancellation Request</h4>
-						<div class="rounded-lg border border-[var(--accent-crimson)]/15 bg-[var(--accent-crimson)]/4 p-4 shadow-sm">
+						<div
+							class="rounded-lg border border-[var(--accent-crimson)]/15 bg-[var(--accent-crimson)]/4 p-4 shadow-sm"
+						>
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
 									<p class="text-[12px] font-medium text-foreground">
@@ -924,7 +977,9 @@
 				{#if selectedOrder.returnRequest}
 					<section in:fly={{ y: 8, duration: 200 }}>
 						<h4 class="mb-3 text-[13px] font-medium text-foreground">Return Request</h4>
-						<div class="rounded-lg border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/6 p-4 shadow-sm">
+						<div
+							class="rounded-lg border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/6 p-4 shadow-sm"
+						>
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div>
 									<p class="text-[12px] font-medium text-foreground">
@@ -1048,8 +1103,8 @@
 						<div class="rounded-lg border border-[var(--border-muted)] bg-white p-4 shadow-sm">
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<p class="text-[11px] text-[var(--black-alpha-48)]">
-									Refunds against the captured payment. Partial refunds keep the payment
-									as partially refunded until balance reaches zero.
+									Refunds against the captured payment. Partial refunds keep the payment as
+									partially refunded until balance reaches zero.
 								</p>
 								<span
 									class={`rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${
@@ -1063,28 +1118,50 @@
 							</div>
 
 							<div class="mt-4 grid gap-3 sm:grid-cols-3">
-								<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5">
-									<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Paid</p>
+								<div
+									class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5"
+								>
+									<p
+										class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
+									>
+										Paid
+									</p>
 									<p class="mt-0.5 text-[13px] font-medium text-foreground">
 										{formatINR(selectedOrder.refundSummary.paidAmount)}
 									</p>
 								</div>
-								<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5">
-									<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Refunded</p>
+								<div
+									class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5"
+								>
+									<p
+										class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
+									>
+										Refunded
+									</p>
 									<p class="mt-0.5 text-[13px] font-medium text-foreground">
 										{formatINR(selectedOrder.refundSummary.refundedAmount)}
 									</p>
 								</div>
-								<div class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5">
-									<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Remaining</p>
-									<p class="mt-0.5 text-[13px] font-medium text-foreground">{formatINR(refundableAmount)}</p>
+								<div
+									class="rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] p-2.5"
+								>
+									<p
+										class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
+									>
+										Remaining
+									</p>
+									<p class="mt-0.5 text-[13px] font-medium text-foreground">
+										{formatINR(refundableAmount)}
+									</p>
 								</div>
 							</div>
 
 							{#if refundableAmount > 0}
 								<div class="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2">
 									<label>
-										<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Refund amount</span>
+										<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+											>Refund amount</span
+										>
 										<input
 											bind:value={refundEditor.amount}
 											class="input-field mt-1 !h-8 !text-[12px]"
@@ -1094,7 +1171,9 @@
 										/>
 									</label>
 									<label>
-										<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Refund speed</span>
+										<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+											>Refund speed</span
+										>
 										<select
 											bind:value={refundEditor.speed}
 											class="input-field mt-1 !h-8 !text-[12px]"
@@ -1110,7 +1189,7 @@
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Reason</span>
 									<textarea
 										bind:value={refundEditor.reason}
-										class="input-field mt-1 !h-auto min-h-[56px] !text-[12px] py-2"
+										class="input-field mt-1 !h-auto min-h-[56px] py-2 !text-[12px]"
 										placeholder="Reason for this refund"
 										disabled={refundSaving}
 									></textarea>
@@ -1139,19 +1218,29 @@
 							<div class="grid grid-cols-2 gap-x-4 gap-y-2.5">
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Email</span>
-									<p class="text-[12px] text-foreground">{selectedOrder.shippingEmail || 'Not captured'}</p>
+									<p class="text-[12px] text-foreground">
+										{selectedOrder.shippingEmail || 'Not captured'}
+									</p>
 								</div>
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Phone</span>
-									<p class="text-[12px] text-foreground">{selectedOrder.shippingPhone || 'Not captured'}</p>
+									<p class="text-[12px] text-foreground">
+										{selectedOrder.shippingPhone || 'Not captured'}
+									</p>
 								</div>
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Service</span>
-									<p class="text-[12px] text-foreground">{selectedOrder.shippingServiceType.replaceAll('_', ' ')}</p>
+									<p class="text-[12px] text-foreground">
+										{selectedOrder.shippingServiceType.replaceAll('_', ' ')}
+									</p>
 								</div>
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Courier</span>
-									<p class="text-[12px] text-foreground">{selectedOrder.shipment?.courierName || selectedOrder.shippingCourierName || 'Not assigned'}</p>
+									<p class="text-[12px] text-foreground">
+										{selectedOrder.shipment?.courierName ||
+											selectedOrder.shippingCourierName ||
+											'Not assigned'}
+									</p>
 								</div>
 								<div class="col-span-2">
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Address</span>
@@ -1177,24 +1266,36 @@
 							<div class="grid grid-cols-2 gap-x-4 gap-y-2.5">
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Placed</span>
-									<p class="text-[12px] text-foreground">{new Date(selectedOrder.createdAt).toLocaleString('en-IN')}</p>
+									<p class="text-[12px] text-foreground">
+										{new Date(selectedOrder.createdAt).toLocaleString('en-IN')}
+									</p>
 								</div>
 								<div>
-									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Last updated</span>
-									<p class="text-[12px] text-foreground">{new Date(selectedOrder.updatedAt).toLocaleString('en-IN')}</p>
+									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+										>Last updated</span
+									>
+									<p class="text-[12px] text-foreground">
+										{new Date(selectedOrder.updatedAt).toLocaleString('en-IN')}
+									</p>
 								</div>
 								<div>
-									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Payment method</span>
+									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]"
+										>Payment method</span
+									>
 									<p class="text-[12px] text-foreground">{selectedOrder.paymentMethod}</p>
 								</div>
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Shipment</span>
-									<p class="text-[12px] text-foreground">{selectedOrder.shipment?.status || 'Not created'}</p>
+									<p class="text-[12px] text-foreground">
+										{selectedOrder.shipment?.status || 'Not created'}
+									</p>
 								</div>
 								<div>
 									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Invoice</span>
 									<div class="flex items-center gap-1.5">
-										<p class="text-[12px] text-foreground">{selectedOrder.invoice?.invoice_number || 'Not generated'}</p>
+										<p class="text-[12px] text-foreground">
+											{selectedOrder.invoice?.invoice_number || 'Not generated'}
+										</p>
 										{#if selectedOrder.invoice?.invoice_url}
 											<button
 												type="button"
@@ -1259,7 +1360,11 @@
 								</div>
 
 								<div class="shrink-0 pr-1 text-right">
-									<p class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase">Qty</p>
+									<p
+										class="text-[10px] font-medium tracking-wider text-[var(--black-alpha-48)] uppercase"
+									>
+										Qty
+									</p>
 									<p class="mt-0.5 text-[12px] font-medium text-foreground">{item.qty}</p>
 								</div>
 							</div>
@@ -1281,7 +1386,9 @@
 							{:else}
 								<div class="space-y-2">
 									{#each selectedOrder.refunds as refund (refund.id)}
-										<div class="rounded-lg border border-[var(--border-muted)] bg-white p-3 shadow-sm">
+										<div
+											class="rounded-lg border border-[var(--border-muted)] bg-white p-3 shadow-sm"
+										>
 											<div class="flex items-center justify-between gap-2">
 												<p class="text-[12px] font-semibold text-foreground">
 													{formatINR(refund.amount)}
@@ -1319,7 +1426,9 @@
 							{:else}
 								<div class="space-y-2">
 									{#each selectedOrder.adminEvents as event (event.id)}
-										<div class="rounded-lg border border-[var(--border-muted)] bg-white p-3 shadow-sm">
+										<div
+											class="rounded-lg border border-[var(--border-muted)] bg-white p-3 shadow-sm"
+										>
 											<div class="flex items-center justify-between gap-2">
 												<p class="text-[12px] font-medium text-foreground">
 													{event.eventType.replaceAll('_', ' ')}
@@ -1351,4 +1460,3 @@
 		</div>
 	</section>
 </div>
-

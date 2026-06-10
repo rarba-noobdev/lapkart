@@ -2,10 +2,12 @@
 	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import AdminCommandPalette from '$lib/components/admin/AdminCommandPalette.svelte';
 	import AdminOrdersManager from '$lib/components/admin/AdminOrdersManager.svelte';
 	import AdminSupportManager from '$lib/components/admin/AdminSupportManager.svelte';
 	import AdminGrievanceManager from '$lib/components/admin/AdminGrievanceManager.svelte';
 	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
+	import type { AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
 	import { categories, formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
@@ -20,6 +22,7 @@
 		LifeBuoy,
 		Package,
 		Plus,
+		Search,
 		ShieldAlert,
 		Tag,
 		Trash2,
@@ -230,6 +233,24 @@
 		{ id: 'support', label: 'Support', icon: LifeBuoy }
 	];
 
+	const navGroups: Array<{ label: string; ids: AdminView[] }> = [
+		{ label: 'Monitor', ids: ['overview'] },
+		{ label: 'Commerce', ids: ['operations', 'catalog', 'promos'] },
+		{ label: 'People', ids: ['users', 'support'] }
+	];
+
+	const tabById = new Map(tabs.map((tab) => [tab.id, tab]));
+	const tabHint = (id: AdminView) => String(tabs.findIndex((tab) => tab.id === id) + 1);
+
+	const viewDescriptions: Record<AdminView, string> = {
+		overview: 'Store health, revenue, and what needs attention',
+		operations: 'Orders, fulfillment, cancellations, and refunds',
+		catalog: 'Products, pricing, stock, and search indexing',
+		users: 'Customer accounts and staff roles',
+		promos: 'Coupons and discounts',
+		support: 'Complaints, deletion requests, and product Q&A'
+	};
+
 	const operationsSections: Array<{
 		id: OperationsSection;
 		label: string;
@@ -264,6 +285,9 @@
 	let prevView = $state<AdminView>(initialView);
 	let operationsSection = $state<OperationsSection>('orders');
 	let ordersInitialFilter = $state<string | null>(null);
+	let ordersInitialSearch = $state<string | null>(null);
+	let ordersInitialSelectId = $state<string | null>(null);
+	let paletteOpen = $state(false);
 	let mountedViews = $state<AdminView[]>(
 		initialView === 'overview' ? ['overview'] : ['overview', initialView]
 	);
@@ -732,6 +756,55 @@
 		setView('operations');
 	}
 
+	function paletteNavigate(sectionId: string) {
+		if (isAdminView(sectionId)) setView(sectionId);
+	}
+
+	function paletteSelectProduct(product: unknown) {
+		// The palette searches /admin/products which returns the full admin row.
+		const row = product as AdminProduct;
+		setView('catalog');
+		selectedProductId = row.id;
+		productEditor = mapProductToEditor(row);
+		productNotice = null;
+	}
+
+	function paletteSelectOrder(order: AdminOrderRecord) {
+		ordersInitialFilter = null;
+		ordersInitialSearch = order.shippingName || order.shippingEmail || order.shippingPhone || '';
+		ordersInitialSelectId = order.id;
+		operationsSection = 'orders';
+		setView('operations');
+	}
+
+	function paletteCreateProduct() {
+		setView('catalog');
+		beginCreateProduct();
+	}
+
+	function handleGlobalKeydown(event: KeyboardEvent) {
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+			event.preventDefault();
+			paletteOpen = !paletteOpen;
+			return;
+		}
+		if (paletteOpen || event.ctrlKey || event.metaKey || event.altKey) return;
+		const target = event.target as HTMLElement | null;
+		if (
+			target &&
+			(target.tagName === 'INPUT' ||
+				target.tagName === 'TEXTAREA' ||
+				target.tagName === 'SELECT' ||
+				target.isContentEditable)
+		) {
+			return;
+		}
+		const index = Number(event.key);
+		if (Number.isInteger(index) && index >= 1 && index <= tabs.length) {
+			setView(tabs[index - 1].id);
+		}
+	}
+
 	function scheduleAdminRealtimeRefresh(
 		targets: Partial<typeof pendingRealtimeRefresh> = { analytics: true }
 	) {
@@ -1026,6 +1099,17 @@
 	<title>Admin - lapkart</title>
 </svelte:head>
 
+<svelte:window onkeydown={handleGlobalKeydown} />
+
+<AdminCommandPalette
+	bind:open={paletteOpen}
+	sections={tabs.map((tab) => ({ id: tab.id, label: tab.label, hint: tabHint(tab.id) }))}
+	onNavigate={paletteNavigate}
+	onSelectProduct={paletteSelectProduct}
+	onSelectOrder={paletteSelectOrder}
+	onCreateProduct={paletteCreateProduct}
+/>
+
 <div class="admin-shell">
 	<!-- Sidebar navigation -->
 	<aside class="admin-sidebar">
@@ -1043,26 +1127,42 @@
 			{/if}
 		</div>
 
+		<div class="px-3 pt-3">
+			<button type="button" class="palette-trigger" onclick={() => (paletteOpen = true)}>
+				<Search class="size-3.5" strokeWidth={2} />
+				<span class="flex-1 text-left">Search anything</span>
+				<kbd class="palette-kbd">Ctrl K</kbd>
+			</button>
+		</div>
+
 		<nav class="sidebar-nav">
-			{#each tabs as tab (tab.id)}
-				<button
-					type="button"
-					class="sidebar-item {view === tab.id ? 'active' : ''}"
-					onclick={() => setView(tab.id)}
-				>
-					{#if view === tab.id}
-						<span
-							class="sidebar-indicator"
-							in:receive={{ key: 'sidebar-active' }}
-							out:send={{ key: 'sidebar-active' }}
-						></span>
-					{/if}
-					<tab.icon class="size-[18px]" strokeWidth={1.8} />
-					<span class="sidebar-label">{tab.label}</span>
-					{#if tab.id === 'operations' && (analytics?.pendingFulfillment ?? 0) > 0}
-						<span class="sidebar-badge">{analytics?.pendingFulfillment}</span>
-					{/if}
-				</button>
+			{#each navGroups as group (group.label)}
+				<p class="sidebar-group-label">{group.label}</p>
+				{#each group.ids as tabId (tabId)}
+					{@const tab = tabById.get(tabId)!}
+					<button
+						type="button"
+						class="sidebar-item {view === tab.id ? 'active' : ''}"
+						onclick={() => setView(tab.id)}
+					>
+						{#if view === tab.id}
+							<span
+								class="sidebar-indicator"
+								in:receive={{ key: 'sidebar-active' }}
+								out:send={{ key: 'sidebar-active' }}
+							></span>
+						{/if}
+						<tab.icon class="size-[18px]" strokeWidth={1.8} />
+						<span class="sidebar-label">{tab.label}</span>
+						{#if tab.id === 'operations' && (analytics?.pendingFulfillment ?? 0) > 0}
+							<span class="sidebar-badge">{analytics?.pendingFulfillment}</span>
+						{:else if tab.id === 'support' && (analytics?.openSupport ?? 0) > 0}
+							<span class="sidebar-badge">{analytics?.openSupport}</span>
+						{:else}
+							<kbd class="sidebar-key">{tabHint(tab.id)}</kbd>
+						{/if}
+					</button>
+				{/each}
 			{/each}
 		</nav>
 
@@ -1108,6 +1208,46 @@
 
 	<!-- Main content area -->
 	<main class="admin-main">
+		<header class="admin-topbar">
+			<div class="min-w-0">
+				<h1 class="truncate text-[15px] font-semibold tracking-tight text-foreground">
+					{tabById.get(view)?.label}
+				</h1>
+				<p class="truncate text-[11px] text-[var(--black-alpha-40)]">
+					{viewDescriptions[view]}
+				</p>
+			</div>
+			<div class="flex shrink-0 items-center gap-2">
+				{#if (analytics?.pendingFulfillment ?? 0) > 0}
+					<button
+						type="button"
+						class="hidden items-center gap-1.5 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-2.5 py-1 text-[11px] font-medium text-[var(--heat-100)] transition-colors hover:border-[var(--heat-100)] sm:inline-flex"
+						onclick={() => openOperations('fulfillment')}
+					>
+						<span class="relative flex size-1.5">
+							<span
+								class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--heat-100)] opacity-60"
+							></span>
+							<span class="relative inline-flex size-1.5 rounded-full bg-[var(--heat-100)]"></span>
+						</span>
+						{analytics?.pendingFulfillment} to fulfil
+					</button>
+				{/if}
+				<button
+					type="button"
+					class="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] text-[var(--black-alpha-48)] shadow-sm transition-colors hover:border-[var(--black-alpha-24)] hover:text-foreground"
+					onclick={() => (paletteOpen = true)}
+				>
+					<Search class="size-3.5" strokeWidth={2} />
+					<span class="hidden sm:inline">Search</span>
+					<kbd
+						class="hidden rounded border border-[var(--border-muted)] bg-[var(--background-lighter)] px-1 py-px font-mono text-[10px] sm:inline"
+					>
+						Ctrl K
+					</kbd>
+				</button>
+			</div>
+		</header>
 		{#if booting}
 			<div class="admin-loading-shell" in:fade={{ duration: 200 }}>
 				<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1172,7 +1312,9 @@
 														>
 															{card.count}
 														</p>
-														<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">{card.hint}</p>
+														<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
+															{card.hint}
+														</p>
 													</div>
 													<ArrowUpRight
 														class="size-4 text-[var(--heat-100)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
@@ -1944,7 +2086,11 @@
 								</div>
 
 								{#if operationsSection === 'orders'}
-									<AdminOrdersManager initialFilter={ordersInitialFilter} />
+									<AdminOrdersManager
+										initialFilter={ordersInitialFilter}
+										initialSearch={ordersInitialSearch}
+										initialSelectId={ordersInitialSelectId}
+									/>
 								{:else}
 									<FulfillmentQueue />
 								{/if}
@@ -2436,11 +2582,68 @@
 	}
 
 	.sidebar-nav {
-		padding: 12px 10px;
+		padding: 6px 10px 12px;
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	.sidebar-group-label {
+		padding: 14px 12px 4px;
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 9px;
+		letter-spacing: 0.22em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.24);
+	}
+
+	.sidebar-key {
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.22);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
+		padding: 0 5px;
+		line-height: 16px;
+		opacity: 0;
+		transition: opacity 150ms ease;
+	}
+
+	.sidebar-item:hover .sidebar-key,
+	.sidebar-item.active .sidebar-key {
+		opacity: 1;
+	}
+
+	.palette-trigger {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.04);
+		padding: 8px 10px;
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.38);
+		cursor: pointer;
+		transition: all 160ms ease;
+	}
+
+	.palette-trigger:hover {
+		border-color: rgba(255, 255, 255, 0.2);
+		color: rgba(255, 255, 255, 0.65);
+		background: rgba(255, 255, 255, 0.07);
+	}
+
+	.palette-kbd {
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 4px;
+		padding: 1px 5px;
+		color: rgba(255, 255, 255, 0.3);
 	}
 
 	.sidebar-item {
@@ -2536,6 +2739,20 @@
 		background: var(--background-base);
 		min-height: 100dvh;
 		overflow-x: hidden;
+	}
+
+	.admin-topbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 24px;
+		border-bottom: 1px solid var(--border-faint);
+		background: rgba(255, 255, 255, 0.72);
+		backdrop-filter: blur(8px);
+		position: sticky;
+		top: 0;
+		z-index: 10;
 	}
 
 	.admin-loading-shell {
@@ -2771,6 +2988,11 @@
 
 		.admin-main {
 			min-height: 100dvh;
+		}
+
+		.admin-topbar {
+			position: static;
+			padding: 10px 12px;
 		}
 	}
 
