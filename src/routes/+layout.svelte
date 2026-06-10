@@ -108,8 +108,13 @@
 
 		syncProfileChannel(user?.id);
 
-		const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+		const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
 			syncProfileChannel(session?.user?.id);
+			if (event === 'SIGNED_OUT') {
+				// Purge any cached page HTML so a signed-out (or next) user can't
+				// pull a previous session's pages from the service worker cache.
+				navigator.serviceWorker?.controller?.postMessage({ type: 'clear-pages' });
+			}
 			if (session?.expires_at !== claims?.exp) void invalidate('supabase:auth');
 		});
 

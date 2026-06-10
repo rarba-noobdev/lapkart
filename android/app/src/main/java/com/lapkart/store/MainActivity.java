@@ -97,18 +97,30 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private static final String ALLOWED_HOST = "lapkart-five.vercel.app";
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
 
         Uri data = intent.getData();
-        if (data != null) {
-            Bridge bridge = this.getBridge();
-            if (bridge != null) {
-                WebView webView = bridge.getWebView();
-                if (webView != null) {
-                    webView.post(() -> webView.loadUrl(data.toString()));
-                }
+        if (data == null) return;
+
+        // Only load https deep links that target our own deployment. Without this
+        // any app could fire an ACTION_VIEW intent with an arbitrary URI and have
+        // it loaded into the in-app WebView (phishing / arbitrary content in the
+        // trusted app shell).
+        String scheme = data.getScheme();
+        String host = data.getHost();
+        if (!"https".equalsIgnoreCase(scheme) || !ALLOWED_HOST.equalsIgnoreCase(host)) {
+            return;
+        }
+
+        Bridge bridge = this.getBridge();
+        if (bridge != null) {
+            WebView webView = bridge.getWebView();
+            if (webView != null) {
+                webView.post(() -> webView.loadUrl(data.toString()));
             }
         }
     }

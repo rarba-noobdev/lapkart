@@ -15,6 +15,17 @@ const PAGE_CACHE = `pages-${version}`;
 
 const PRECACHE = [...build, ...files];
 
+// Only public, non-personalized pages may be stored in PAGE_CACHE. Caching an
+// authenticated route (orders/profile/order/cart/checkout) would persist one
+// user's private HTML on the device, where it could be served offline to a
+// different user or after sign-out. Those routes stay network-only — no cached
+// copy is ever written, so there is nothing to leak.
+const PRIVATE_PREFIXES = ['/orders', '/order/', '/profile', '/cart', '/checkout', '/login', '/admin', '/auth/'];
+
+function isCacheablePage(pathname: string): boolean {
+	return !PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+}
+
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
 		(async () => {
@@ -62,11 +73,21 @@ sw.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// Page navigations: network-first so online users always get fresh SSR data,
-	// with the last cached copy as the offline fallback.
-	if (request.mode === 'navigate') {
+	// Public page navigations: network-first so online users always get fresh
+	// SSR data, with the last cached copy as the offline fallback. Authenticated
+	// routes are never cached (see PRIVATE_PREFIXES) and fall through to the
+	// network untouched.
+	if (request.mode === 'navigate' && isCacheablePage(url.pathname)) {
 		event.respondWith(networkFirst(request, PAGE_CACHE));
 		return;
+	}
+});
+
+// Allow the app to purge cached pages on sign-out as defense-in-depth, even
+// though private routes are never cached in the first place.
+sw.addEventListener('message', (event) => {
+	if (event.data?.type === 'clear-pages') {
+		event.waitUntil(caches.delete(PAGE_CACHE));
 	}
 });
 
