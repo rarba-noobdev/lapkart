@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { isStaffRole, normalizeAppRole } from '$lib/roles';
+import { CONSENT_POLICY_VERSION } from '$lib/consent';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,6 +78,7 @@ export const actions: Actions = {
 			.trim()
 			.toLowerCase();
 		const password = String(formData.get('password') ?? '');
+		const acceptedTerms = formData.get('acceptTerms') === 'on';
 		const redirectTarget = sanitizeRedirect(String(formData.get('redirectTo') ?? ''));
 
 		if (fullName.length < 2) {
@@ -109,6 +111,16 @@ export const actions: Actions = {
 			});
 		}
 
+		if (!acceptedTerms) {
+			return fail(400, {
+				mode: 'signup' as const,
+				fullName,
+				email,
+				redirectTarget,
+				message: 'Please accept the Terms and Privacy Policy to continue.'
+			});
+		}
+
 		const { data, error } = await locals.supabase.auth.signUp({
 			email,
 			password,
@@ -130,6 +142,13 @@ export const actions: Actions = {
 		}
 
 		if (data.user && data.session) {
+			await locals.supabase.rpc('record_consent', {
+				p_purpose: 'terms_privacy',
+				p_granted: true,
+				p_policy_version: CONSENT_POLICY_VERSION,
+				p_source: 'signup',
+				p_user_agent: request.headers.get('user-agent') ?? null
+			});
 			const role = await getRoleForUser(locals, data.user.id);
 			redirect(303, isStaffRole(role) ? '/admin' : redirectTarget);
 		}

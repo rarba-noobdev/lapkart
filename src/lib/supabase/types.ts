@@ -65,6 +65,39 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			user_consents: {
+				Row: {
+					created_at: string;
+					granted: boolean;
+					id: string;
+					policy_version: string;
+					purpose: string;
+					source: string;
+					user_agent: string | null;
+					user_id: string;
+				};
+				Insert: {
+					created_at?: string;
+					granted: boolean;
+					id?: string;
+					policy_version: string;
+					purpose: string;
+					source: string;
+					user_agent?: string | null;
+					user_id: string;
+				};
+				Update: {
+					created_at?: string;
+					granted?: boolean;
+					id?: string;
+					policy_version?: string;
+					purpose?: string;
+					source?: string;
+					user_agent?: string | null;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			admin_order_events: {
 				Row: {
 					admin_user_id: string | null;
@@ -1992,6 +2025,16 @@ export type Database = {
 				Returns: boolean;
 			};
 			is_admin: { Args: never; Returns: boolean };
+			record_consent: {
+				Args: {
+					p_purpose: string;
+					p_granted: boolean;
+					p_policy_version: string;
+					p_source: string;
+					p_user_agent?: string | null;
+				};
+				Returns: Database['public']['Tables']['user_consents']['Row'];
+			};
 		};
 		Enums: {
 			app_role: 'admin' | 'user' | 'owner';

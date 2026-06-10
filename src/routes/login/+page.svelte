@@ -218,6 +218,23 @@
 						</div>
 					</label>
 
+					{#if mode === 'signup'}
+						<label class="flex items-start gap-2 text-[11px] leading-relaxed text-[var(--black-alpha-56)]">
+							<input
+								type="checkbox"
+								name="acceptTerms"
+								class="mt-0.5 size-3.5 shrink-0 accent-[var(--heat-100)]"
+								required
+							/>
+							<span>
+								I have read and agree to the
+								<a href={resolve('/terms')} class="underline underline-offset-2 hover:text-foreground">Terms</a>
+								and
+								<a href={resolve('/privacy')} class="underline underline-offset-2 hover:text-foreground">Privacy Policy</a>.
+							</span>
+						</label>
+					{/if}
+
 					{#if activeMessage}
 						<div class="flex items-start gap-2 rounded-md border px-3 py-2 text-[12px]
 							{isSuccessMessage

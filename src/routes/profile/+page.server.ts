@@ -2,6 +2,9 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { listOrdersForUser } from '$lib/orders';
 import { isStaffRole, normalizeAppRole } from '$lib/roles';
+import { CONSENT_POLICY_VERSION, MARKETING_PURPOSES, type ConsentPurpose } from '$lib/consent';
+
+const MARKETING_PURPOSE_SET = new Set<ConsentPurpose>(MARKETING_PURPOSES.map((p) => p.purpose));
 
 export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 	const { user, role } = await parent();
@@ -16,8 +19,10 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 
 	depends('app:profile');
 	depends(`orders:user:${user.id}`);
+	depends('app:consents');
 
-	const [profileResult, orders, orderTotalsResult, addressesResult] = await Promise.all([
+	const [profileResult, orders, orderTotalsResult, addressesResult, consentsResult] =
+		await Promise.all([
 		locals.supabase.from('profiles').select('full_name,phone').eq('id', user.id).maybeSingle(),
 		listOrdersForUser(user.id, locals.supabase, 10),
 		locals.supabase.from('orders').select('id,total').eq('user_id', user.id),
@@ -29,11 +34,23 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 			.eq('user_id', user.id)
 			.order('is_default', { ascending: false })
 			.order('created_at', { ascending: false })
-			.limit(20)
+			.limit(20),
+		locals.supabase
+			.from('user_consents')
+			.select('purpose,granted,created_at')
+			.eq('user_id', user.id)
+			.in('purpose', [...MARKETING_PURPOSE_SET])
+			.order('created_at', { ascending: false })
 	]);
 
 	if (profileResult.error) {
 		throw profileResult.error;
+	}
+
+	// Latest row per purpose wins (append-only ledger). Default to not-granted.
+	const marketingConsent: Record<string, boolean> = {};
+	for (const row of consentsResult.data ?? []) {
+		if (!(row.purpose in marketingConsent)) marketingConsent[row.purpose] = row.granted;
 	}
 
 	if (orderTotalsResult.error) {
@@ -51,7 +68,9 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 			(sum, order) => sum + Number(order.total ?? 0),
 			0
 		),
-		addresses: addressesResult.data ?? []
+		addresses: addressesResult.data ?? [],
+		marketingPurposes: MARKETING_PURPOSES,
+		marketingConsent
 	};
 };
 
@@ -294,6 +313,33 @@ export const actions: Actions = {
 		}
 
 		return { success: true, message: 'Address deleted.' };
+	},
+
+	updateMarketingConsent: async ({ request, locals }) => {
+		const { user } = await locals.safeGetSession();
+		if (!user) redirect(303, '/login?redirect=/profile');
+
+		const fd = await request.formData();
+		const purpose = String(fd.get('purpose') ?? '') as ConsentPurpose;
+		const granted = fd.get('granted') === 'true';
+
+		if (!MARKETING_PURPOSE_SET.has(purpose)) {
+			return fail(400, { success: false, message: 'Unknown consent option.' });
+		}
+
+		const { error } = await locals.supabase.rpc('record_consent', {
+			p_purpose: purpose,
+			p_granted: granted,
+			p_policy_version: CONSENT_POLICY_VERSION,
+			p_source: 'profile',
+			p_user_agent: request.headers.get('user-agent') ?? null
+		});
+
+		if (error) {
+			return fail(400, { success: false, message: error.message });
+		}
+
+		return { success: true, message: granted ? 'Preference enabled.' : 'Preference disabled.' };
 	},
 
 	setDefaultAddress: async ({ request, locals }) => {

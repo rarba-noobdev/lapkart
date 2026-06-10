@@ -32,6 +32,10 @@
 
 	const orders = $derived((data as any).orders as OrderSummary[]);
 	const addresses = $derived((data as any).addresses as Tables<'addresses'>[]);
+	const marketingPurposes = $derived(
+		(data as any).marketingPurposes as { purpose: string; label: string; description: string }[]
+	);
+	const marketingConsent = $derived((data as any).marketingConsent as Record<string, boolean>);
 	const orderCount = $derived(data.orderCount);
 	const totalSpent = $derived(data.totalSpent);
 	const phoneLocked = $derived(orderCount > 0);
@@ -569,6 +573,46 @@
 						{/each}
 					</div>
 				{/if}
+			</div>
+
+			<!-- ─── Communication preferences ─── -->
+			<div class="rounded-lg border border-[var(--border-faint)] bg-white">
+				<div class="border-b border-[var(--border-faint)] px-5 py-4">
+					<h2 class="text-[15px] font-medium text-foreground">Communication preferences</h2>
+					<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">
+						Choose which promotional messages you receive. Order and delivery updates are always sent.
+					</p>
+				</div>
+				<div class="divide-y divide-[var(--border-faint)]">
+					{#each marketingPurposes as item (item.purpose)}
+						{@const enabled = marketingConsent[item.purpose] ?? false}
+						<div class="flex items-start gap-3 px-5 py-4">
+							<div class="min-w-0 flex-1">
+								<p class="text-[13px] font-medium text-foreground">{item.label}</p>
+								<p class="mt-0.5 text-[11px] leading-relaxed text-[var(--black-alpha-48)]">
+									{item.description}
+								</p>
+							</div>
+							<form method="POST" action="?/updateMarketingConsent" use:enhance class="shrink-0">
+								<input type="hidden" name="purpose" value={item.purpose} />
+								<input type="hidden" name="granted" value={enabled ? 'false' : 'true'} />
+								<button
+									type="submit"
+									role="switch"
+									aria-checked={enabled}
+									aria-label={item.label}
+									class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+										{enabled ? 'bg-[var(--heat-100)]' : 'bg-[var(--border-muted)]'}"
+								>
+									<span
+										class="inline-block size-4 transform rounded-full bg-white transition-transform
+											{enabled ? 'translate-x-6' : 'translate-x-1'}"
+									></span>
+								</button>
+							</form>
+						</div>
+					{/each}
+				</div>
 			</div>
 
 			<!-- Account form (mobile only) -->
