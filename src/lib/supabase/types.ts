@@ -65,6 +65,51 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			grievances: {
+				Row: {
+					acknowledged_at: string | null;
+					assigned_to: string | null;
+					category: string;
+					created_at: string;
+					description: string;
+					id: string;
+					order_id: string | null;
+					resolution_note: string | null;
+					status: string;
+					subject: string;
+					updated_at: string;
+					user_id: string;
+				};
+				Insert: {
+					acknowledged_at?: string | null;
+					assigned_to?: string | null;
+					category: string;
+					created_at?: string;
+					description: string;
+					id?: string;
+					order_id?: string | null;
+					resolution_note?: string | null;
+					status?: string;
+					subject: string;
+					updated_at?: string;
+					user_id: string;
+				};
+				Update: {
+					acknowledged_at?: string | null;
+					assigned_to?: string | null;
+					category?: string;
+					created_at?: string;
+					description?: string;
+					id?: string;
+					order_id?: string | null;
+					resolution_note?: string | null;
+					status?: string;
+					subject?: string;
+					updated_at?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			data_deletion_requests: {
 				Row: {
 					admin_note: string | null;

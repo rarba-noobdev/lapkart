@@ -73,6 +73,7 @@
 						items: [
 							{ label: 'About', to: '/about' },
 							{ label: 'Contact', to: '/contact' },
+							{ label: 'Support & complaints', to: '/grievances' },
 							{ label: 'Cancellation & refunds', to: '/cancellation-refunds' }
 						]
 					},

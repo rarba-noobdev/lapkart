@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import AdminOrdersManager from '$lib/components/admin/AdminOrdersManager.svelte';
 	import AdminSupportManager from '$lib/components/admin/AdminSupportManager.svelte';
+	import AdminGrievanceManager from '$lib/components/admin/AdminGrievanceManager.svelte';
 	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
 	import { apiBase } from '$lib/api-base';
 	import { categories, formatINR } from '$lib/catalog';
@@ -2336,7 +2337,10 @@
 								</div>
 							{/if}
 						{:else if view === 'support'}
-							<AdminSupportManager />
+							<div class="space-y-8">
+								<AdminGrievanceManager />
+								<AdminSupportManager />
+							</div>
 						{/if}
 					</div>
 				{/key}
