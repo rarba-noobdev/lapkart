@@ -65,6 +65,39 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			data_deletion_requests: {
+				Row: {
+					admin_note: string | null;
+					id: string;
+					processed_at: string | null;
+					processed_by: string | null;
+					reason: string | null;
+					requested_at: string;
+					status: string;
+					user_id: string;
+				};
+				Insert: {
+					admin_note?: string | null;
+					id?: string;
+					processed_at?: string | null;
+					processed_by?: string | null;
+					reason?: string | null;
+					requested_at?: string;
+					status?: string;
+					user_id: string;
+				};
+				Update: {
+					admin_note?: string | null;
+					id?: string;
+					processed_at?: string | null;
+					processed_by?: string | null;
+					reason?: string | null;
+					requested_at?: string;
+					status?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			user_consents: {
 				Row: {
 					created_at: string;

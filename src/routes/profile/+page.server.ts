@@ -21,8 +21,14 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 	depends(`orders:user:${user.id}`);
 	depends('app:consents');
 
-	const [profileResult, orders, orderTotalsResult, addressesResult, consentsResult] =
-		await Promise.all([
+	const [
+		profileResult,
+		orders,
+		orderTotalsResult,
+		addressesResult,
+		consentsResult,
+		deletionRequestResult
+	] = await Promise.all([
 		locals.supabase.from('profiles').select('full_name,phone').eq('id', user.id).maybeSingle(),
 		listOrdersForUser(user.id, locals.supabase, 10),
 		locals.supabase.from('orders').select('id,total').eq('user_id', user.id),
@@ -40,7 +46,13 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 			.select('purpose,granted,created_at')
 			.eq('user_id', user.id)
 			.in('purpose', [...MARKETING_PURPOSE_SET])
-			.order('created_at', { ascending: false })
+			.order('created_at', { ascending: false }),
+		locals.supabase
+			.from('data_deletion_requests')
+			.select('id,status,requested_at')
+			.eq('user_id', user.id)
+			.eq('status', 'pending')
+			.maybeSingle()
 	]);
 
 	if (profileResult.error) {
@@ -70,7 +82,8 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 		),
 		addresses: addressesResult.data ?? [],
 		marketingPurposes: MARKETING_PURPOSES,
-		marketingConsent
+		marketingConsent,
+		pendingDeletionRequest: deletionRequestResult.data ?? null
 	};
 };
 
@@ -340,6 +353,60 @@ export const actions: Actions = {
 		}
 
 		return { success: true, message: granted ? 'Preference enabled.' : 'Preference disabled.' };
+	},
+
+	requestAccountDeletion: async ({ request, locals }) => {
+		const { user } = await locals.safeGetSession();
+		if (!user) redirect(303, '/login?redirect=/profile');
+
+		const fd = await request.formData();
+		const reason = String(fd.get('reason') ?? '').trim().slice(0, 1000);
+
+		const { error } = await locals.supabase.from('data_deletion_requests').insert({
+			user_id: user.id,
+			status: 'pending',
+			reason: reason || null
+		});
+
+		if (error) {
+			// Unique partial index rejects a second open request.
+			if (error.code === '23505') {
+				return fail(400, {
+					success: false,
+					message: 'You already have a deletion request in progress.'
+				});
+			}
+			return fail(400, { success: false, message: error.message });
+		}
+
+		return {
+			success: true,
+			message: 'Deletion request received. Our team will process it and confirm by email.'
+		};
+	},
+
+	cancelAccountDeletion: async ({ request, locals }) => {
+		const { user } = await locals.safeGetSession();
+		if (!user) redirect(303, '/login?redirect=/profile');
+
+		const fd = await request.formData();
+		const requestId = String(fd.get('requestId') ?? '');
+		if (!requestId) {
+			return fail(400, { success: false, message: 'Request ID missing.' });
+		}
+
+		const { error } = await locals.supabase
+			.from('data_deletion_requests')
+			.update({ status: 'cancelled' })
+			.eq('id', requestId)
+			.eq('user_id', user.id)
+			.eq('status', 'pending');
+
+		if (error) {
+			return fail(400, { success: false, message: error.message });
+		}
+
+		return { success: true, message: 'Deletion request cancelled.' };
 	},
 
 	setDefaultAddress: async ({ request, locals }) => {

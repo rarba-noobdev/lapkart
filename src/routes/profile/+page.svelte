@@ -6,6 +6,7 @@
 		ArrowRight,
 		Check,
 		ChevronRight,
+		Download,
 		Lock,
 		Mail,
 		MapPin,
@@ -13,6 +14,7 @@
 		Pencil,
 		Plus,
 		Save,
+		ShieldAlert,
 		ShoppingBag,
 		Star,
 		Trash2,
@@ -36,6 +38,10 @@
 		(data as any).marketingPurposes as { purpose: string; label: string; description: string }[]
 	);
 	const marketingConsent = $derived((data as any).marketingConsent as Record<string, boolean>);
+	const pendingDeletion = $derived(
+		(data as any).pendingDeletionRequest as { id: string; requested_at: string } | null
+	);
+	let showDeleteConfirm = $state(false);
 	const orderCount = $derived(data.orderCount);
 	const totalSpent = $derived(data.totalSpent);
 	const phoneLocked = $derived(orderCount > 0);
@@ -612,6 +618,110 @@
 							</form>
 						</div>
 					{/each}
+				</div>
+			</div>
+
+			<!-- ─── Privacy & data ─── -->
+			<div class="rounded-lg border border-[var(--border-faint)] bg-white">
+				<div class="border-b border-[var(--border-faint)] px-5 py-4">
+					<h2 class="text-[15px] font-medium text-foreground">Privacy & your data</h2>
+					<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">
+						Download a copy of your data or ask us to delete your account.
+					</p>
+				</div>
+
+				<div class="flex items-center gap-3 px-5 py-4">
+					<div class="min-w-0 flex-1">
+						<p class="text-[13px] font-medium text-foreground">Download my data</p>
+						<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+							Profile, addresses, orders, payments and consents as a JSON file.
+						</p>
+					</div>
+					<a
+						href={resolve('/profile/export')}
+						download
+						class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-[var(--border-muted)] px-4 text-[12px] font-medium text-foreground transition-colors hover:bg-[var(--background-lighter)]"
+					>
+						<Download class="size-3.5" />
+						Export
+					</a>
+				</div>
+
+				<div class="border-t border-[var(--border-faint)] px-5 py-4">
+					{#if pendingDeletion}
+						<div class="flex items-start gap-2 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 px-3 py-2.5">
+							<ShieldAlert class="mt-0.5 size-4 shrink-0 text-[var(--accent-crimson)]" />
+							<div class="min-w-0 flex-1">
+								<p class="text-[12px] font-medium text-[var(--accent-crimson)]">
+									Account deletion requested
+								</p>
+								<p class="mt-0.5 text-[11px] text-[var(--black-alpha-56)]">
+									Our team is processing your request. You can cancel while it is still pending.
+								</p>
+								<form method="POST" action="?/cancelAccountDeletion" use:enhance={handleSubmit} class="mt-2">
+									<input type="hidden" name="requestId" value={pendingDeletion.id} />
+									<button
+										type="submit"
+										class="text-[11px] font-medium text-foreground underline underline-offset-2"
+									>
+										Cancel deletion request
+									</button>
+								</form>
+							</div>
+						</div>
+					{:else if showDeleteConfirm}
+						<div class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3">
+							<p class="text-[12px] font-medium text-[var(--accent-crimson)]">
+								Delete your account?
+							</p>
+							<p class="mt-1 text-[11px] leading-relaxed text-[var(--black-alpha-56)]">
+								We will remove your personal data after any legally required retention (such as tax
+								invoices). This cannot be undone once processed.
+							</p>
+							<form method="POST" action="?/requestAccountDeletion" use:enhance={handleSubmit} class="mt-3">
+								<textarea
+									name="reason"
+									rows="2"
+									maxlength="1000"
+									placeholder="Optional: tell us why you're leaving"
+									class="input-field !h-auto w-full resize-none text-[12px]"
+								></textarea>
+								<div class="mt-3 flex gap-2">
+									<button
+										type="button"
+										onclick={() => (showDeleteConfirm = false)}
+										class="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-[var(--border-muted)] text-[12px] font-medium text-foreground"
+									>
+										Keep my account
+									</button>
+									<button
+										type="submit"
+										disabled={saving}
+										class="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-[var(--accent-crimson)] text-[12px] font-medium text-white disabled:opacity-50"
+									>
+										Request deletion
+									</button>
+								</div>
+							</form>
+						</div>
+					{:else}
+						<div class="flex items-center gap-3">
+							<div class="min-w-0 flex-1">
+								<p class="text-[13px] font-medium text-foreground">Delete my account</p>
+								<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+									Request erasure of your account and personal data.
+								</p>
+							</div>
+							<button
+								type="button"
+								onclick={() => (showDeleteConfirm = true)}
+								class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-[var(--accent-crimson)]/30 px-4 text-[12px] font-medium text-[var(--accent-crimson)] transition-colors hover:bg-[var(--accent-crimson)]/8"
+							>
+								<Trash2 class="size-3.5" />
+								Delete
+							</button>
+						</div>
+					{/if}
 				</div>
 			</div>
 
