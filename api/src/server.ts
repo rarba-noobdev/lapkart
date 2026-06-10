@@ -732,7 +732,7 @@ async function requireAdmin(
 			.maybeSingle();
 
 		if (roleError) throw roleError;
-		if (roleRow?.role !== 'admin') {
+		if (roleRow?.role !== 'admin' && roleRow?.role !== 'owner') {
 			res.status(403).json({ error: 'Admin role is required' });
 			return;
 		}
