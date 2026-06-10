@@ -24,6 +24,7 @@ declare global {
 	}
 
 	interface Window {
+		dataLayer: unknown[];
 		Razorpay?: new (options: {
 			key: string;
 			amount: number;

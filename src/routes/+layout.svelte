@@ -63,6 +63,22 @@
 	onMount(() => {
 		hydrateCart();
 
+		// Google Analytics (gtag.js). Loaded here instead of an inline app.html
+		// block so it stays CSP-clean (external loader is host-allowlisted, init
+		// runs from bundled JS — no inline script hash to maintain).
+		const GA_ID = 'G-154H1YG3SM';
+		const gaScript = document.createElement('script');
+		gaScript.async = true;
+		gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+		document.head.appendChild(gaScript);
+		window.dataLayer = window.dataLayer || [];
+		function gtag(..._args: unknown[]) {
+			// eslint-disable-next-line prefer-rest-params
+			window.dataLayer.push(arguments);
+		}
+		gtag('js', new Date());
+		gtag('config', GA_ID);
+
 		let profileChannel: ReturnType<typeof supabase.channel> | null = null;
 		let currentProfileChannelUserId: string | null = null;
 
