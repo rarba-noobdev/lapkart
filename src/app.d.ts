@@ -25,6 +25,7 @@ declare global {
 
 	interface Window {
 		dataLayer: unknown[];
+		gtag?: (...args: unknown[]) => void;
 		Razorpay?: new (options: {
 			key: string;
 			amount: number;

@@ -12,7 +12,9 @@
 	import NavigationLoader from '$lib/components/NavigationLoader.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import RouteSkeleton from '$lib/components/RouteSkeleton.svelte';
+	import CookieConsent from '$lib/components/CookieConsent.svelte';
 	import { hydrateCart } from '$lib/cart';
+	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
 
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
@@ -65,17 +67,36 @@
 
 		// Google Analytics (gtag.js). Loaded here instead of an inline app.html
 		// block so it stays CSP-clean (external loader is host-allowlisted, init
-		// runs from bundled JS — no inline script hash to maintain).
+		// runs from bundled JS — no inline script hash to maintain). Consent Mode
+		// v2 starts every storage type denied; analytics cookies are only written
+		// after the user accepts via the cookie banner (DPDP / e-privacy).
 		const GA_ID = 'G-154H1YG3SM';
-		const gaScript = document.createElement('script');
-		gaScript.async = true;
-		gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
-		document.head.appendChild(gaScript);
 		window.dataLayer = window.dataLayer || [];
 		function gtag(..._args: unknown[]) {
 			// eslint-disable-next-line prefer-rest-params
 			window.dataLayer.push(arguments);
 		}
+		window.gtag = gtag;
+		gtag('consent', 'default', {
+			analytics_storage: 'denied',
+			ad_storage: 'denied',
+			ad_user_data: 'denied',
+			ad_personalization: 'denied',
+			wait_for_update: 500
+		});
+		const storedConsent = loadStoredConsent();
+		if (storedConsent === 'granted') {
+			gtag('consent', 'update', {
+				analytics_storage: 'granted',
+				ad_storage: 'granted',
+				ad_user_data: 'granted',
+				ad_personalization: 'granted'
+			});
+		}
+		const gaScript = document.createElement('script');
+		gaScript.async = true;
+		gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+		document.head.appendChild(gaScript);
 		gtag('js', new Date());
 		gtag('config', GA_ID);
 
@@ -146,6 +167,8 @@
 </svelte:head>
 
 <NavigationLoader />
+
+<CookieConsent />
 
 <div
 	class={[
