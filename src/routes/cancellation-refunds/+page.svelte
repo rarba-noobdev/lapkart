@@ -4,7 +4,7 @@
 	const sections = [
 		{
 			title: 'Cancellation policy',
-			body: 'Orders can be cancelled before shipment. Once an order is placed, you may request cancellation from the order detail page in your account. If the order has not been handed over to the courier, cancellation is processed immediately. After courier pickup or AWB assignment, cancellation requests cannot be accepted through self-service and must be handled via our support team. Orders already in transit cannot be cancelled and must go through the return process after delivery.'
+			body: 'Orders can be cancelled before dispatch. Once an order is placed, you may request cancellation from the order detail page in your account. If the order has not been handed over for delivery, cancellation is processed immediately. After manual dispatch starts, cancellation requests cannot be accepted through self-service and must be handled via our support team. Orders already in transit cannot be cancelled and must go through the return process after delivery.'
 		},
 		{
 			title: 'Cancellation by LapKart',

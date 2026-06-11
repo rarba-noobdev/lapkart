@@ -1507,7 +1507,7 @@
 														{analytics?.pendingFulfillment ?? 0}
 													</p>
 													<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
-														Awaiting Shiprocket dispatch
+														Awaiting manual dispatch
 													</p>
 												</div>
 												<Truck class="size-5 text-[var(--heat-100)]" strokeWidth={1.5} />

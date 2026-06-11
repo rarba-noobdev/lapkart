@@ -4,15 +4,15 @@
 	const sections = [
 		{
 			title: 'Delivery estimates',
-			body: 'Delivery estimates shown during checkout are based on your selected location, route data, courier availability, package weight, and current logistics responses.'
+			body: 'Delivery estimates shown during checkout are based on your selected location, route data, package weight, and the current LapKart manual delivery rate card.'
 		},
 		{
 			title: 'Dispatch',
-			body: 'Paid orders are reviewed by the operations team, packed, and assigned to a courier. Tracking begins after shipment creation and AWB assignment.'
+			body: 'Paid orders are reviewed by the operations team, packed, and handed to the manual courier workflow. Live map tracking is not provided at this stage.'
 		},
 		{
 			title: 'Delays',
-			body: 'Courier delays, address issues, weather, or serviceability limits may affect delivery. Tracking updates are shown on the order detail page as they are received.'
+			body: 'Courier delays, address issues, weather, or serviceability limits may affect delivery. Order status updates are shown on the order detail page as staff updates the dispatch workflow.'
 		}
 	];
 </script>
@@ -20,6 +20,6 @@
 <StaticPage
 	eyebrow="Shipping"
 	title="Shipping policy"
-	description="Delivery cost and courier availability are checked before payment wherever serviceability data is available."
+	description="Delivery cost is calculated before payment using LapKart manual delivery rules."
 	{sections}
 />

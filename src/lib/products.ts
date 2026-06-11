@@ -21,6 +21,7 @@ export type ProductRow = {
 	rating: string | number;
 	reviews: number;
 	stock: number;
+	weight_kg?: string | number | null;
 	compatibility: string | null;
 	warranty: string | null;
 	highlights: string[] | null;
@@ -34,7 +35,7 @@ export type ProductRow = {
 };
 
 export const productSelectFields =
-	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
 	'id,title,brand,category,image,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
@@ -64,6 +65,7 @@ function getClient(client?: ProductClient) {
 }
 
 export function normalizeProductRow(row: ProductRow): Product {
+	const weightKg = Number(row.weight_kg);
 	return {
 		id: row.id,
 		title: row.title,
@@ -77,6 +79,7 @@ export function normalizeProductRow(row: ProductRow): Product {
 		rating: Number(row.rating),
 		reviews: row.reviews,
 		stock: row.stock,
+		weight_kg: Number.isFinite(weightKg) && weightKg > 0 ? weightKg : undefined,
 		compatibility: row.compatibility ?? '',
 		warranty: row.warranty ?? '',
 		highlights: row.highlights ?? [],

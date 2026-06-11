@@ -15,6 +15,11 @@
 	import { cartState, hydrateCart, removeFromCart, setCartQty, type CartItem } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
+	import {
+		MANUAL_DELIVERY_MIN_CHARGE,
+		calculateCartWeightKg,
+		calculateManualDeliveryCharge
+	} from '$lib/shipping';
 
 	let loading = $state(true);
 	let products = $state<Product[]>([]);
@@ -70,10 +75,9 @@
 	const subtotal = $derived(rows.reduce((sum, row) => sum + row.product.price * row.item.qty, 0));
 	const mrp = $derived(rows.reduce((sum, row) => sum + row.product.mrp * row.item.qty, 0));
 	const savings = $derived(mrp - subtotal);
-	const shipping = $derived(subtotal > 999 || subtotal === 0 ? 0 : 49);
+	const packageWeightKg = $derived(calculateCartWeightKg(rows));
+	const shipping = $derived(calculateManualDeliveryCharge(packageWeightKg, subtotal));
 	const total = $derived(subtotal + shipping);
-	const freeShippingGap = $derived(subtotal < 999 && subtotal > 0 ? 999 - subtotal : 0);
-	const freeShippingProgress = $derived(Math.min(100, (subtotal / 999) * 100));
 </script>
 
 <svelte:head>
@@ -136,21 +140,14 @@
 				</div>
 			</div>
 
-			<!-- Free shipping progress -->
-			{#if freeShippingGap > 0}
+			{#if subtotal > 0}
 				<div class="mb-4 rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:mb-5" in:fade={{ duration: 160 }}>
 					<div class="flex items-center justify-between text-[12px]">
 						<span class="flex items-center gap-1.5 text-[var(--black-alpha-56)]">
 							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
-							Add {formatINR(freeShippingGap)} more for free shipping
+							Manual delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}. Chargeable weight {Math.max(1, Math.ceil(packageWeightKg))} kg.
 						</span>
-						<span class="text-[11px] font-medium text-[var(--heat-100)]">{Math.round(freeShippingProgress)}%</span>
-					</div>
-					<div class="mt-2 h-1 overflow-hidden rounded-full bg-[var(--background-lighter)]">
-						<div
-							class="h-full rounded-full bg-[var(--heat-100)] transition-[width] duration-500 ease-out"
-							style:width="{freeShippingProgress}%"
-						></div>
+						<span class="text-[11px] font-medium text-[var(--heat-100)]">{formatINR(shipping)}</span>
 					</div>
 				</div>
 			{/if}
@@ -266,9 +263,7 @@
 							{/if}
 							<div class="flex justify-between text-[var(--black-alpha-64)]">
 								<span>Delivery</span>
-								<span class={shipping === 0 ? 'text-[var(--accent-forest)]' : 'text-foreground'}>
-									{shipping === 0 ? 'FREE' : formatINR(shipping)}
-								</span>
+								<span class="text-foreground">{formatINR(shipping)}</span>
 							</div>
 							<div class="border-t border-dashed border-[var(--border-muted)] pt-2.5">
 								<div class="flex items-baseline justify-between">

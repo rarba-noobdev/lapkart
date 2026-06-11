@@ -8,7 +8,7 @@
 		},
 		{
 			title: 'How orders are fulfilled',
-			body: 'Orders are paid through Razorpay, packed by LapKart operations, and fulfilled using configured logistics partners such as Shiprocket with tracking updates shown in your account.'
+			body: 'Orders are paid through Razorpay, packed by LapKart operations, and fulfilled through manual courier dispatch with status updates shown in your account.'
 		},
 		{
 			title: 'Support promise',

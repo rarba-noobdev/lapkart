@@ -64,7 +64,7 @@
 				{#if isAdmin}
 					Admin workspace for catalog, users, orders, and fulfillment
 				{:else}
-					Free shipping on orders above Rs 999
+					Manual delivery from Rs 50
 				{/if}
 			</span>
 			<a

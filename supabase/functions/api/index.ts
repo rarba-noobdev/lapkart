@@ -11,7 +11,6 @@ import {
 	createShiprocketReturnOrder,
 	generateShiprocketLabels,
 	generateShiprocketManifest,
-	getShiprocketDeliveryQuotes,
 	getShiprocketOrderDetails,
 	getShiprocketPickupLocations,
 	getShiprocketToken,
@@ -129,7 +128,20 @@ type AppliedCoupon = {
 	discountAmount: number;
 };
 
-type CourierQuote = Awaited<ReturnType<typeof getShiprocketDeliveryQuotes>>[number];
+type CourierQuote = {
+	quoteId: string;
+	courierCompanyId: number | null;
+	courierName: string;
+	rate: number;
+	rating: number;
+	etd: string;
+	expectedDeliveryDate: string | null;
+	estimatedDeliveryDays: number;
+	etdHours: number;
+	mode: string;
+	recommended: boolean;
+	serviceType: 'quick' | 'standard';
+};
 
 type CheckoutAddress = z.infer<typeof checkoutAddressSchema>;
 
@@ -196,6 +208,8 @@ const mapRateLimit = { limit: 48, windowMs: 60_000 };
 const uploadRateLimit = { limit: 12, windowMs: 60_000 };
 const webhookRateLimit = { limit: 120, windowMs: 60_000 };
 const checkoutSessionTtlMs = 20 * 60_000;
+const manualDeliveryMinCharge = 50;
+const manualDeliveryRatePerKg = 40;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const maxUploadBytes = 5 * 1024 * 1024;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -570,6 +584,55 @@ function roundMoney(value: number) {
 	return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function normalizedPackageWeightKg(weightKg: number | null | undefined) {
+	return Number.isFinite(weightKg) && Number(weightKg) > 0
+		? Number(weightKg)
+		: config.shiprocketDefaultWeightKg;
+}
+
+function calculateManualDeliveryCharge(weightKg: number, subtotal: number) {
+	if (subtotal <= 0) return 0;
+	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(weightKg)));
+	return Math.max(manualDeliveryMinCharge, chargeableKg * manualDeliveryRatePerKg);
+}
+
+function manualDeliveryDays(distanceMeters: number) {
+	const distanceKm = Math.max(0, distanceMeters / 1000);
+	if (distanceKm <= 25) return 1;
+	if (distanceKm <= 100) return 2;
+	if (distanceKm <= 500) return 4;
+	return 6;
+}
+
+function dateAfterDays(days: number) {
+	const date = new Date();
+	date.setDate(date.getDate() + Math.max(1, days));
+	return date.toISOString().slice(0, 10);
+}
+
+function getManualDeliveryQuote(input: {
+	weightKg: number;
+	subtotal: number;
+	distanceMeters: number;
+}): CourierQuote {
+	const estimatedDeliveryDays = manualDeliveryDays(input.distanceMeters);
+	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(input.weightKg)));
+	return {
+		quoteId: `manual:standard:${chargeableKg}kg`,
+		courierCompanyId: null,
+		courierName: 'LapKart Manual Delivery',
+		rate: calculateManualDeliveryCharge(input.weightKg, input.subtotal),
+		rating: 0,
+		etd: `${estimatedDeliveryDays}-${estimatedDeliveryDays + 1} days`,
+		expectedDeliveryDate: dateAfterDays(estimatedDeliveryDays + 1),
+		estimatedDeliveryDays,
+		etdHours: estimatedDeliveryDays * 24,
+		mode: `Manual courier · ${chargeableKg} kg`,
+		recommended: true,
+		serviceType: 'standard'
+	};
+}
+
 function formatCurrencyForError(value: number) {
 	return `INR ${roundMoney(value).toFixed(2)}`;
 }
@@ -603,10 +666,7 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 		? 'all_items_in_stock'
 		: 'stock_needs_review';
 	const routeMinutes = Math.ceil(summary.deliveryEstimate.route.durationSeconds / 60);
-	const dispatchQueue =
-		selectedCourier.serviceType === 'quick'
-			? 'quick_lane_after_awb_assignment'
-			: 'standard_pickup_after_awb_assignment';
+	const dispatchQueue = 'manual_dispatch_queue';
 
 	return {
 		mode: 'single_origin',
@@ -630,16 +690,10 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 			etdHours: selectedCourier.etdHours,
 			expectedDeliveryDate: selectedCourier.expectedDeliveryDate
 		},
-		customerMessage:
-			selectedCourier.serviceType === 'quick'
-				? `ASAP from LapKart dispatch, expected within ${Math.max(
-						1,
-						Math.ceil(selectedCourier.etdHours || 3)
-					)} hour(s) after packing.`
-				: `Standard courier from LapKart dispatch, expected ${selectedCourier.etd || 'as quoted by courier'}.`,
+		customerMessage: `Manual delivery from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}.`,
 		limitations: [
 			'No multi-zone or hub inventory is configured yet.',
-			'Promise is calculated from the configured LapKart pickup origin, live route, stock, and Shiprocket quote.'
+			'Promise is calculated from the configured LapKart dispatch origin, live route, stock, and manual delivery rate card.'
 		]
 	};
 }
@@ -1378,11 +1432,14 @@ async function createShiprocketShipmentForOrder(
 	return { shipment, shiprocket: response };
 }
 
-// Immediately creates the Shiprocket shipment and assigns an AWB the moment an
-// order is placed, then marks the order ready_for_delivery so a courier pickup
-// is dispatched without manual fulfillment steps. Non-fatal: any failure leaves
-// the order in 'confirmed' so it surfaces in the fulfillment queue for a retry.
+// Shiprocket auto-fulfillment is retained behind FULFILLMENT_PROVIDER=shiprocket.
+// The default manual provider leaves orders in confirmed/processing for staff dispatch.
 async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, orderId: string) {
+	if (config.fulfillmentProvider !== 'shiprocket') {
+		void adminDb;
+		void orderId;
+		return;
+	}
 	if (config.razorpayKeyId.startsWith('rzp_test_') && !config.allowShiprocketWithTestPayments) {
 		return;
 	}
@@ -2311,22 +2368,23 @@ async function buildCheckoutSummary(
 		)
 	);
 
-	const [route, couriers] = await Promise.all([
-		getOlaDeliveryRoute({ latitude: input.address.latitude, longitude: input.address.longitude }),
-		getShiprocketDeliveryQuotes({
-			deliveryPincode: input.address.pincode,
-			deliveryLatitude: input.address.latitude,
-			deliveryLongitude: input.address.longitude,
+	const route = await getOlaDeliveryRoute({
+		latitude: input.address.latitude,
+		longitude: input.address.longitude
+	});
+	const couriers = [
+		getManualDeliveryQuote({
 			weightKg,
-			declaredValue: subtotal
+			subtotal,
+			distanceMeters: route.distanceMeters
 		})
-	]);
+	];
 
 	if (!couriers.length)
-		throw new HttpError(400, 'No courier currently services this delivery location');
+		throw new HttpError(400, 'Manual delivery is currently unavailable for this location');
 	const fallbackCourier = couriers[0];
 	if (!fallbackCourier)
-		throw new HttpError(400, 'No courier currently services this delivery location');
+		throw new HttpError(400, 'Manual delivery is currently unavailable for this location');
 	const selectedCourier =
 		couriers.find((courier) => courier.quoteId === input.selectedQuoteId) ??
 		couriers.find((courier) => courier.recommended) ??
@@ -2342,7 +2400,7 @@ async function buildCheckoutSummary(
 		subtotal
 	});
 	const discountTotal = coupon?.discountAmount ?? 0;
-	const shipping = subtotal > 999 ? 0 : roundMoney(selectedRate);
+	const shipping = roundMoney(selectedRate);
 	const total = roundMoney(Math.max(0, subtotal + shipping - discountTotal));
 	const amountPaise = Math.round(total * 100);
 	const codReason = getCodIneligibilityReason({
@@ -2350,17 +2408,14 @@ async function buildCheckoutSummary(
 		total,
 		products: productRows
 	});
-	const hasQuickCourier = selectedCourier.serviceType === 'quick';
 	const deliveryPromise = {
-		label: hasQuickCourier ? 'ASAP delivery' : 'Standard delivery',
-		detail: hasQuickCourier
-			? `Expected within ${Math.max(1, Math.ceil(selectedCourier.etdHours || 3))} hour(s)`
-			: selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`,
+		label: 'Manual delivery',
+		detail: selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`,
 		serviceType: selectedCourier.serviceType
 	} satisfies CheckoutSummary['deliveryPromise'];
 	const deliveryEstimate = {
 		dispatch: {
-			pickupLocation: config.shiprocketPickupLocation,
+			pickupLocation: config.shiprocketPickupLocation || 'LapKart dispatch',
 			pincode: config.lapkartDispatchPincode
 		},
 		route,
@@ -2601,7 +2656,6 @@ async function handle(req: Request) {
 
 	if (req.method === 'POST' && path === '/checkout/preview') {
 		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
-		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
@@ -2612,7 +2666,6 @@ async function handle(req: Request) {
 	if (req.method === 'POST' && path === '/checkout/create-cod-order') {
 		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
 		await requireFeatureFlag('cod', 'Cash on delivery is temporarily unavailable');
-		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const adminDb = getSupabaseAdmin();
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
@@ -2765,7 +2818,6 @@ async function handle(req: Request) {
 	if (req.method === 'POST' && path === '/checkout/create-payment-order') {
 		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
 		await requireFeatureFlag('razorpay_payments', 'Online payments are temporarily unavailable');
-		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
@@ -3021,23 +3073,20 @@ async function handle(req: Request) {
 	}
 
 	if (req.method === 'GET' && path === '/maps/delivery-estimate') {
-		await requireFeatureFlag('shiprocket', 'Courier quotes are temporarily unavailable');
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = deliveryEstimateQuerySchema.parse(parseQueryObject(url));
-		const [route, couriers] = await Promise.all([
-			getOlaDeliveryRoute(input),
-			getShiprocketDeliveryQuotes({
-				deliveryPincode: input.pincode,
-				deliveryLatitude: input.latitude,
-				deliveryLongitude: input.longitude,
-				weightKg: input.weightKg,
-				declaredValue: input.declaredValue
+		const route = await getOlaDeliveryRoute(input);
+		const couriers = [
+			getManualDeliveryQuote({
+				weightKg: normalizedPackageWeightKg(input.weightKg),
+				subtotal: Number(input.declaredValue ?? 0),
+				distanceMeters: route.distanceMeters
 			})
-		]);
+		];
 		return json(req, 200, {
 			dispatch: {
-				pickupLocation: config.shiprocketPickupLocation,
+				pickupLocation: config.shiprocketPickupLocation || 'LapKart dispatch',
 				pincode: config.lapkartDispatchPincode
 			},
 			route,

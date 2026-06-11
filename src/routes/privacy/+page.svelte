@@ -8,11 +8,11 @@
 		},
 		{
 			title: 'How data is used',
-			body: 'Data is used to authenticate users, verify payments, estimate delivery, create shipments, provide tracking, process returns/refunds, prevent abuse, and support customers.'
+			body: 'Data is used to authenticate users, verify payments, estimate delivery, manage manual dispatch, process returns/refunds, prevent abuse, and support customers.'
 		},
 		{
 			title: 'Third-party processors',
-			body: 'Payment, logistics, and map-related data may be shared with Razorpay, Shiprocket, Ola Maps, and Supabase only as needed for the requested service.'
+			body: 'Payment and map-related data may be shared with Razorpay, Ola Maps, and Supabase only as needed for the requested service. Courier details are handled through LapKart operations unless a future logistics provider is enabled.'
 		}
 	];
 </script>

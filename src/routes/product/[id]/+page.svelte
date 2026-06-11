@@ -18,6 +18,7 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
+	import { MANUAL_DELIVERY_MIN_CHARGE } from '$lib/shipping';
 	import {
 		absoluteUrl,
 		breadcrumbListJsonLd,
@@ -274,7 +275,7 @@
 						{/if}
 					</div>
 					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-56)] uppercase">
-						Inclusive of taxes / Free delivery on orders above {formatINR(999)}
+						Inclusive of taxes / Manual delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
 					</p>
 				</div>
 
@@ -304,7 +305,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
 						<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Free delivery
+						Manual delivery
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"

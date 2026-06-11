@@ -32,6 +32,7 @@ export const config = {
 	shiprocketDefaultLengthCm: numberEnv('SHIPROCKET_DEFAULT_LENGTH_CM', 20),
 	shiprocketDefaultBreadthCm: numberEnv('SHIPROCKET_DEFAULT_BREADTH_CM', 15),
 	shiprocketDefaultHeightCm: numberEnv('SHIPROCKET_DEFAULT_HEIGHT_CM', 5),
+	fulfillmentProvider: (Deno.env.get('FULFILLMENT_PROVIDER') ?? 'manual').toLowerCase(),
 	allowShiprocketWithTestPayments:
 		(Deno.env.get('ALLOW_SHIPROCKET_WITH_TEST_PAYMENTS') ?? '').toLowerCase() === 'true',
 	lapkartDispatchPincode: Deno.env.get('LAPKART_DISPATCH_PINCODE') ?? '',

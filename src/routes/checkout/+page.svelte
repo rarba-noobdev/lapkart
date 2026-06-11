@@ -24,6 +24,7 @@
 	import { cartState, clearCart, type CartItem } from '$lib/cart';
 	import { formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
+	import { calculateCartWeightKg, calculateManualDeliveryCharge } from '$lib/shipping';
 	import { getAccessToken, getAuthorizationHeaders } from '$lib/supabase-auth';
 	import type { Tables } from '$lib/supabase/types';
 	import DeliveryMapPicker, {
@@ -181,6 +182,7 @@
 	});
 
 	const subtotal = $derived(rows.reduce((sum, row) => sum + row.product.price * row.item.qty, 0));
+	const packageWeightKg = $derived(calculateCartWeightKg(rows));
 
 	const selectedCourier = $derived(
 		deliveryEstimate?.couriers.find((courier) => courier.quoteId === selectedQuoteId) ?? null
@@ -190,12 +192,8 @@
 		subtotal === 0
 			? 0
 			: selectedCourier
-				? subtotal > 999
-					? 0
-					: selectedCourier.rate
-				: subtotal > 999
-					? 0
-					: 49
+				? selectedCourier.rate
+				: calculateManualDeliveryCharge(packageWeightKg, subtotal)
 	);
 
 	const discountTotal = $derived(appliedSummary?.discountTotal ?? 0);
@@ -393,7 +391,7 @@
 			selectedQuoteId = preferredQuoteId(cachedEstimate, selectedQuoteId);
 			estimateError =
 				cachedEstimate.couriers.length === 0
-					? 'No standard or Shiprocket Quick courier currently services this location.'
+					? 'Manual delivery is currently unavailable for this location.'
 					: null;
 			estimateLoading = false;
 			return;
@@ -411,6 +409,7 @@
 				url.searchParams.set('longitude', String(longitude));
 				url.searchParams.set('pincode', pincode);
 				url.searchParams.set('declaredValue', String(declaredValue));
+				url.searchParams.set('weightKg', String(packageWeightKg));
 
 				const response = await fetch(url, {
 					signal: controller.signal,
@@ -429,8 +428,7 @@
 				selectedQuoteId = preferredQuoteId(data, selectedQuoteId);
 
 				if (data.couriers.length === 0) {
-					estimateError =
-						'No standard or Shiprocket Quick courier currently services this location.';
+					estimateError = 'Manual delivery is currently unavailable for this location.';
 				}
 			} catch (loadError) {
 				if (controller.signal.aborted) return;
@@ -526,7 +524,7 @@
 		}
 
 		if (!hasValidAddress || !hasDeliveryPin || !selectedCourier) {
-			setMessage('error', 'Confirm the delivery address and courier before applying a coupon.');
+			setMessage('error', 'Confirm the delivery address and option before applying a coupon.');
 			return;
 		}
 
@@ -843,7 +841,7 @@
 			</a>
 			<div>
 				<h1 class="text-[18px] font-medium tracking-tight text-foreground sm:text-[22px]">Checkout</h1>
-				<p class="text-[11px] text-[var(--black-alpha-40)]">Address · Courier · Payment</p>
+				<p class="text-[11px] text-[var(--black-alpha-40)]">Address · Delivery · Payment</p>
 			</div>
 		</div>
 		<div class="flex items-center gap-2 text-[11px]">
@@ -1023,13 +1021,13 @@
 				<article class="rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:p-4">
 					<div class="flex items-center gap-2 mb-2.5 sm:mb-3">
 						<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-						<h2 class="text-[13px] font-medium text-foreground">Courier options</h2>
+						<h2 class="text-[13px] font-medium text-foreground">Delivery option</h2>
 					</div>
 
 					{#if estimateLoading}
 						<div class="flex items-center gap-2 rounded-md bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
 							<LoaderCircle class="size-3.5 animate-spin text-[var(--heat-100)]" strokeWidth={2} />
-							Checking delivery quotes...
+							Checking delivery charge...
 						</div>
 					{:else if estimateError}
 						<div class="flex items-start gap-2 rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]">
@@ -1039,7 +1037,7 @@
 					{:else if !deliveryEstimate}
 						<div class="flex items-start gap-2 rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
 							<Navigation class="mt-0.5 size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
-							<span>Add pincode and delivery pin to load courier options.</span>
+							<span>Add pincode and delivery pin to load manual delivery.</span>
 						</div>
 					{:else}
 						<div class="grid gap-2 sm:grid-cols-2">
@@ -1272,7 +1270,7 @@
 							<p class="text-[12px] font-medium text-foreground">{selectedCourier.courierName}</p>
 						</div>
 						<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
-							{selectedCourier.serviceType === 'quick' ? 'Quick' : 'Standard'} · {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays}d`}
+							Manual · {selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays}d`}
 							· {deliveryEstimate?.route.readableDistance || '-'}
 						</p>
 					</div>
