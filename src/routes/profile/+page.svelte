@@ -307,7 +307,7 @@
 						{#each orders as order (order.id)}
 							<a
 								href={resolve(`/order/${order.id}`)}
-								class="group flex items-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white p-4 transition-all hover:border-[var(--heat-20)] hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06)] sm:p-5"
+								class="group flex items-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white p-4 transition-[border-color,box-shadow] duration-200 hover:border-[var(--heat-20)] hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06)] sm:p-5"
 							>
 								<div class="grid size-10 shrink-0 place-items-center rounded-md bg-[var(--heat-4)] text-[var(--heat-100)] sm:size-11">
 									<Package class="size-4 sm:size-5" strokeWidth={2} />
@@ -510,7 +510,7 @@
 					<div class="grid gap-2 sm:grid-cols-2">
 						{#each addresses as addr (addr.id)}
 							<div
-								class="relative rounded-lg border bg-white p-4 transition-all
+								class="relative rounded-lg border bg-white p-4 transition-[border-color] duration-200
 									{addr.is_default ? 'border-[var(--heat-20)]' : 'border-[var(--border-faint)]'}"
 							>
 								{#if addr.is_default}

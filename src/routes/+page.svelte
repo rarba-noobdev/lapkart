@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { preloadData } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import {
@@ -17,6 +18,7 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { categories, discountPct, formatINR, type Product } from '$lib/catalog';
 	import { addToCart } from '$lib/cart';
+	import { DEFAULT_DESCRIPTION, SITE_NAME, absoluteUrl } from '$lib/seo';
 
 	let { data }: { data: { products: Product[] } } = $props();
 
@@ -24,12 +26,10 @@
 		if ('requestIdleCallback' in window) {
 			requestIdleCallback(() => {
 				void preloadData('/products');
-				void preloadData('/cart');
 			});
 		} else {
 			setTimeout(() => {
 				void preloadData('/products');
-				void preloadData('/cart');
 			}, 2000);
 		}
 	});
@@ -68,6 +68,10 @@
 	);
 
 	let heroAdded = $state(false);
+	const canonicalUrl = $derived(absoluteUrl(page.url.origin, '/'));
+	const ogImage = $derived(
+		heroProduct ? absoluteUrl(page.url.origin, heroProduct.images?.[0] ?? heroProduct.image) : canonicalUrl
+	);
 
 	function addHeroToCart() {
 		if (!heroProduct || heroProduct.stock <= 0) return;
@@ -99,11 +103,15 @@
 </script>
 
 <svelte:head>
-	<title>LapKart — Laptop Parts Store</title>
-	<meta
-		name="description"
-		content="Shop laptop SSDs, RAM, batteries, displays, chargers, processors, and repair parts with fitment guidance and same-day dispatch."
-	/>
+	<title>{SITE_NAME} - Laptop Parts Store</title>
+	<meta name="description" content={DEFAULT_DESCRIPTION} />
+	<link rel="canonical" href={canonicalUrl} />
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content="{SITE_NAME} - Laptop Parts Store" />
+	<meta property="og:description" content={DEFAULT_DESCRIPTION} />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
 <!-- ─── Hero ─── -->
@@ -155,7 +163,7 @@
 							<img
 								src={heroProduct.images?.[0] ?? heroProduct.image}
 								alt={heroProduct.title}
-								class="size-full object-contain transition-transform duration-500 group-hover:scale-105"
+								class="size-full object-contain transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:scale-105"
 								fetchpriority="high"
 							/>
 							{#if discountPct(heroProduct) >= 10}
@@ -222,7 +230,7 @@
 			{#each deals as deal (deal.id)}
 				<a
 					href={resolve(`/product/${deal.id}`)}
-					class="group relative overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white transition-all duration-200 hover:border-[var(--heat-20)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)]"
+					class="group relative overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white transition-[border-color,box-shadow] duration-200 hover:border-[var(--heat-20)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)]"
 				>
 					<div class="relative aspect-[4/3] overflow-hidden bg-[var(--background-lighter)]">
 						<span class="absolute top-2 left-2 z-10 rounded-sm bg-[var(--heat-100)] px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-[0_2px_8px_var(--heat-40)]">
@@ -262,7 +270,7 @@
 			{#each categoryTiles as tile, i (tile.slug)}
 				<a
 					href={resolve(`/products?category=${tile.slug}`)}
-					class="group relative flex min-h-[100px] flex-col justify-between overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white p-3 transition-all duration-200 hover:border-[var(--heat-20)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)] sm:min-h-[120px] sm:p-4
+					class="group relative flex min-h-[100px] flex-col justify-between overflow-hidden rounded-lg border border-[var(--border-faint)] bg-white p-3 transition-[border-color,box-shadow] duration-200 hover:border-[var(--heat-20)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)] sm:min-h-[120px] sm:p-4
 					{i === 0 ? 'col-span-2 sm:col-span-2 sm:min-h-[140px]' : ''}"
 				>
 					<div class="relative z-10">
@@ -274,7 +282,7 @@
 					<span class="relative z-10 mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-[var(--heat-100)]">
 						Browse <ArrowRight class="size-3 transition-transform duration-200 group-hover:translate-x-0.5" />
 					</span>
-					<div class="absolute right-1 bottom-1 {i === 0 ? 'h-[70px] w-[110px] sm:h-[100px] sm:w-[160px]' : 'h-[50px] w-[50px] sm:h-[70px] sm:w-[70px]'} opacity-50 transition-transform duration-500 group-hover:scale-105">
+					<div class="absolute right-1 bottom-1 {i === 0 ? 'h-[70px] w-[110px] sm:h-[100px] sm:w-[160px]' : 'h-[50px] w-[50px] sm:h-[70px] sm:w-[70px]'} opacity-50 transition-transform duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:scale-105">
 						<img
 							src={tile.product?.images?.[0] ?? tile.product?.image}
 							alt={tile.name}

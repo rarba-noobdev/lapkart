@@ -11,6 +11,9 @@
 		UserRound
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import { fly, scale } from 'svelte/transition';
+	import { backOut, quintOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
 	import { isStaffRole } from '$lib/roles';
@@ -67,21 +70,41 @@
 		return true;
 	}
 
+	const activeIndex = $derived(tabs.findIndex((tab) => isActive(tab.href)));
+
 	onMount(() => {
 		mounted = true;
 	});
 </script>
 
 {#if mounted}
-	<nav class="mobile-tabbar" aria-label="Mobile primary navigation" data-sveltekit-preload-data="tap">
+	<nav
+		class="mobile-tabbar"
+		style="--tab-count: {tabs.length}"
+		aria-label="Mobile primary navigation"
+		data-sveltekit-preload-data="tap"
+		in:fly={{ y: prefersReducedMotion.current ? 0 : 72, duration: 360, easing: quintOut }}
+	>
+		<span
+			class="tab-pill"
+			class:tab-pill-hidden={activeIndex < 0}
+			style="transform: translateX({Math.max(activeIndex, 0) * 100}%)"
+			aria-hidden="true"
+		></span>
 		{#each tabs as tab (tab.href)}
 			{@const Icon = tab.icon}
 			<a href={resolve(tab.href as '/')} aria-current={isActive(tab.href) ? 'page' : undefined}>
 				<span class="icon-wrap">
 					<Icon size={20} strokeWidth={2.1} aria-hidden="true" />
 					{#if tab.badge && tab.badge > 0}
-						<span class="badge" aria-label={`${tab.badge} items in cart`}>
-							{tab.badge > 9 ? '9+' : tab.badge}
+						<span
+							class="badge"
+							aria-label={`${tab.badge} items in cart`}
+							transition:scale={{ duration: 220, start: 0.5, easing: backOut }}
+						>
+							{#key tab.badge}
+								<span class="badge-count tab-pop">{tab.badge > 9 ? '9+' : tab.badge}</span>
+							{/key}
 						</span>
 					{/if}
 				</span>
@@ -99,7 +122,7 @@
 		left: 16px;
 		z-index: 50;
 		display: none;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(var(--tab-count, 5), minmax(0, 1fr));
 		border: 1px solid var(--border-muted);
 		border-radius: 999px;
 		background: #ffffff;
@@ -109,7 +132,28 @@
 			0 2px 8px -2px rgba(0, 0, 0, 0.06);
 	}
 
+	/* Active-tab pill: one element sliding between tabs (transform-only, GPU). */
+	.tab-pill {
+		position: absolute;
+		top: 6px;
+		bottom: 6px;
+		left: 6px;
+		width: calc((100% - 12px) / var(--tab-count, 5));
+		border-radius: 999px;
+		background: var(--heat-12);
+		pointer-events: none;
+		transition:
+			transform 280ms cubic-bezier(0.32, 0.72, 0, 1),
+			opacity 200ms var(--motion-ease);
+	}
+
+	.tab-pill-hidden {
+		opacity: 0;
+	}
+
 	.mobile-tabbar a {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
@@ -122,23 +166,27 @@
 		font-size: 10px;
 		font-weight: 600;
 		letter-spacing: 0.01em;
-		transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
+		transition:
+			color 200ms var(--motion-ease),
+			background-color 200ms var(--motion-ease),
+			transform 140ms var(--motion-ease-out);
 	}
 
 	.mobile-tabbar a :global(svg) {
 		color: var(--black-alpha-48);
-		transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
+		transition:
+			color 200ms var(--motion-ease),
+			transform 200ms var(--motion-ease-out);
 	}
 
 	.mobile-tabbar a[aria-current='page'] {
-		background: var(--heat-12);
 		color: var(--heat-100);
 		box-shadow: none;
 	}
 
 	.mobile-tabbar a[aria-current='page'] :global(svg) {
 		color: var(--heat-100);
-		transform: translateY(-1px);
+		animation: tab-pop 320ms cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.icon-wrap {
@@ -166,11 +214,15 @@
 		font-size: 9px;
 		font-weight: 700;
 		line-height: 1;
-		transition: border-color 0.3s cubic-bezier(0.2, 0, 0, 1);
+		transition: border-color 200ms var(--motion-ease);
 	}
 
 	.mobile-tabbar a:not([aria-current='page']) .badge {
 		border-color: #fff;
+	}
+
+	.badge-count {
+		display: inline-block;
 	}
 
 	.mobile-tabbar a:active {

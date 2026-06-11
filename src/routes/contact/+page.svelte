@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>Contact LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Contact"
 	title="Contact and support"

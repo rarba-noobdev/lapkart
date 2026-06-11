@@ -1049,42 +1049,6 @@ export type Database = {
 					}
 				];
 			};
-			product_search_sync_events: {
-				Row: {
-					attempts: number;
-					created_at: string;
-					error_message: string | null;
-					id: number;
-					operation: string;
-					processed_at: string | null;
-					product_id: string;
-					status: string;
-					updated_at: string;
-				};
-				Insert: {
-					attempts?: number;
-					created_at?: string;
-					error_message?: string | null;
-					id?: number;
-					operation: string;
-					processed_at?: string | null;
-					product_id: string;
-					status?: string;
-					updated_at?: string;
-				};
-				Update: {
-					attempts?: number;
-					created_at?: string;
-					error_message?: string | null;
-					id?: number;
-					operation?: string;
-					processed_at?: string | null;
-					product_id?: string;
-					status?: string;
-					updated_at?: string;
-				};
-				Relationships: [];
-			};
 			products: {
 				Row: {
 					authenticity_grade: string;
@@ -2112,6 +2076,43 @@ export type Database = {
 					p_user_agent?: string | null;
 				};
 				Returns: Database['public']['Tables']['user_consents']['Row'];
+			};
+			search_active_products: {
+				Args: {
+					p_brand?: string | null;
+					p_category?: string | null;
+					p_in_stock?: boolean | null;
+					p_limit?: number;
+					p_max_price?: number | null;
+					p_min_price?: number | null;
+					p_min_rating?: number | null;
+					p_offset?: number;
+					p_query?: string | null;
+					p_sort?: string;
+				};
+				Returns: {
+					id: string;
+					title: string;
+					brand: string;
+					category: string;
+					image: string;
+					images: string[] | null;
+					source_url: string | null;
+					price: number;
+					mrp: number;
+					rating: number;
+					reviews: number;
+					stock: number;
+					compatibility: string | null;
+					warranty: string | null;
+					highlights: string[] | null;
+					authenticity_grade: string | null;
+					condition_grade: string | null;
+					local_delivery_eligible: boolean | null;
+					cod_eligible: boolean | null;
+					updated_at: string;
+					total_count: number;
+				}[];
 			};
 		};
 		Enums: {

@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>Terms and Conditions - LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Terms"
 	title="Terms and conditions"

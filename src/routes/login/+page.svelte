@@ -165,8 +165,8 @@
 					Create account
 				</button>
 				<div
-					class="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-white shadow-sm border border-[var(--border-faint)] transition-all duration-200 ease-out"
-					style="left: {mode === 'signin' ? '4px' : 'calc(50%)'}"
+					class="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-md bg-white shadow-sm border border-[var(--border-faint)] transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
+					style="transform: translateX({mode === 'signin' ? '0%' : '100%'})"
 				></div>
 			</div>
 

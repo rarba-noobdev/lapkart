@@ -13,6 +13,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	};
 
+	const hasSupabaseAuthCookie = () =>
+		event.cookies
+			.getAll()
+			.some(
+				(cookie) =>
+					cookie.name.startsWith('sb-') &&
+					cookie.name.includes('auth-token') &&
+					Boolean(cookie.value)
+			);
+
 	event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
 		cookies: {
 			getAll: () => event.cookies.getAll(),
@@ -33,6 +43,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	event.locals.safeGetSession = async () => {
 		if (cachedSession) return cachedSession;
+
+		if (!hasSupabaseAuthCookie()) {
+			cachedSession = { session: null, user: null };
+			return cachedSession;
+		}
 
 		const result = await event.locals.supabase.auth.getUser().catch((error: unknown) => ({
 			data: { user: null },

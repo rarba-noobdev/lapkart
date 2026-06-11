@@ -245,7 +245,7 @@
 	const viewDescriptions: Record<AdminView, string> = {
 		overview: 'Store health, revenue, and what needs attention',
 		operations: 'Orders, fulfillment, cancellations, and refunds',
-		catalog: 'Products, pricing, stock, and search indexing',
+		catalog: 'Products, pricing, stock, and catalog search',
 		users: 'Customer accounts and staff roles',
 		promos: 'Coupons and discounts',
 		support: 'Complaints, deletion requests, and product Q&A'
@@ -634,13 +634,7 @@
 		void loadProducts(true);
 	}
 
-	async function syncProductSearchIndex() {
-		try {
-			await fetch(resolve('/api/admin/search/sync'), { method: 'POST' });
-		} catch (syncError) {
-			console.warn('Product search sync failed.', syncError);
-		}
-
+	async function refreshCatalogSearch() {
 		await invalidate('app:products');
 	}
 
@@ -894,7 +888,7 @@
 				productNotice = { tone: 'success', text: 'Product updated.' };
 			}
 
-			await Promise.all([loadProducts(true), loadAnalytics(), syncProductSearchIndex()]);
+			await Promise.all([loadProducts(true), loadAnalytics(), refreshCatalogSearch()]);
 		} catch (saveError) {
 			productNotice = {
 				tone: 'error',
@@ -928,7 +922,7 @@
 						: 'Product deleted.')
 			};
 
-			await Promise.all([loadProducts(true), loadAnalytics(), syncProductSearchIndex()]);
+			await Promise.all([loadProducts(true), loadAnalytics(), refreshCatalogSearch()]);
 		} catch (deleteError) {
 			productNotice = {
 				tone: 'error',
@@ -1542,7 +1536,7 @@
 															style="height: 100%"
 														>
 															<div
-																class="chart-bar w-full rounded-t-sm bg-[var(--heat-100)] transition-all duration-500"
+																class="chart-bar w-full rounded-t-sm bg-[var(--heat-100)] transition-[height] duration-500 ease-out"
 																style="height: {Math.max(
 																	4,
 																	(month.revenue / maxMonthlyRevenue) * 100
@@ -2696,7 +2690,10 @@
 		font-size: 12px;
 		color: rgba(255, 255, 255, 0.38);
 		cursor: pointer;
-		transition: all 160ms ease;
+		transition:
+			border-color 160ms ease,
+			color 160ms ease,
+			background-color 160ms ease;
 	}
 
 	.palette-trigger:hover {
@@ -2725,7 +2722,9 @@
 		color: rgba(255, 255, 255, 0.4);
 		font-size: 13px;
 		font-weight: 500;
-		transition: all 180ms ease;
+		transition:
+			color 180ms ease,
+			background-color 180ms ease;
 		cursor: pointer;
 		border: none;
 		background: none;
@@ -2862,7 +2861,9 @@
 		border: 1px solid var(--border-faint);
 		background: white;
 		padding: 16px 18px;
-		transition: all 200ms ease;
+		transition:
+			border-color 200ms ease,
+			box-shadow 200ms ease;
 	}
 
 	.kpi-card:hover {
@@ -2942,7 +2943,9 @@
 		border-radius: 6px;
 		padding: 8px;
 		text-align: left;
-		transition: all 150ms ease;
+		transition:
+			background-color 150ms ease,
+			box-shadow 150ms ease;
 		cursor: pointer;
 		border: none;
 		background: none;

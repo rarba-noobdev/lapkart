@@ -1,18 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { CollectionCreateSchema } from 'typesense/lib/Typesense/Collections';
-import type { ImportResponse } from 'typesense/lib/Typesense/Documents';
-import { discountPct, type Product } from '$lib/catalog';
-import {
-	listCatalogProductPage,
-	normalizeProductRow,
-	productSelectFields,
-	type ProductRow
-} from '$lib/products';
-import type { Database, Tables } from '$lib/supabase/types';
-import { getTypesenseClient, readTypesenseConfig } from './typesense';
+import type { Product } from '$lib/catalog';
+import { listCatalogProductPage } from '$lib/products';
+import type { Database } from '$lib/supabase/types';
 
 type ProductClient = SupabaseClient<Database>;
-type SearchSyncEvent = Tables<'product_search_sync_events'>;
 
 export type ProductSort =
 	| 'relevance'
@@ -38,252 +29,182 @@ export type ProductSearchOptions = {
 export type ProductSearchResult = {
 	products: Product[];
 	total: number;
-	source: 'typesense' | 'supabase';
+	source: 'postgres' | 'supabase';
 };
 
-type ProductSearchDocument = {
+type ProductSearchRow = {
 	id: string;
 	title: string;
 	brand: string;
 	category: string;
-	description: string;
-	sku: string;
 	image: string;
-	images: string[];
-	source_url: string;
+	images: string[] | null;
+	source_url: string | null;
 	price: number;
 	mrp: number;
-	discount: number;
 	rating: number;
 	reviews: number;
 	stock: number;
-	in_stock: boolean;
-	compatibility: string;
-	warranty: string;
-	highlights: string[];
-	search_keywords: string[];
-	status: string;
-	authenticity_grade: string;
-	condition_grade: string;
-	local_delivery_eligible: boolean;
-	cod_eligible: boolean;
-	updated_at_unix: number;
+	compatibility: string | null;
+	warranty: string | null;
+	highlights: string[] | null;
+	authenticity_grade: Product['authenticity_grade'] | null;
+	condition_grade: Product['condition_grade'] | null;
+	local_delivery_eligible: boolean | null;
+	cod_eligible: boolean | null;
+	updated_at: string;
+	total_count: number;
 };
 
-const PRODUCT_QUERY_BY =
-	'title,brand,category,description,sku,compatibility,warranty,highlights,search_keywords';
+type ProductSearchCacheEntry = {
+	expiresAt: number;
+	result?: ProductSearchResult;
+	pending?: Promise<ProductSearchResult>;
+};
 
-const productsCollectionSchema = (name: string): CollectionCreateSchema => ({
-	name,
-	fields: [
-		{ name: 'id', type: 'string' },
-		{ name: 'title', type: 'string' },
-		{ name: 'brand', type: 'string', facet: true },
-		{ name: 'category', type: 'string', facet: true },
-		{ name: 'description', type: 'string', optional: true },
-		{ name: 'sku', type: 'string', optional: true },
-		{ name: 'compatibility', type: 'string', optional: true },
-		{ name: 'warranty', type: 'string', optional: true },
-		{ name: 'highlights', type: 'string[]', optional: true },
-		{ name: 'search_keywords', type: 'string[]', optional: true },
-		{ name: 'status', type: 'string', facet: true },
-		{ name: 'price', type: 'float', facet: true },
-		{ name: 'mrp', type: 'float' },
-		{ name: 'discount', type: 'float' },
-		{ name: 'rating', type: 'float', facet: true },
-		{ name: 'reviews', type: 'int32' },
-		{ name: 'stock', type: 'int32' },
-		{ name: 'in_stock', type: 'bool', facet: true },
-		{ name: 'authenticity_grade', type: 'string', facet: true, optional: true },
-		{ name: 'condition_grade', type: 'string', facet: true, optional: true },
-		{ name: 'local_delivery_eligible', type: 'bool', facet: true },
-		{ name: 'cod_eligible', type: 'bool', facet: true },
-		{ name: 'updated_at_unix', type: 'int64' }
-	],
-	default_sorting_field: 'updated_at_unix'
-});
+const SEARCH_CACHE_TTL_MS = 30_000;
+const SEARCH_CACHE_MAX_ENTRIES = 200;
+const searchCache = new Map<string, ProductSearchCacheEntry>();
 
-function asFiniteNumber(value: number | undefined) {
+function asNullableNumber(value: number | undefined) {
 	return Number.isFinite(value) ? value : undefined;
 }
 
-function quoteFilterValue(value: string) {
-	return `\`${value.replace(/`/g, '\\`')}\``;
+function searchCacheKey(options: ProductSearchOptions, limit: number, page: number) {
+	return JSON.stringify({
+		query: options.query?.trim().toLowerCase() || '',
+		category: options.category || '',
+		brand: options.brand || '',
+		minPrice: asNullableNumber(options.minPrice) ?? null,
+		maxPrice: asNullableNumber(options.maxPrice) ?? null,
+		inStock: options.inStock === true,
+		minRating: asNullableNumber(options.minRating) ?? null,
+		sort: options.sort ?? 'relevance',
+		limit,
+		page
+	});
 }
 
-function toUnixTimestamp(value: string) {
-	const timestamp = new Date(value).getTime();
-	return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
-}
+function readSearchCache(key: string) {
+	const cached = searchCache.get(key);
+	if (!cached) return null;
 
-function toSearchDocument(row: ProductRow): ProductSearchDocument {
-	const product = normalizeProductRow(row);
-
-	return {
-		id: product.id,
-		title: product.title,
-		brand: product.brand,
-		category: product.category,
-		description: row.description ?? '',
-		sku: row.sku ?? '',
-		image: product.image,
-		images: product.images ?? [],
-		source_url: product.source_url ?? '',
-		price: product.price,
-		mrp: product.mrp,
-		discount: discountPct(product),
-		rating: product.rating,
-		reviews: product.reviews,
-		stock: product.stock,
-		in_stock: product.stock > 0,
-		compatibility: product.compatibility,
-		warranty: product.warranty,
-		highlights: product.highlights,
-		search_keywords: row.search_keywords ?? [],
-		status: row.status,
-		authenticity_grade: product.authenticity_grade ?? 'compatible',
-		condition_grade: product.condition_grade ?? 'new',
-		local_delivery_eligible: product.local_delivery_eligible !== false,
-		cod_eligible: product.cod_eligible !== false,
-		updated_at_unix: toUnixTimestamp(row.updated_at)
-	};
-}
-
-function fromSearchDocument(document: ProductSearchDocument): Product {
-	return {
-		id: document.id,
-		title: document.title,
-		brand: document.brand,
-		category: document.category,
-		image: document.image,
-		images: document.images.length ? document.images : undefined,
-		source_url: document.source_url || undefined,
-		price: document.price,
-		mrp: document.mrp,
-		rating: document.rating,
-		reviews: document.reviews,
-		stock: document.stock,
-		compatibility: document.compatibility,
-		warranty: document.warranty,
-		highlights: document.highlights,
-		authenticity_grade: document.authenticity_grade as Product['authenticity_grade'],
-		condition_grade: document.condition_grade as Product['condition_grade'],
-		local_delivery_eligible: document.local_delivery_eligible,
-		cod_eligible: document.cod_eligible
-	};
-}
-
-function sortToTypesense(sort: ProductSort | undefined) {
-	if (sort === 'price-asc') return 'price:asc';
-	if (sort === 'price-desc') return 'price:desc';
-	if (sort === 'rating-desc') return 'rating:desc,reviews:desc';
-	if (sort === 'discount-desc') return 'discount:desc';
-	if (sort === 'newest') return 'updated_at_unix:desc';
-	return undefined;
-}
-
-function buildFilter(options: ProductSearchOptions) {
-	const filters = ['status:=active'];
-
-	if (options.category) filters.push(`category:=${quoteFilterValue(options.category)}`);
-	if (options.brand) filters.push(`brand:=${quoteFilterValue(options.brand)}`);
-	if (options.inStock) filters.push('in_stock:=true');
-	if (asFiniteNumber(options.minPrice) !== undefined) filters.push(`price:>=${options.minPrice}`);
-	if (asFiniteNumber(options.maxPrice) !== undefined) filters.push(`price:<=${options.maxPrice}`);
-	if (asFiniteNumber(options.minRating) !== undefined)
-		filters.push(`rating:>=${options.minRating}`);
-
-	return filters.join(' && ');
-}
-
-function orderFallbackProducts(products: Product[], sort: ProductSort | undefined) {
-	if (sort === 'discount-desc') {
-		return products.sort((a, b) => discountPct(b) - discountPct(a));
+	if (cached.result && cached.expiresAt > Date.now()) {
+		searchCache.delete(key);
+		searchCache.set(key, cached);
+		return cached.result;
 	}
 
-	return products;
+	if (cached.pending) return cached.pending;
+
+	if (cached.expiresAt <= Date.now()) searchCache.delete(key);
+	return null;
 }
 
-export async function ensureProductsCollection() {
-	const config = readTypesenseConfig();
-	const client = getTypesenseClient();
-	if (!config || !client) return false;
+function writeSearchCache(key: string, result: ProductSearchResult) {
+	searchCache.set(key, {
+		expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+		result
+	});
 
-	const collection = client.collections<ProductSearchDocument>(config.collection);
-	const exists = await collection.exists();
-	if (!exists) {
-		await client.collections().create(productsCollectionSchema(config.collection));
+	if (searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
+		const oldest = searchCache.keys().next().value;
+		if (oldest) searchCache.delete(oldest);
 	}
-
-	return true;
 }
 
-export async function indexProductRows(rows: ProductRow[]) {
-	const config = readTypesenseConfig();
-	const client = getTypesenseClient();
-	if (!config || !client || rows.length === 0) return { indexed: 0, failed: 0 };
+function writePendingSearch(key: string, pending: Promise<ProductSearchResult>) {
+	searchCache.set(key, {
+		expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+		pending
+	});
 
-	await ensureProductsCollection();
-	const results = (await client
-		.collections<ProductSearchDocument>(config.collection)
-		.documents()
-		.import(rows.map(toSearchDocument), {
-			action: 'upsert',
-			dirty_values: 'coerce_or_reject',
-			return_id: true
-		})) as ImportResponse<ProductSearchDocument>[];
-
-	const failed = results.filter((result) => !result.success).length;
-	return { indexed: results.length - failed, failed };
+	if (searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
+		const oldest = searchCache.keys().next().value;
+		if (oldest) searchCache.delete(oldest);
+	}
 }
 
-export async function deleteProductFromIndex(productId: string) {
-	const config = readTypesenseConfig();
-	const client = getTypesenseClient();
-	if (!config || !client) return false;
-
-	await ensureProductsCollection();
-	await client
-		.collections<ProductSearchDocument>(config.collection)
-		.documents()
-		.delete({ filter_by: `id:=${quoteFilterValue(productId)}`, ignore_not_found: true });
-	return true;
+function fromSearchRow(row: ProductSearchRow): Product {
+	return {
+		id: row.id,
+		title: row.title,
+		brand: row.brand,
+		category: row.category,
+		image: row.image,
+		images: row.images ?? undefined,
+		source_url: row.source_url ?? undefined,
+		price: Number(row.price),
+		mrp: Number(row.mrp),
+		rating: Number(row.rating),
+		reviews: row.reviews,
+		stock: row.stock,
+		compatibility: row.compatibility ?? '',
+		warranty: row.warranty ?? '',
+		highlights: row.highlights ?? [],
+		authenticity_grade: row.authenticity_grade ?? 'compatible',
+		condition_grade: row.condition_grade ?? 'new',
+		local_delivery_eligible: row.local_delivery_eligible ?? undefined,
+		cod_eligible: row.cod_eligible ?? undefined
+	};
 }
 
 export async function searchProducts(
 	options: ProductSearchOptions,
 	client: ProductClient
 ): Promise<ProductSearchResult> {
-	const config = readTypesenseConfig();
-	const typesense = getTypesenseClient();
+	const limit = Math.min(Math.max(1, Math.floor(options.limit ?? 96)), 250);
+	const page = Math.max(1, Math.floor(options.page ?? 1));
+	const cacheKey = searchCacheKey(options, limit, page);
+	const cached = readSearchCache(cacheKey);
+	if (cached) return cached;
 
-	if (config && typesense) {
-		try {
-			await ensureProductsCollection();
-			const response = await typesense
-				.collections<ProductSearchDocument>(config.collection)
-				.documents()
-				.search({
-					q: options.query?.trim() || '*',
-					query_by: PRODUCT_QUERY_BY,
-					filter_by: buildFilter(options),
-					sort_by: sortToTypesense(options.sort),
-					page: options.page ?? 1,
-					per_page: Math.min(options.limit ?? 250, 250),
-					facet_by: 'category,brand,in_stock,rating'
-				});
+	const pending = loadSearchProducts(options, client, limit, page)
+		.then((result) => {
+			writeSearchCache(cacheKey, result);
+			return result;
+		})
+		.catch((error) => {
+			searchCache.delete(cacheKey);
+			throw error;
+		});
+	writePendingSearch(cacheKey, pending);
+	return pending;
+}
 
-			return {
-				products: (response.hits ?? []).map((hit) => fromSearchDocument(hit.document)),
-				total: response.found,
-				source: 'typesense'
-			};
-		} catch (error) {
-			console.warn('Typesense product search failed, falling back to Supabase.', error);
-		}
+async function loadSearchProducts(
+	options: ProductSearchOptions,
+	client: ProductClient,
+	limit: number,
+	page: number
+): Promise<ProductSearchResult> {
+	try {
+		const { data, error } = await client.rpc('search_active_products', {
+			p_brand: options.brand || null,
+			p_category: options.category || null,
+			p_in_stock: options.inStock || null,
+			p_limit: limit,
+			p_max_price: asNullableNumber(options.maxPrice) ?? null,
+			p_min_price: asNullableNumber(options.minPrice) ?? null,
+			p_min_rating: asNullableNumber(options.minRating) ?? null,
+			p_offset: (page - 1) * limit,
+			p_query: options.query?.trim() || null,
+			p_sort: options.sort ?? 'relevance'
+		});
+
+		if (error) throw error;
+
+		const rows = (data ?? []) as ProductSearchRow[];
+		return {
+			products: rows.map(fromSearchRow),
+			total: rows[0]?.total_count ?? 0,
+			source: 'postgres'
+		};
+	} catch (searchError) {
+		console.warn('Postgres product search RPC failed, falling back to basic catalog query.', searchError);
 	}
 
-	const fallbackResult = await listCatalogProductPage(
+	const fallback = await listCatalogProductPage(
 		{
 			category: options.category,
 			query: options.query,
@@ -293,81 +214,15 @@ export async function searchProducts(
 			inStock: options.inStock,
 			minRating: options.minRating,
 			sort: options.sort,
-			limit: options.limit,
-			page: options.page
+			limit,
+			page
 		},
 		client
 	);
-	const products = orderFallbackProducts(fallbackResult.products, options.sort);
 
 	return {
-		products,
-		total: fallbackResult.total,
+		products: fallback.products,
+		total: fallback.total,
 		source: 'supabase'
 	};
-}
-
-export async function loadProductRows(client: ProductClient, ids?: string[]) {
-	let query = client.from('products').select(productSelectFields);
-
-	if (ids?.length) {
-		query = query.in('id', [...new Set(ids)]);
-	}
-
-	const { data, error } = await query;
-	if (error) throw error;
-	return (data ?? []) as ProductRow[];
-}
-
-export async function syncPendingProductSearchEvents(client: ProductClient, limit = 50) {
-	if (!readTypesenseConfig()) {
-		return { configured: false, processed: 0, failed: 0 };
-	}
-
-	const { data: events, error } = await client
-		.from('product_search_sync_events')
-		.select('id,product_id,operation,status,attempts')
-		.in('status', ['pending', 'failed'])
-		.order('created_at', { ascending: true })
-		.limit(limit);
-
-	if (error) throw error;
-
-	let processed = 0;
-	let failed = 0;
-
-	for (const event of (events ?? []) as SearchSyncEvent[]) {
-		const nextAttempts = event.attempts + 1;
-		await client
-			.from('product_search_sync_events')
-			.update({ status: 'processing', attempts: nextAttempts, error_message: null })
-			.eq('id', event.id);
-
-		try {
-			if (event.operation === 'delete') {
-				await deleteProductFromIndex(event.product_id);
-			} else {
-				const rows = await loadProductRows(client, [event.product_id]);
-				if (rows.length) await indexProductRows(rows);
-				else await deleteProductFromIndex(event.product_id);
-			}
-
-			await client
-				.from('product_search_sync_events')
-				.update({ status: 'synced', processed_at: new Date().toISOString(), error_message: null })
-				.eq('id', event.id);
-			processed += 1;
-		} catch (syncError) {
-			await client
-				.from('product_search_sync_events')
-				.update({
-					status: 'failed',
-					error_message: syncError instanceof Error ? syncError.message : 'Typesense sync failed'
-				})
-				.eq('id', event.id);
-			failed += 1;
-		}
-	}
-
-	return { configured: true, processed, failed };
 }

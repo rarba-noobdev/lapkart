@@ -8,6 +8,15 @@
 	import { cubicOut } from 'svelte/easing';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { categories, formatINR, type Product } from '$lib/catalog';
+	import {
+		absoluteUrl,
+		breadcrumbListJsonLd,
+		categoryName,
+		itemListJsonLd,
+		productsSeoDescription,
+		productsSeoTitle,
+		safeJsonLd
+	} from '$lib/seo';
 
 	type FilterKey =
 		| 'category'
@@ -21,7 +30,7 @@
 	type SearchParamKey = FilterKey | 'page';
 	type ProductsRoute = '/products' | `/products?${string}`;
 
-	const pageSize = 96;
+	const pageSize = 24;
 
 	const sortOptions = [
 		{ value: 'relevance', label: 'Relevance' },
@@ -39,7 +48,7 @@
 			products: Product[];
 			productTotal: number;
 			page: number;
-			searchSource: 'typesense' | 'supabase';
+			searchSource: 'postgres' | 'supabase';
 			categoryCounts: Record<string, number>;
 			filters: {
 				category: string;
@@ -95,6 +104,32 @@
 	const isRefreshing = $derived(
 		Boolean(navigating.to && navigating.to.url.pathname === resolve('/products'))
 	);
+	const hasNonCanonicalFilters = $derived(
+		Boolean(q || brand || minPrice || maxPrice || inStock || minRating || activeSort !== 'relevance')
+	);
+	const shouldNoIndex = $derived(hasNonCanonicalFilters);
+	const canonicalPath = $derived.by(() => {
+		const params = new SvelteURLSearchParams();
+		if (category) params.set('category', category);
+		if (!hasNonCanonicalFilters && currentPage > 1) params.set('page', String(currentPage));
+		const queryString = params.toString();
+		return queryString ? `/products?${queryString}` : '/products';
+	});
+	const canonicalUrl = $derived(absoluteUrl(page.url.origin, canonicalPath));
+	const seoTitle = $derived(productsSeoTitle({ category, query: q }));
+	const seoDescription = $derived(
+		productsSeoDescription({ category, query: q, total: productTotal })
+	);
+	const jsonLd = $derived(
+		safeJsonLd([
+			breadcrumbListJsonLd(page.url.origin, [
+				{ name: 'Home', path: '/' },
+				{ name: 'Catalog', path: '/products' },
+				...(category ? [{ name: categoryName(category), path: `/products?category=${category}` }] : [])
+			]),
+			itemListJsonLd(page.url.origin, sorted, resultStart || 1)
+		])
+	);
 
 	const appliedFilters = $derived.by(() => {
 		const filters: Array<{ key: FilterKey; label: string }> = [];
@@ -147,14 +182,24 @@
 </script>
 
 <svelte:head>
-	<title>All components - lapkart</title>
-	<meta name="description" content="Browse RAM, SSDs, batteries, displays, processors and more." />
+	<title>{seoTitle}</title>
+	<meta name="description" content={seoDescription} />
+	<link rel="canonical" href={canonicalUrl} />
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content={seoTitle} />
+	<meta property="og:description" content={seoDescription} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta name="twitter:card" content="summary" />
+	{#if shouldNoIndex}
+		<meta name="robots" content="noindex,follow" />
+	{/if}
 	{#if currentPage > 1}
-		<link rel="prev" href={resolve(productsHrefWithPage(currentPage - 1))} />
+		<link rel="prev" href={absoluteUrl(page.url.origin, productsHrefWithPage(currentPage - 1))} />
 	{/if}
 	{#if currentPage < totalPages}
-		<link rel="next" href={resolve(productsHrefWithPage(currentPage + 1))} />
+		<link rel="next" href={absoluteUrl(page.url.origin, productsHrefWithPage(currentPage + 1))} />
 	{/if}
+	<svelte:element this={'script'} type="application/ld+json">{jsonLd}</svelte:element>
 </svelte:head>
 
 <div class="border-b border-[var(--border-faint)] bg-white">

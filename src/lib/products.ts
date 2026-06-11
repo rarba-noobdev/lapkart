@@ -37,7 +37,7 @@ export const productSelectFields =
 	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
-	'id,title,brand,category,image,images,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
 
 type ProductClient = SupabaseClient<Database>;
 
@@ -106,6 +106,7 @@ export async function getProduct(id: string, client?: ProductClient) {
 		.from('products')
 		.select(productSelectFields)
 		.eq('id', id)
+		.eq('status', 'active')
 		.maybeSingle();
 
 	if (error) throw error;
@@ -136,7 +137,8 @@ export async function listCatalogProductPage(
 ): Promise<CatalogProductsPage> {
 	let query = getClient(client)
 		.from('products')
-		.select(productCardSelectFields, { count: 'exact' });
+		.select(productCardSelectFields, { count: 'exact' })
+		.eq('status', 'active');
 
 	if (options.category) {
 		query = query.eq('category', options.category);
@@ -209,6 +211,7 @@ export async function listRelatedProducts(
 		.from('products')
 		.select(productCardSelectFields)
 		.eq('category', category)
+		.eq('status', 'active')
 		.neq('id', excludeId)
 		.order('rating', { ascending: false })
 		.limit(limit);

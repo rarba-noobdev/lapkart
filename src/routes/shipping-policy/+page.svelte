@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>Shipping Policy - LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Shipping"
 	title="Shipping policy"

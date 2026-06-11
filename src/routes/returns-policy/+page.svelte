@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>Return Policy - LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Returns"
 	title="Return policy"

@@ -825,7 +825,9 @@
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--black-alpha-56);
-		transition: all 0.15s ease;
+		transition:
+			border-color 150ms ease,
+			color 150ms ease;
 	}
 	.back-link:hover {
 		border-color: var(--heat-100);
@@ -842,7 +844,9 @@
 		border: 1px solid var(--border-faint);
 		background: white;
 		color: var(--black-alpha-40);
-		transition: all 0.15s ease;
+		transition:
+			border-color 150ms ease,
+			color 150ms ease;
 	}
 	.copy-btn:hover {
 		border-color: var(--heat-100);

@@ -148,7 +148,7 @@
 					</div>
 					<div class="mt-2 h-1 overflow-hidden rounded-full bg-[var(--background-lighter)]">
 						<div
-							class="h-full rounded-full bg-[var(--heat-100)] transition-all duration-500"
+							class="h-full rounded-full bg-[var(--heat-100)] transition-[width] duration-500 ease-out"
 							style:width="{freeShippingProgress}%"
 						></div>
 					</div>
@@ -160,7 +160,7 @@
 				<div class="space-y-2">
 					{#each rows as row, idx (row.item.id)}
 						<div
-							class="group rounded-lg border border-[var(--border-faint)] bg-white p-3 transition-all hover:border-[var(--heat-20)] sm:p-4"
+							class="group rounded-lg border border-[var(--border-faint)] bg-white p-3 transition-[border-color] duration-200 hover:border-[var(--heat-20)] sm:p-4"
 							in:fly={{ y: 12, duration: 200, delay: idx * 40 }}
 						>
 							<div class="flex gap-3 sm:gap-4">

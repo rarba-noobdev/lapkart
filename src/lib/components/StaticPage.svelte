@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft } from '@lucide/svelte';
+	import { absoluteUrl } from '$lib/seo';
 
 	type PolicySection = {
 		title: string;
@@ -18,7 +20,21 @@
 		description: string;
 		sections: PolicySection[];
 	} = $props();
+
+	const seoTitle = $derived(title.includes('LapKart') ? title : `${title} - LapKart`);
+	const canonicalUrl = $derived(absoluteUrl(page.url.origin, page.url.pathname));
 </script>
+
+<svelte:head>
+	<title>{seoTitle}</title>
+	<meta name="description" content={description} />
+	<link rel="canonical" href={canonicalUrl} />
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content={seoTitle} />
+	<meta property="og:description" content={description} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta name="twitter:card" content="summary" />
+</svelte:head>
 
 <section class="motion-section border-b border-[var(--border-faint)] bg-white">
 	<div class="container mx-auto max-w-4xl px-4 py-12">

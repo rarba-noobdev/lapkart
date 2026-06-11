@@ -608,7 +608,7 @@
 				{#each filteredOrders as order (order.id)}
 					<button
 						type="button"
-						class={`flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition-all ${
+						class={`flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition-[border-color,background-color,box-shadow] duration-150 ${
 							order.id === selectedId
 								? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
 								: order.status.toLowerCase() === 'cancelled'

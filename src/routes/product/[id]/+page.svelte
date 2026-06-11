@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import {
 		ArrowUpRight,
 		Check,
@@ -17,6 +18,15 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
+	import {
+		absoluteUrl,
+		breadcrumbListJsonLd,
+		categoryName,
+		productJsonLd,
+		productSeoDescription,
+		productSeoTitle,
+		safeJsonLd
+	} from '$lib/seo';
 
 	let {
 		data
@@ -56,12 +66,20 @@
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const quantity = $derived(Math.max(1, Number(qty) || 1));
-	const seoTitle = $derived(`${product.title} - lapkart`);
-	const productUrl = $derived(`https://lapkart-five.vercel.app/product/${product.id}`);
-	const seoDescription = $derived(
-		`${product.title} by ${product.brand}. ${formatINR(product.price)} genuine laptop part with ${
-			product.stock > 0 ? 'live stock availability' : 'current out-of-stock status'
-		}.`
+	const seoTitle = $derived(productSeoTitle(product));
+	const productUrl = $derived(absoluteUrl(page.url.origin, `/product/${product.id}`));
+	const seoDescription = $derived(productSeoDescription(product));
+	const seoImage = $derived(absoluteUrl(page.url.origin, galleryImages[0] ?? product.image));
+	const jsonLd = $derived(
+		safeJsonLd([
+			productJsonLd(product, page.url.origin, productUrl),
+			breadcrumbListJsonLd(page.url.origin, [
+				{ name: 'Home', path: '/' },
+				{ name: 'Catalog', path: '/products' },
+				{ name: categoryName(product.category), path: `/products?category=${product.category}` },
+				{ name: product.title, path: `/product/${product.id}` }
+			])
+		])
 	);
 	const specs = $derived([
 		{ label: 'Compatibility', value: compatibility },
@@ -110,9 +128,12 @@
 	<meta property="og:type" content="product" />
 	<meta property="og:title" content={seoTitle} />
 	<meta property="og:description" content={seoDescription} />
-	<meta property="og:image" content={activeImage} />
+	<meta property="og:image" content={seoImage} />
 	<meta property="og:url" content={productUrl} />
+	<meta property="product:price:amount" content={String(product.price)} />
+	<meta property="product:price:currency" content="INR" />
 	<meta name="twitter:card" content="summary_large_image" />
+	<svelte:element this={'script'} type="application/ld+json">{jsonLd}</svelte:element>
 </svelte:head>
 
 <!-- â"€â"€â"€ Breadcrumb â"€â"€â"€ -->
@@ -174,7 +195,7 @@
 									type="button"
 									aria-label="Show product image {index + 1}"
 									aria-pressed={activeImage === image}
-									class="size-12 shrink-0 overflow-hidden rounded-md border-2 bg-white p-0.5 transition-all duration-200 sm:size-14 sm:rounded-lg sm:p-1
+									class="size-12 shrink-0 overflow-hidden rounded-md border-2 bg-white p-0.5 transition-[border-color,opacity,box-shadow] duration-200 sm:size-14 sm:rounded-lg sm:p-1
 										{activeImage === image
 										? 'border-[var(--heat-100)] shadow-[0_0_0_2px_var(--heat-8)]'
 										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
@@ -409,4 +430,3 @@
 		</section>
 	{/if}
 </section>
-

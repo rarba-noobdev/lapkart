@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { fade, scale } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
 	import {
 		ArrowUpRight,
 		Boxes,
@@ -170,7 +168,6 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 	<div
 		class="fixed inset-0 z-[80] flex items-start justify-center bg-black/45 px-4 pt-[12vh] backdrop-blur-[3px]"
-		transition:fade={{ duration: 140 }}
 		onclick={(event) => {
 			if (event.target === event.currentTarget) open = false;
 		}}
@@ -180,7 +177,6 @@
 			role="dialog"
 			aria-modal="true"
 			aria-label="Admin command palette"
-			transition:scale={{ duration: 160, start: 0.97, easing: cubicOut }}
 		>
 			<div class="flex items-center gap-2.5 border-b border-white/8 px-4">
 				{#if searching}

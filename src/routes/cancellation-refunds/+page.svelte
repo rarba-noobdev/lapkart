@@ -41,8 +41,6 @@
 	];
 </script>
 
-<svelte:head><title>Cancellation and Refund Policy - LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Policy"
 	title="Cancellation and refund policy"

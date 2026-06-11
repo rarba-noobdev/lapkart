@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>About LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="About"
 	title="Laptop parts commerce built for India"

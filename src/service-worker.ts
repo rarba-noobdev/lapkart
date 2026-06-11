@@ -12,15 +12,29 @@ const ASSET_CACHE = `assets-${version}`;
 // Runtime cache for navigations (SSR-rendered HTML pages). Kept separate so a
 // deploy doesn't wipe pages the user already viewed offline.
 const PAGE_CACHE = `pages-${version}`;
+// Public JSON/data endpoints that are safe to replay instantly and refresh in
+// the background. Do not add account, cart, order, checkout, or admin APIs.
+const DATA_CACHE = `public-data-${version}`;
 
 const PRECACHE = [...build, ...files];
+const PUBLIC_DATA_PATHS = new Set(['/api/search/products']);
+const MAX_DATA_CACHE_ENTRIES = 80;
 
 // Only public, non-personalized pages may be stored in PAGE_CACHE. Caching an
 // authenticated route (orders/profile/order/cart/checkout) would persist one
 // user's private HTML on the device, where it could be served offline to a
 // different user or after sign-out. Those routes stay network-only — no cached
 // copy is ever written, so there is nothing to leak.
-const PRIVATE_PREFIXES = ['/orders', '/order/', '/profile', '/cart', '/checkout', '/login', '/admin', '/auth/'];
+const PRIVATE_PREFIXES = [
+	'/orders',
+	'/order/',
+	'/profile',
+	'/cart',
+	'/checkout',
+	'/login',
+	'/admin',
+	'/auth/'
+];
 
 function isCacheablePage(pathname: string): boolean {
 	return !PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
@@ -46,7 +60,7 @@ sw.addEventListener('install', (event) => {
 sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
-			const keep = new Set([ASSET_CACHE, PAGE_CACHE]);
+			const keep = new Set([ASSET_CACHE, PAGE_CACHE, DATA_CACHE]);
 			for (const key of await caches.keys()) {
 				if (!keep.has(key)) await caches.delete(key);
 			}
@@ -61,7 +75,7 @@ sw.addEventListener('fetch', (event) => {
 
 	const url = new URL(request.url);
 
-	// Only handle same-origin requests. Supabase, Razorpay, Typesense, Ola Maps
+	// Only handle same-origin requests. Supabase, Razorpay, Ola Maps
 	// etc. stay network-only — caching auth/data/payment calls would serve stale
 	// or wrong state offline.
 	if (url.origin !== sw.location.origin) return;
@@ -70,6 +84,11 @@ sw.addEventListener('fetch', (event) => {
 	// or stable, and were precached on install).
 	if (PRECACHE.includes(url.pathname)) {
 		event.respondWith(cacheFirst(request, ASSET_CACHE));
+		return;
+	}
+
+	if (PUBLIC_DATA_PATHS.has(url.pathname)) {
+		event.respondWith(staleWhileRevalidate(request, DATA_CACHE, MAX_DATA_CACHE_ENTRIES));
 		return;
 	}
 
@@ -111,4 +130,38 @@ async function networkFirst(request: Request, cacheName: string): Promise<Respon
 		if (cached) return cached;
 		throw err;
 	}
+}
+
+async function staleWhileRevalidate(
+	request: Request,
+	cacheName: string,
+	maxEntries: number
+): Promise<Response> {
+	const cache = await caches.open(cacheName);
+	const cached = await cache.match(request);
+	const refresh = fetch(request)
+		.then(async (response) => {
+			if (response.ok) {
+				await cache.put(request, response.clone());
+				await trimCache(cache, maxEntries);
+			}
+			return response;
+		})
+		.catch(() => null);
+
+	if (cached) {
+		void refresh;
+		return cached;
+	}
+
+	const response = await refresh;
+	if (response) return response;
+	throw new TypeError('Public data request failed and no cache entry exists');
+}
+
+async function trimCache(cache: Cache, maxEntries: number) {
+	const keys = await cache.keys();
+	if (keys.length <= maxEntries) return;
+
+	await Promise.all(keys.slice(0, keys.length - maxEntries).map((key) => cache.delete(key)));
 }

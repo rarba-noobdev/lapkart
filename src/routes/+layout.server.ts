@@ -11,7 +11,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies, depends }) => {
 		: { data: null, error: null };
 
 	return {
-		cookies: cookies.getAll(),
+		cookies: user ? cookies.getAll().filter((cookie) => cookie.name.startsWith('sb-')) : [],
 		claims: claimsError ? null : (claimsData?.claims ?? null),
 		session,
 		user,

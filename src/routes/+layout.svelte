@@ -15,11 +15,21 @@
 	import CookieConsent from '$lib/components/CookieConsent.svelte';
 	import { hydrateCart } from '$lib/cart';
 	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
+	import {
+		organizationJsonLd,
+		safeJsonLd,
+		shouldNoIndexPath,
+		websiteJsonLd
+	} from '$lib/seo';
 
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
 	const isAdminRoute = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
+	const robotsNoIndex = $derived(shouldNoIndexPath(page.url.pathname));
+	const siteJsonLd = $derived(
+		safeJsonLd([organizationJsonLd(page.url.origin), websiteJsonLd(page.url.origin)])
+	);
 
 	// Show a route-matched skeleton in <main> while a client navigation's load
 	// resolves, so tapping a tab swaps to a loading shell immediately instead of
@@ -72,9 +82,8 @@
 		// after the user accepts via the cookie banner (DPDP / e-privacy).
 		const GA_ID = 'G-154H1YG3SM';
 		window.dataLayer = window.dataLayer || [];
-		function gtag(..._args: unknown[]) {
-			// eslint-disable-next-line prefer-rest-params
-			window.dataLayer.push(arguments);
+		function gtag(...args: unknown[]) {
+			window.dataLayer.push(args);
 		}
 		window.gtag = gtag;
 		gtag('consent', 'default', {
@@ -164,6 +173,12 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<meta property="og:site_name" content="LapKart" />
+	<meta name="application-name" content="LapKart" />
+	{#if robotsNoIndex}
+		<meta name="robots" content="noindex,nofollow" />
+	{/if}
+	<svelte:element this={'script'} type="application/ld+json">{siteJsonLd}</svelte:element>
 </svelte:head>
 
 <NavigationLoader />
@@ -171,6 +186,7 @@
 <CookieConsent />
 
 <div
+	data-sveltekit-preload-data="hover"
 	class={[
 		'flex min-h-screen w-full flex-col bg-[var(--background-base)] text-foreground',
 		isAdminRoute ? 'pb-0' : 'pb-[calc(82px+env(safe-area-inset-bottom))] md:pb-0'

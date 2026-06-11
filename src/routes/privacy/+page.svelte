@@ -17,8 +17,6 @@
 	];
 </script>
 
-<svelte:head><title>Privacy Policy - LapKart</title></svelte:head>
-
 <StaticPage
 	eyebrow="Privacy"
 	title="Privacy policy"

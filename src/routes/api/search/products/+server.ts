@@ -38,7 +38,7 @@ export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
 	);
 
 	setHeaders({
-		'cache-control': 'private, max-age=20'
+		'cache-control': 'public, max-age=20, s-maxage=120, stale-while-revalidate=300'
 	});
 
 	return json(result);

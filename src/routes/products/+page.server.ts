@@ -1,4 +1,6 @@
 import type { PageServerLoad } from './$types';
+import { getCachedActiveCategoryCounts } from '$lib/server/catalog-cache';
+import { publicCatalogCacheControl } from '$lib/server/cache-control';
 import { searchProducts, type ProductSort } from '$lib/server/product-search';
 
 const sortValues = new Set<ProductSort>([
@@ -28,8 +30,6 @@ function parsePage(value: string | null) {
 export const load: PageServerLoad = async ({ depends, locals, url, setHeaders }) => {
 	depends('app:products');
 
-	setHeaders({ 'cache-control': 'private, max-age=60' });
-
 	const category = url.searchParams.get('category') ?? '';
 	const query = url.searchParams.get('q') ?? '';
 	const brand = url.searchParams.get('brand') ?? '';
@@ -39,7 +39,8 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 	const maxPrice = parseNumber(url.searchParams.get('maxPrice'));
 	const minRating = parseNumber(url.searchParams.get('minRating'));
 	const page = parsePage(url.searchParams.get('page'));
-	const [result, categoryCountRows] = await Promise.all([
+	const [{ user }, result, categoryCounts] = await Promise.all([
+		locals.safeGetSession(),
 		searchProducts(
 			{
 				category: category || undefined,
@@ -50,20 +51,15 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 				minPrice,
 				maxPrice,
 				minRating,
-				limit: 96,
+				limit: 24,
 				page
 			},
 			locals.supabase
 		),
-		locals.supabase
-			.rpc('active_category_counts')
-			.then(({ data }) => data ?? [])
+		getCachedActiveCategoryCounts(locals.supabase)
 	]);
 
-	const categoryCounts: Record<string, number> = {};
-	for (const row of categoryCountRows) {
-		categoryCounts[row.category] = Number(row.count);
-	}
+	setHeaders({ 'cache-control': publicCatalogCacheControl(user) });
 
 	return {
 		products: result.products,
