@@ -650,11 +650,7 @@ const productImportSchema = z.object({
 
 function settingNumber(value: unknown, fallback: number) {
 	const parsed =
-		typeof value === 'number'
-			? value
-			: typeof value === 'string'
-				? Number(value)
-				: Number.NaN;
+		typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
 	return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -778,10 +774,7 @@ function manualDeliveryPromise(settings = defaultCommerceSettings, now = new Dat
 			estimatedDeliveryDays === 1
 				? 'Tomorrow across Tamil Nadu'
 				: 'Next pickup cycle across Tamil Nadu',
-		label:
-			estimatedDeliveryDays === 1
-				? 'Before 5 PM pickup'
-				: 'After 5 PM pickup cycle'
+		label: estimatedDeliveryDays === 1 ? 'Before 5 PM pickup' : 'After 5 PM pickup cycle'
 	};
 }
 
@@ -796,14 +789,14 @@ function getManualDeliveryQuote(input: {
 	return {
 		quoteId: `manual:standard:${chargeableKg}kg`,
 		courierCompanyId: null,
-		courierName: 'LapKart Manual Delivery',
+		courierName: 'LapKart Courier',
 		rate: calculateManualDeliveryCharge(input.weightKg, input.subtotal, settings),
 		rating: 0,
 		etd: promise.etd,
 		expectedDeliveryDate: promise.expectedDeliveryDate,
 		estimatedDeliveryDays: promise.estimatedDeliveryDays,
 		etdHours: promise.estimatedDeliveryDays * 24,
-		mode: `Manual courier - ${chargeableKg} kg`,
+		mode: `Courier - ${chargeableKg} kg`,
 		recommended: true,
 		serviceType: 'standard'
 	};
@@ -876,11 +869,11 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 			freeDeliveryRemaining: summary.pricing.freeDeliveryRemaining
 		},
 		cod: summary.cod,
-		customerMessage: `Manual Tamil Nadu courier from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before dispatch.`,
+		customerMessage: `Tamil Nadu courier from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before dispatch.`,
 		limitations: [
 			'Delivery is currently limited to Tamil Nadu.',
-			'Live map tracking is not provided for manual courier delivery.',
-			'Promise is calculated from stock, the daily courier pickup cutoff, and the manual delivery rate card.'
+			'Live map tracking is not provided for courier delivery.',
+			'Promise is calculated from stock, the daily courier pickup cutoff, and the delivery rate card.'
 		]
 	};
 }
@@ -1362,9 +1355,7 @@ async function getShiprocketShipmentFacts(shiprocketOrderId: number) {
 	const details = await getShiprocketOrderDetails(shiprocketOrderId);
 	const data = asRecord(details.data);
 	const shipments = data.shipments;
-	const shipment = Array.isArray(shipments)
-		? asRecord(shipments[0])
-		: asRecord(shipments);
+	const shipment = Array.isArray(shipments) ? asRecord(shipments[0]) : asRecord(shipments);
 	const courierCompanyId = Number(shipment.courier_company_id ?? shipment.courier_id);
 	return {
 		awbCode: firstString(shipment.awb, shipment.awb_code, data.awb_code),
@@ -1515,11 +1506,7 @@ async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
 	// Sync the order status when tracking is refreshed so a Shiprocket-side
 	// cancellation/return reflects on the order without waiting for a webhook.
 	if (typeof updates.status === 'string' && updatedShipment?.order_id) {
-		await propagateShipmentStatusToOrder(
-			adminDb,
-			String(updatedShipment.order_id),
-			updates.status
-		);
+		await propagateShipmentStatusToOrder(adminDb, String(updatedShipment.order_id), updates.status);
 	}
 
 	return { shipment: updatedShipment, tracking: response };
@@ -1716,7 +1703,8 @@ async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, or
 			requestKey: orderId,
 			metadata: {
 				orderId,
-				error: autoFulfillError instanceof Error ? autoFulfillError.message : String(autoFulfillError)
+				error:
+					autoFulfillError instanceof Error ? autoFulfillError.message : String(autoFulfillError)
 			}
 		});
 	}
@@ -1791,7 +1779,9 @@ async function cancelOrderShipmentOnShiprocket(
 						orderId,
 						shiprocketOrderId: srOrderId,
 						error:
-							orderCancelError instanceof Error ? orderCancelError.message : String(orderCancelError)
+							orderCancelError instanceof Error
+								? orderCancelError.message
+								: String(orderCancelError)
 					}
 				});
 			}
@@ -2272,7 +2262,8 @@ function canTransitionManualOrderStatus(
 	if (currentStatus === 'on_hold') return ['confirmed', 'cancelled'].includes(nextStatus);
 	if (nextStatus === 'cancelled') return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
-	if (nextStatus === 'rto') return ['ready_for_delivery', 'shipped', 'out_for_delivery'].includes(currentStatus);
+	if (nextStatus === 'rto')
+		return ['ready_for_delivery', 'shipped', 'out_for_delivery'].includes(currentStatus);
 	if (currentIndex === -1 || nextIndex === -1) return false;
 	return nextIndex > currentIndex;
 }
@@ -2328,10 +2319,17 @@ function matchesImageSignature(type: string, bytes: Uint8Array): boolean {
 			return startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 		case 'image/webp':
 			// RIFF....WEBP
-			return startsWith([0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+			return (
+				startsWith([0x52, 0x49, 0x46, 0x46]) &&
+				bytes[8] === 0x57 &&
+				bytes[9] === 0x45 &&
+				bytes[10] === 0x42 &&
+				bytes[11] === 0x50
+			);
 		case 'image/avif': {
 			// ftyp box with avif/avis brand
-			if (bytes[4] !== 0x66 || bytes[5] !== 0x74 || bytes[6] !== 0x79 || bytes[7] !== 0x70) return false;
+			if (bytes[4] !== 0x66 || bytes[5] !== 0x74 || bytes[6] !== 0x79 || bytes[7] !== 0x70)
+				return false;
 			const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
 			return brand === 'avif' || brand === 'avis';
 		}
@@ -2585,7 +2583,10 @@ async function buildCheckoutSummary(
 ) {
 	const settings = await getCommerceSettings();
 	if (!isTamilNaduAddress(input.address)) {
-		throw new HttpError(400, `Delivery is currently available only in ${settings.manualDeliveryRegion}`);
+		throw new HttpError(
+			400,
+			`Delivery is currently available only in ${settings.manualDeliveryRegion}`
+		);
 	}
 
 	const adminDb = getSupabaseAdmin();
@@ -2658,10 +2659,10 @@ async function buildCheckoutSummary(
 	];
 
 	if (!couriers.length)
-		throw new HttpError(400, 'Manual delivery is currently unavailable for this location');
+		throw new HttpError(400, 'Delivery is currently unavailable for this location');
 	const fallbackCourier = couriers[0];
 	if (!fallbackCourier)
-		throw new HttpError(400, 'Manual delivery is currently unavailable for this location');
+		throw new HttpError(400, 'Delivery is currently unavailable for this location');
 	const selectedCourier =
 		couriers.find((courier) => courier.quoteId === input.selectedQuoteId) ??
 		couriers.find((courier) => courier.recommended) ??
@@ -2699,7 +2700,7 @@ async function buildCheckoutSummary(
 		Math.max(0, settings.manualDeliveryFreeSubtotal - subtotal)
 	);
 	const deliveryPromise = {
-		label: selectedCourier.rate === 0 ? 'Free Tamil Nadu delivery' : 'Tamil Nadu manual delivery',
+		label: selectedCourier.rate === 0 ? 'Free Tamil Nadu delivery' : 'Tamil Nadu delivery',
 		detail: `${selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}. Daily pickup before ${settings.manualDeliveryCutoffHourIst}:00 IST.`,
 		serviceType: selectedCourier.serviceType
 	} satisfies CheckoutSummary['deliveryPromise'];
@@ -3427,7 +3428,10 @@ async function handle(req: Request) {
 		const input = deliveryEstimateQuerySchema.parse(parseQueryObject(url));
 		const settings = await getCommerceSettings();
 		if (input.state && !isTamilNaduState(input.state)) {
-			throw new HttpError(400, `Delivery is currently available only in ${settings.manualDeliveryRegion}`);
+			throw new HttpError(
+				400,
+				`Delivery is currently available only in ${settings.manualDeliveryRegion}`
+			);
 		}
 		const route = await getOlaDeliveryRoute(input);
 		const couriers = [
@@ -5011,7 +5015,9 @@ async function handle(req: Request) {
 		const statusCode = Number(body.current_status_id ?? body.status_code);
 		const statusTime =
 			parseShiprocketTimestamp(
-				String(body.event_time ?? body.status_time ?? body.updated_at ?? body.current_timestamp ?? '')
+				String(
+					body.event_time ?? body.status_time ?? body.updated_at ?? body.current_timestamp ?? ''
+				)
 			) ?? null;
 		const scans = Array.isArray(body.scans) ? body.scans.map(asRecord) : [];
 		const lastScan = scans.length ? scans[scans.length - 1] : null;
@@ -5151,7 +5157,8 @@ async function handle(req: Request) {
 					awb,
 					status,
 					webhookEventId: webhookEvent.id,
-					error: processingError instanceof Error ? processingError.message : String(processingError)
+					error:
+						processingError instanceof Error ? processingError.message : String(processingError)
 				}
 			});
 			await adminDb
@@ -5204,40 +5211,40 @@ async function handle(req: Request) {
 			support,
 			profitability
 		] = await Promise.all([
-				adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
-				adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
-				adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
-				adminDb
-					.from('order_cancellation_requests')
-					.select('id,order_id,status,reason,requested_at,resolved_at')
-					.order('requested_at', { ascending: false })
-					.limit(100),
-				adminDb
-					.from('return_requests')
-					.select('id,order_id,status,requested_at,resolved_at')
-					.order('requested_at', { ascending: false })
-					.limit(100),
-				adminDb
-					.from('refunds')
-					.select('id,order_id,amount,status,created_at,processed_at')
-					.order('created_at', { ascending: false })
-					.limit(100),
-				adminDb
-					.from('shipments')
-					.select('id,status', { count: 'exact', head: false })
-					.eq('shipping_direction', 'outbound')
-					.in('status', ['created', 'awb_assigned'])
-					.limit(1000),
-				adminDb
-					.from('product_questions')
-					.select('id', { count: 'exact', head: true })
-					.eq('status', 'pending'),
-				adminDb
-					.from('order_profitability')
-					.select('order_id,created_at,status,total,product_cost,estimated_net_margin,rto_risk')
-					.order('created_at', { ascending: false })
-					.limit(500)
-			]);
+			adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
+			adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
+			adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
+			adminDb
+				.from('order_cancellation_requests')
+				.select('id,order_id,status,reason,requested_at,resolved_at')
+				.order('requested_at', { ascending: false })
+				.limit(100),
+			adminDb
+				.from('return_requests')
+				.select('id,order_id,status,requested_at,resolved_at')
+				.order('requested_at', { ascending: false })
+				.limit(100),
+			adminDb
+				.from('refunds')
+				.select('id,order_id,amount,status,created_at,processed_at')
+				.order('created_at', { ascending: false })
+				.limit(100),
+			adminDb
+				.from('shipments')
+				.select('id,status', { count: 'exact', head: false })
+				.eq('shipping_direction', 'outbound')
+				.in('status', ['created', 'awb_assigned'])
+				.limit(1000),
+			adminDb
+				.from('product_questions')
+				.select('id', { count: 'exact', head: true })
+				.eq('status', 'pending'),
+			adminDb
+				.from('order_profitability')
+				.select('order_id,created_at,status,total,product_cost,estimated_net_margin,rto_risk')
+				.order('created_at', { ascending: false })
+				.limit(500)
+		]);
 		if (orders.error) throw orders.error;
 		if (products.error) throw products.error;
 		if (users.error) throw users.error;
@@ -6380,15 +6387,15 @@ async function handle(req: Request) {
 			}
 		}
 		return json(req, 200, {
-				order: {
-					id: data.id,
-					status: data.status,
-					paymentStatus: data.payment_status,
-					codFee: Number(data.cod_fee ?? 0),
-					rtoRisk: Number(data.rto_risk ?? 0),
-					holdReason: data.hold_reason ?? null,
-					updatedAt: data.updated_at
-				}
+			order: {
+				id: data.id,
+				status: data.status,
+				paymentStatus: data.payment_status,
+				codFee: Number(data.cod_fee ?? 0),
+				rtoRisk: Number(data.rto_risk ?? 0),
+				holdReason: data.hold_reason ?? null,
+				updatedAt: data.updated_at
+			}
 		});
 	}
 

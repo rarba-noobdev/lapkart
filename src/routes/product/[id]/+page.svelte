@@ -397,7 +397,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
 						<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Manual delivery
+						Courier delivery
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"

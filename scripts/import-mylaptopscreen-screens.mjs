@@ -27,6 +27,7 @@ const DEFAULT_HEIGHT_CM = 10;
 const sourceBrandPattern = /\b(my\s*laptop\s*screen|mylaptopscreen)\b/gi;
 
 const applePattern = /\b(apple|macbook|imac|ipad|macbook\s+pro|macbook\s+air)\b/i;
+const blockedPanelPattern = /\b(sharp|tianma)\b/i;
 const screenPattern =
 	/\b(screen|display|lcd|led|panel|edp|ips|fhd|qhd|uhd|touch\s*screen|touchscreen)\b/i;
 const accessoryPattern =
@@ -129,6 +130,10 @@ function isApple(product) {
 function isScreen(product) {
 	const text = productText(product);
 	return screenPattern.test(text) && !accessoryPattern.test(text);
+}
+
+function hasBlockedPanel(values) {
+	return values.some((value) => blockedPanelPattern.test(String(value ?? '')));
 }
 
 function resolveBrand(product) {
@@ -315,7 +320,7 @@ function buildHighlights(attrs) {
 			getAttribute(attrs, 'Condition') || 'Brand New A+ Grade Screen',
 			'Compatibility checked before dispatch',
 			WARRANTY,
-			'Manual Tamil Nadu delivery'
+			'Tamil Nadu courier delivery'
 		],
 		8
 	);
@@ -339,6 +344,17 @@ function normalizeProduct(product) {
 	);
 	const parts = extractPartNumbers(product, title, attrs);
 	const displaySpecs = displaySpecEntries(attrs, compatibility, specs);
+	if (
+		hasBlockedPanel([
+			title,
+			product.sku,
+			product.slug,
+			product.permalink,
+			...displaySpecs.flatMap(([label, value]) => [label, value])
+		])
+	) {
+		return null;
+	}
 	const categories = unique((product.categories ?? []).map((category) => category.name), 6);
 	const descriptionSource = stripHtml(product.short_description || product.description);
 	const sku = truncate(product.sku || `MLS-${product.id}`, 120);

@@ -121,7 +121,7 @@
 		if (!order) return { label: 'Awaiting shipment', mode: 'none' as const };
 		if (order.shipment?.trackingUrl) return { label: 'Track shipment', mode: 'open' as const };
 		if (order.shipment) return { label: 'Refresh tracking', mode: 'refresh' as const };
-		return { label: 'Manual delivery updates', mode: 'none' as const };
+		return { label: 'Delivery updates', mode: 'none' as const };
 	});
 
 	const paymentDetails = $derived<DetailPair[]>(
@@ -141,9 +141,12 @@
 		order
 			? [
 					{ label: 'Service', value: formatStatusLabel(order.shippingServiceType) },
-					{ label: 'Courier', value: courierLabel || 'Manual courier' },
+					{ label: 'Courier', value: courierLabel || 'Local courier' },
 					{ label: 'AWB', value: awbLabel },
-					{ label: 'ETA', value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After dispatch' }
+					{
+						label: 'ETA',
+						value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After dispatch'
+					}
 				]
 			: []
 	);
@@ -217,7 +220,8 @@
 		if (['delivered', 'paid', 'captured', 'verified'].includes(n)) return 'tone-success';
 		if (['cancelled', 'failed', 'payment_failed', 'refunded', 'returned'].includes(n))
 			return 'tone-danger';
-		if (['pending_payment', 'pending', 'cod_pending', 'processing'].includes(n)) return 'tone-warning';
+		if (['pending_payment', 'pending', 'cod_pending', 'processing'].includes(n))
+			return 'tone-warning';
 		return 'tone-heat';
 	}
 
@@ -393,7 +397,9 @@
 			{#each details as detail (detail.label)}
 				<div class="detail-cell">
 					<p class="cell-label">{detail.label}</p>
-					<p class="mt-0.5 text-body-small font-medium break-words text-foreground">{detail.value}</p>
+					<p class="text-body-small mt-0.5 font-medium break-words text-foreground">
+						{detail.value}
+					</p>
 				</div>
 			{/each}
 		</div>
@@ -416,7 +422,12 @@
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
 								<span class="order-id">#{shortOrderId}</span>
-								<button type="button" class="copy-btn" onclick={copyOrderId} aria-label="Copy full order ID">
+								<button
+									type="button"
+									class="copy-btn"
+									onclick={copyOrderId}
+									aria-label="Copy full order ID"
+								>
 									{#if copiedOrderId}
 										<Check class="size-3" strokeWidth={2.5} />
 									{:else}
@@ -445,11 +456,19 @@
 					</div>
 
 					<div class="board-actions">
-						<button type="button" class="track-btn" onclick={handleTrack} disabled={trackAction.mode === 'none' || trackingRefreshing}>
+						<button
+							type="button"
+							class="track-btn"
+							onclick={handleTrack}
+							disabled={trackAction.mode === 'none' || trackingRefreshing}
+						>
 							{#if trackAction.mode === 'open'}
 								<ExternalLink class="size-4" strokeWidth={2} />
 							{:else}
-								<RefreshCw class={`size-4 ${trackingRefreshing ? 'animate-spin' : ''}`} strokeWidth={2} />
+								<RefreshCw
+									class={`size-4 ${trackingRefreshing ? 'animate-spin' : ''}`}
+									strokeWidth={2}
+								/>
 							{/if}
 							{trackingRefreshing ? 'Refreshing…' : trackAction.label}
 						</button>
@@ -459,7 +478,10 @@
 					</div>
 
 					{#if trackingMessage}
-						<p class={`tracking-msg ${trackingMessageTone === 'error' ? 'tone-danger' : 'tone-heat'}`} transition:fade={{ duration: 200 }}>
+						<p
+							class={`tracking-msg ${trackingMessageTone === 'error' ? 'tone-danger' : 'tone-heat'}`}
+							transition:fade={{ duration: 200 }}
+						>
 							{trackingMessage}
 						</p>
 					{/if}
@@ -483,7 +505,7 @@
 
 				<!-- Timeline -->
 				<section class="panel p-4 sm:p-5">
-					<h2 class="mb-4 text-label-small font-semibold text-foreground">Progress</h2>
+					<h2 class="text-label-small mb-4 font-semibold text-foreground">Progress</h2>
 					<div class="tl-grid" style={`--tl-count: ${timeline.length}`}>
 						{#each timeline as step, index (step.key)}
 							{@const Icon = stepIcon(step.state)}
@@ -515,18 +537,29 @@
 						{#each order.items as item (item.id)}
 							<div class="item-row">
 								<div class="item-img">
-									<img src={item.image} alt={item.title} class="max-h-full w-full object-contain" loading="lazy" />
+									<img
+										src={item.image}
+										alt={item.title}
+										class="max-h-full w-full object-contain"
+										loading="lazy"
+									/>
 								</div>
 								<div class="min-w-0 flex-1">
-									<p class="line-clamp-2 text-body-small font-semibold text-foreground">{item.title}</p>
-									<p class="mt-0.5 text-label-x-small text-[var(--black-alpha-56)]">
+									<p class="text-body-small line-clamp-2 font-semibold text-foreground">
+										{item.title}
+									</p>
+									<p class="text-label-x-small mt-0.5 text-[var(--black-alpha-56)]">
 										{item.brand || 'LapKart'} &middot; Qty {item.qty}
 									</p>
 								</div>
 								<div class="text-right">
-									<p class="text-body-small font-semibold text-foreground">{formatINR(item.price * item.qty)}</p>
+									<p class="text-body-small font-semibold text-foreground">
+										{formatINR(item.price * item.qty)}
+									</p>
 									{#if item.qty > 1}
-										<p class="text-label-x-small text-[var(--black-alpha-56)]">{formatINR(item.price)} ea</p>
+										<p class="text-label-x-small text-[var(--black-alpha-56)]">
+											{formatINR(item.price)} ea
+										</p>
 									{/if}
 								</div>
 							</div>
@@ -549,18 +582,22 @@
 						<div class="icon-box"><ReceiptText class="size-3.5" strokeWidth={2} /></div>
 						<h2 class="text-label-small font-semibold text-foreground">Summary</h2>
 					</div>
-					<div class="space-y-2 text-body-small">
+					<div class="text-body-small space-y-2">
 						<div class="flex justify-between text-[var(--black-alpha-56)]">
 							<span>Subtotal</span>
 							<span class="font-medium text-foreground">{formatINR(subtotal)}</span>
 						</div>
 						<div class="flex justify-between text-[var(--black-alpha-56)]">
 							<span>Shipping</span>
-							<span class="font-medium text-foreground">{order.shipping > 0 ? formatINR(order.shipping) : 'Free'}</span>
+							<span class="font-medium text-foreground"
+								>{order.shipping > 0 ? formatINR(order.shipping) : 'Free'}</span
+							>
 						</div>
 						<div class="flex justify-between border-t border-[var(--border-faint)] pt-2">
 							<span class="font-semibold text-foreground">Total</span>
-							<span class="text-label-large font-bold text-foreground">{formatINR(order.total)}</span>
+							<span class="text-label-large font-bold text-foreground"
+								>{formatINR(order.total)}</span
+							>
 						</div>
 					</div>
 				</div>
@@ -599,7 +636,7 @@
 					<p class="text-label-medium font-semibold">Order not found</p>
 					<a
 						href={resolve('/orders')}
-						class="motion-soft-link mt-1 inline-flex items-center gap-1 text-body-small text-[var(--heat-100)]"
+						class="motion-soft-link text-body-small mt-1 inline-flex items-center gap-1 text-[var(--heat-100)]"
 					>
 						Back to orders <ChevronRight class="size-3.5" strokeWidth={2} />
 					</a>
@@ -635,7 +672,11 @@
 	}
 	.board-closed {
 		background:
-			radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--accent-crimson) 8%, transparent) 0%, transparent 45%),
+			radial-gradient(
+				120% 140% at 100% 0%,
+				color-mix(in srgb, var(--accent-crimson) 8%, transparent) 0%,
+				transparent 45%
+			),
 			rgba(255, 255, 255, 0.97);
 	}
 
@@ -718,7 +759,9 @@
 		box-shadow:
 			0px -6px 12px 0px rgba(255, 0, 0, 0.18) inset,
 			0px 2px 4px 0px rgba(255, 77, 0, 0.12);
-		transition: transform var(--motion-fast) var(--motion-ease-out), box-shadow var(--motion-standard) var(--motion-ease);
+		transition:
+			transform var(--motion-fast) var(--motion-ease-out),
+			box-shadow var(--motion-standard) var(--motion-ease);
 	}
 	.track-btn:hover:not(:disabled) {
 		transform: translateY(-1px);

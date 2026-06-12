@@ -24,6 +24,6 @@
 <StaticPage
 	eyebrow="Shipping"
 	title="Shipping policy"
-	description="Manual courier delivery is available across Tamil Nadu with a fixed weight-based rate card."
+	description="Courier delivery is available across Tamil Nadu with a fixed weight-based rate card."
 	{sections}
 />

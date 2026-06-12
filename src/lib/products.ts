@@ -164,9 +164,7 @@ export async function listCatalogProductPage(
 
 	if (options.query) {
 		const escaped = options.query.replace(/[%_]/g, '\\$&');
-		query = query.or(
-			`title.ilike.%${escaped}%,brand.ilike.%${escaped}%,sku.ilike.%${escaped}%,description.ilike.%${escaped}%`
-		);
+		query = query.or(`title.ilike.%${escaped}%,brand.ilike.%${escaped}%,sku.ilike.%${escaped}%`);
 	}
 
 	if (options.inStock) {

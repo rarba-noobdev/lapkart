@@ -27,6 +27,7 @@ const DEFAULT_HEIGHT_CM = 10;
 
 const supplierBrandPattern = /\b(pc\s*tech|pctech|branded)\b/gi;
 const applePattern = /\b(apple|macbook|imac|ipad|macbook\s+pro|macbook\s+air)\b/i;
+const blockedPanelPattern = /\b(sharp|tianma)\b/i;
 const screenPattern =
 	/\b(screen|display|lcd|led|panel|edp|ips|fhd|qhd|uhd|touch\s*screen|touchscreen)\b/i;
 const accessoryPattern =
@@ -292,6 +293,10 @@ function isScreen(card) {
 	return screenPattern.test(text) && !accessoryPattern.test(text);
 }
 
+function hasBlockedPanel(values) {
+	return values.some((value) => blockedPanelPattern.test(String(value ?? '')));
+}
+
 function parseCard(block) {
 	const url = absoluteSourceUrl(extractFirst(/<div class="name">[\s\S]*?<a\s+href="([^"]+)"/i, block));
 	const title = truncate(
@@ -327,6 +332,16 @@ function normalizeProduct(card) {
 	const rawSpecs = extractSpecPairs(card.description);
 	const displaySpecs = normalizeSpecEntries(rawSpecs, card.title, card.model);
 	const specifications = buildSpecifications(displaySpecs);
+	if (
+		hasBlockedPanel([
+			card.title,
+			card.model,
+			card.url,
+			...displaySpecs.flatMap(([label, value]) => [label, value])
+		])
+	) {
+		return null;
+	}
 	const brand = resolveBrand(card.title, card.model);
 	const compatibility = specifications.Compatibility || compatibilityFromTitle(card.title);
 	const sku = `PCTECH-${card.productId}`;
@@ -389,7 +404,7 @@ function normalizeProduct(card) {
 				specifications.Condition || 'Brand New screen',
 				'Compatibility checked before dispatch',
 				WARRANTY,
-				'Manual Tamil Nadu delivery'
+				'Tamil Nadu courier delivery'
 			],
 			8
 		),
