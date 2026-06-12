@@ -16,6 +16,8 @@ export type OrderSummary = {
 	shippingState: string | null;
 	shippingPincode: string | null;
 	shippingServiceType: string;
+	shippingCourierName: string | null;
+	shippingExpectedDeliveryDate: string | null;
 	items: Array<{
 		id: string;
 		title: string;
@@ -55,6 +57,8 @@ type RawOrder = {
 	shipping_state: string | null;
 	shipping_pincode: string | null;
 	shipping_service_type: string;
+	shipping_courier_name: string | null;
+	shipping_expected_delivery_date: string | null;
 	order_items?: Array<{
 		id: string;
 		title: string;
@@ -94,6 +98,8 @@ const orderSelect = `
   shipping_state,
   shipping_pincode,
   shipping_service_type,
+  shipping_courier_name,
+  shipping_expected_delivery_date,
   order_items(id,title,image,brand,qty,price),
   shipments(status,awb_code,courier_name,tracking_url,expected_delivery_date),
   payments(id,provider,status,amount,provider_payment_id,provider_order_id)
@@ -130,6 +136,8 @@ function normalizeOrder(order: RawOrder): OrderSummary {
 		shippingState: order.shipping_state,
 		shippingPincode: order.shipping_pincode,
 		shippingServiceType: order.shipping_service_type,
+		shippingCourierName: order.shipping_courier_name,
+		shippingExpectedDeliveryDate: order.shipping_expected_delivery_date,
 		items: (order.order_items ?? []).map((item) => ({
 			id: item.id,
 			title: item.title,

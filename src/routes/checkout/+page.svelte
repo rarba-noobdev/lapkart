@@ -24,7 +24,13 @@
 	import { cartState, clearCart, type CartItem } from '$lib/cart';
 	import { formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
-	import { calculateCartWeightKg, calculateManualDeliveryCharge } from '$lib/shipping';
+	import {
+		MANUAL_DELIVERY_FREE_SUBTOTAL,
+		MANUAL_DELIVERY_REGION,
+		calculateCartWeightKg,
+		calculateManualDeliveryCharge,
+		isTamilNaduState
+	} from '$lib/shipping';
 	import { getAccessToken, getAuthorizationHeaders } from '$lib/supabase-auth';
 	import type { Tables } from '$lib/supabase/types';
 	import DeliveryMapPicker, {
@@ -125,16 +131,7 @@
 		error?: string;
 	};
 
-	const indianStates = [
-		'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-		'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
-		'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
-		'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
-		'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
-		'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-		'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Puducherry',
-		'Chandigarh', 'Andaman and Nicobar', 'Dadra and Nagar Haveli', 'Lakshadweep'
-	];
+	const indianStates = [MANUAL_DELIVERY_REGION];
 	const checkoutSkeletons = [1, 2, 3];
 	const auth = getAuthContext();
 
@@ -207,6 +204,7 @@
 			/^[0-9]{6}$/.test(address.pincode.trim()) &&
 			address.phone.replace(/\D/g, '').length >= 10
 	);
+	const deliveryAreaEligible = $derived(isTamilNaduState(address.state));
 	const deliveryPin = $derived(
 		hasDeliveryPin && address.locationSource
 			? {
@@ -239,6 +237,7 @@
 			address.latitude,
 			address.longitude,
 			address.pincode,
+			address.state,
 			selectedQuoteId,
 			subtotal,
 			couponCode,
@@ -369,9 +368,17 @@
 		const latitude = address.latitude;
 		const longitude = address.longitude;
 		const pincode = address.pincode.trim();
+		const deliveryState = address.state.trim();
 		const declaredValue = subtotal;
 		const rowCount = rows.length;
-		const nextEstimateKey = [latitude, longitude, pincode, declaredValue, rowCount].join('|');
+		const nextEstimateKey = [
+			latitude,
+			longitude,
+			pincode,
+			deliveryState,
+			declaredValue,
+			rowCount
+		].join('|');
 
 		if (nextEstimateKey === lastEstimateKey) return;
 		lastEstimateKey = nextEstimateKey;
@@ -381,6 +388,14 @@
 			deliveryEstimate = null;
 			selectedQuoteId = null;
 			estimateError = null;
+			estimateLoading = false;
+			return;
+		}
+
+		if (!deliveryAreaEligible) {
+			deliveryEstimate = null;
+			selectedQuoteId = null;
+			estimateError = `Delivery is currently available only in ${MANUAL_DELIVERY_REGION}.`;
 			estimateLoading = false;
 			return;
 		}
@@ -408,6 +423,7 @@
 				url.searchParams.set('latitude', String(latitude));
 				url.searchParams.set('longitude', String(longitude));
 				url.searchParams.set('pincode', pincode);
+				url.searchParams.set('state', deliveryState);
 				url.searchParams.set('declaredValue', String(declaredValue));
 				url.searchParams.set('weightKg', String(packageWeightKg));
 
@@ -523,6 +539,11 @@
 			return;
 		}
 
+		if (!deliveryAreaEligible) {
+			setMessage('error', `Delivery is currently available only in ${MANUAL_DELIVERY_REGION}.`);
+			return;
+		}
+
 		if (!hasValidAddress || !hasDeliveryPin || !selectedCourier) {
 			setMessage('error', 'Confirm the delivery address and option before applying a coupon.');
 			return;
@@ -595,6 +616,11 @@
 
 		if (!hasValidAddress) {
 			setMessage('error', 'Complete the delivery address before payment.');
+			return;
+		}
+
+		if (!deliveryAreaEligible) {
+			setMessage('error', `Delivery is currently available only in ${MANUAL_DELIVERY_REGION}.`);
 			return;
 		}
 
@@ -1023,6 +1049,10 @@
 						<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
 						<h2 class="text-[13px] font-medium text-foreground">Delivery option</h2>
 					</div>
+					<p class="mb-3 text-[11px] leading-relaxed text-[var(--black-alpha-48)]">
+						Tamil Nadu delivery only. Orders paid before 5 PM are targeted for tomorrow
+						delivery. Free delivery starts at {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}.
+					</p>
 
 					{#if estimateLoading}
 						<div class="flex items-center gap-2 rounded-md bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]">
@@ -1083,7 +1113,9 @@
 											</p>
 										</div>
 										<div class="shrink-0 text-right">
-											<p class="text-[13px] font-medium text-foreground">{formatINR(courier.rate)}</p>
+											<p class="text-[13px] font-medium text-foreground">
+												{courier.rate === 0 ? 'Free' : formatINR(courier.rate)}
+											</p>
 											<p class="text-[10px] text-[var(--black-alpha-40)]">{courier.expectedDeliveryDate ?? 'On dispatch'}</p>
 										</div>
 									</div>
@@ -1284,6 +1316,7 @@
 							rows.length === 0 ||
 							estimateLoading ||
 							!selectedCourier ||
+							!deliveryAreaEligible ||
 							Boolean(orderId)}
 						onclick={pay}
 					>

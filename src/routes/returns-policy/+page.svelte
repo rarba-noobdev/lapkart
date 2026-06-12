@@ -8,7 +8,7 @@
 		},
 		{
 			title: 'Return review',
-			body: 'Return requests are reviewed by an admin. Approval, rejection, reverse pickup, warehouse receipt, and refund status are tracked against the order.'
+			body: 'Return requests are reviewed by an admin. Customers must provide clear photos and videos before the request is approved, so the item condition can be compared with LapKart dispatch proof.'
 		},
 		{
 			title: 'Non-returnable cases',
@@ -20,6 +20,6 @@
 <StaticPage
 	eyebrow="Returns"
 	title="Return policy"
-	description="Eligible delivered orders can be requested for return from the order detail page within the return window."
+	description="Eligible delivered orders can be requested for return from the order detail page within the return window, with photo and video evidence."
 	{sections}
 />

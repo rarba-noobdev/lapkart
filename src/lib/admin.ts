@@ -150,6 +150,9 @@ export type AdminOrderRecord = {
 		id: string;
 		status: string;
 		reason: string;
+		condition_notes: string | null;
+		photos: string[] | null;
+		videos: string[] | null;
 		admin_note: string | null;
 		requested_at: string;
 		resolved_at: string | null;
@@ -219,9 +222,7 @@ export type RefundEditorState = {
 export const manualOrderStatusOptions = [
 	{ value: 'pending', label: 'Pending' },
 	{ value: 'processing', label: 'Processing' },
-	{ value: 'confirmed', label: 'Confirmed' },
-	{ value: 'ready_for_delivery', label: 'Ready for delivery' },
-	{ value: 'shipped', label: 'Shipped' },
+	{ value: 'confirmed', label: 'Paid' },
 	{ value: 'out_for_delivery', label: 'Out for delivery' },
 	{ value: 'delivered', label: 'Delivered' },
 	{ value: 'cancelled', label: 'Cancelled' },
@@ -389,17 +390,12 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 	const currentStatus = order.status.toLowerCase();
 	if (currentStatus === nextStatus) return true;
 
-	const progressiveStates = [
-		'pending',
-		'processing',
-		'confirmed',
-		'ready_for_delivery',
-		'shipped',
-		'out_for_delivery',
-		'delivered'
-	];
+	const progressiveStates = ['pending', 'processing', 'confirmed', 'out_for_delivery', 'delivered'];
+	const currentProgressStatus = ['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus)
+		? 'confirmed'
+		: currentStatus;
 
-	const currentIndex = progressiveStates.indexOf(currentStatus);
+	const currentIndex = progressiveStates.indexOf(currentProgressStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
 
 	if (nextStatus === 'cancelled')
@@ -419,17 +415,11 @@ export function canAdminReturnOrder(order: AdminOrderRecord) {
 }
 
 export function nextProgressiveOrderStatus(order: AdminOrderRecord) {
-	const progressiveStates = [
-		'pending',
-		'processing',
-		'confirmed',
-		'ready_for_delivery',
-		'shipped',
-		'out_for_delivery',
-		'delivered'
-	];
+	const progressiveStates = ['pending', 'processing', 'confirmed', 'out_for_delivery', 'delivered'];
+	const currentStatus = order.status.toLowerCase();
+	if (['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus)) return 'out_for_delivery';
 
-	const currentIndex = progressiveStates.indexOf(order.status.toLowerCase());
+	const currentIndex = progressiveStates.indexOf(currentStatus);
 	if (currentIndex === -1 || currentIndex >= progressiveStates.length - 1) return null;
 	return progressiveStates[currentIndex + 1];
 }

@@ -48,13 +48,14 @@
 	let trackingMessageTone = $state<'info' | 'error'>('info');
 	let copiedOrderId = $state(false);
 
-	const PRE_SHIP = ['created', 'awb_assigned', 'pickup_scheduled', 'label_generated', 'manifest_generated'];
-
 	const shortOrderId = $derived(order ? order.id.slice(0, 8).toUpperCase() : '');
 	const orderStatusLabel = $derived(order ? formatStatusLabel(order.status) : '');
 	const paymentStatusLabel = $derived(order ? formatStatusLabel(order.paymentStatus) : '');
-	const courierLabel = $derived(order?.shipment?.courierName || '');
+	const courierLabel = $derived(order?.shipment?.courierName || order?.shippingCourierName || '');
 	const awbLabel = $derived(order?.shipment?.awbCode || 'Not assigned');
+	const expectedDeliveryDate = $derived(
+		order?.shipment?.expectedDeliveryDate || order?.shippingExpectedDeliveryDate || null
+	);
 	const itemCount = $derived(order ? order.items.reduce((sum, item) => sum + item.qty, 0) : 0);
 	const subtotal = $derived(
 		order
@@ -85,33 +86,33 @@
 		if (!order) return 0;
 		const o = order.status.toLowerCase();
 		const s = order.shipment?.status?.toLowerCase() ?? '';
-		if (o === 'delivered' || s === 'delivered') return 4;
-		if (o === 'out_for_delivery' || s === 'out_for_delivery') return 3;
-		if (['shipped', 'in_transit'].includes(s) || o === 'shipped') return 2;
-		if (order.shipment || ['confirmed', 'processing', 'ready_for_delivery'].includes(o)) return 1;
-		if (['paid', 'captured', 'verified'].includes(order.paymentStatus.toLowerCase())) return 1;
+		if (o === 'delivered' || s === 'delivered') return 2;
+		if (
+			o === 'out_for_delivery' ||
+			['ready_for_delivery', 'packed', 'shipped'].includes(o) ||
+			['out_for_delivery', 'shipped', 'in_transit'].includes(s)
+		) {
+			return 1;
+		}
 		return 0;
 	});
 
 	const headline = $derived.by(() => {
 		if (closedState === 'returned') return 'Order returned';
 		if (closedState === 'cancelled') return 'Order cancelled';
-		return ['Order received', 'Preparing your order', 'On the way', 'Out for delivery', 'Delivered'][
-			stage
-		];
+		return ['Paid', 'Out for delivery', 'Delivered'][stage];
 	});
 
 	const etaLine = $derived.by(() => {
 		if (!order) return '';
 		if (closedState === 'cancelled') return 'No delivery is scheduled for this order.';
 		if (closedState === 'returned') return 'This order was returned to the seller.';
-		if (stage === 4) return 'Your package was delivered.';
-		const eta = order.shipment?.expectedDeliveryDate;
+		if (stage === 2) return 'Your package was delivered.';
+		const eta = expectedDeliveryDate;
 		const courier = courierLabel ? ` · ${courierLabel}` : '';
 		if (eta) return `Expected by ${formatDate(eta)}${courier}`;
-		if (stage >= 2) return courier ? `In transit${courier}` : 'In transit';
-		if (stage === 1) return 'We are getting your order ready to ship.';
-		return 'We have received your order.';
+		if (stage === 1) return courier ? `Out for delivery${courier}` : 'Out for delivery';
+		return 'Paid orders before 5 PM are targeted for tomorrow delivery across Tamil Nadu.';
 	});
 
 	const timeline = $derived<TimelineStep[]>(order ? buildTimeline() : []);
@@ -120,7 +121,7 @@
 		if (!order) return { label: 'Awaiting shipment', mode: 'none' as const };
 		if (order.shipment?.trackingUrl) return { label: 'Track shipment', mode: 'open' as const };
 		if (order.shipment) return { label: 'Refresh tracking', mode: 'refresh' as const };
-		return { label: 'Awaiting shipment', mode: 'none' as const };
+		return { label: 'Manual delivery updates', mode: 'none' as const };
 	});
 
 	const paymentDetails = $derived<DetailPair[]>(
@@ -140,9 +141,9 @@
 		order
 			? [
 					{ label: 'Service', value: formatStatusLabel(order.shippingServiceType) },
-					{ label: 'Courier', value: courierLabel || 'Courier pending' },
+					{ label: 'Courier', value: courierLabel || 'Manual courier' },
 					{ label: 'AWB', value: awbLabel },
-					{ label: 'ETA', value: order.shipment?.expectedDeliveryDate ? formatDate(order.shipment.expectedDeliveryDate) : 'After dispatch' }
+					{ label: 'ETA', value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After dispatch' }
 				]
 			: []
 	);
@@ -159,7 +160,7 @@
 
 	function stepStateFor(index: number): StepState {
 		if (index < stage) return 'complete';
-		if (index === stage) return stage === 4 ? 'complete' : 'active';
+		if (index === stage) return stage === 2 ? 'complete' : 'active';
 		return 'waiting';
 	}
 
@@ -169,8 +170,6 @@
 			day: '2-digit',
 			month: 'short'
 		});
-		const s = order.shipment?.status?.toLowerCase() ?? '';
-
 		if (closedState) {
 			return [
 				{ key: 'placed', label: 'Order placed', detail: created, state: 'complete' },
@@ -192,30 +191,23 @@
 		}
 
 		return [
-			{ key: 'placed', label: 'Placed', detail: created, state: 'complete' },
 			{
-				key: 'confirmed',
-				label: 'Confirmed',
-				detail: stage >= 1 ? 'Payment verified' : 'Awaiting confirmation',
-				state: stepStateFor(1)
-			},
-			{
-				key: 'shipped',
-				label: 'Shipped',
-				detail: stage >= 2 ? courierLabel || 'Dispatched' : PRE_SHIP.includes(s) ? 'Packed' : 'Pending dispatch',
-				state: stepStateFor(2)
+				key: 'paid',
+				label: 'Paid',
+				detail: paymentStatusLabel || created,
+				state: stepStateFor(0)
 			},
 			{
 				key: 'out_for_delivery',
 				label: 'Out for delivery',
-				detail: stage >= 3 ? 'With delivery agent' : 'Pending',
-				state: stepStateFor(3)
+				detail: stage >= 1 ? courierLabel || 'With courier' : 'Pending dispatch',
+				state: stepStateFor(1)
 			},
 			{
 				key: 'delivered',
 				label: 'Delivered',
-				detail: stage === 4 ? 'Package delivered' : 'Pending',
-				state: stepStateFor(4)
+				detail: stage === 2 ? 'Package delivered' : 'Pending',
+				state: stepStateFor(2)
 			}
 		];
 	}

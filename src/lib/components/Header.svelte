@@ -64,7 +64,7 @@
 				{#if isAdmin}
 					Admin workspace for catalog, users, orders, and fulfillment
 				{:else}
-					Manual delivery from Rs 50
+					Tamil Nadu delivery from Rs 50. Free from Rs 2000
 				{/if}
 			</span>
 			<a

@@ -1389,6 +1389,7 @@ export type Database = {
 					status: string;
 					updated_at: string;
 					user_id: string;
+					videos: string[];
 				};
 				Insert: {
 					admin_note?: string | null;
@@ -1406,6 +1407,7 @@ export type Database = {
 					status?: string;
 					updated_at?: string;
 					user_id: string;
+					videos?: string[];
 				};
 				Update: {
 					admin_note?: string | null;
@@ -1423,6 +1425,7 @@ export type Database = {
 					status?: string;
 					updated_at?: string;
 					user_id?: string;
+					videos?: string[];
 				};
 				Relationships: [
 					{

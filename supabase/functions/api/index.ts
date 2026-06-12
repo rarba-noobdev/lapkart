@@ -210,6 +210,10 @@ const webhookRateLimit = { limit: 120, windowMs: 60_000 };
 const checkoutSessionTtlMs = 20 * 60_000;
 const manualDeliveryMinCharge = 50;
 const manualDeliveryRatePerKg = 40;
+const manualDeliveryFreeSubtotal = 2000;
+const manualDeliveryRegion = 'Tamil Nadu';
+const manualDeliveryCutoffHourIst = 17;
+const istOffsetMs = 5.5 * 60 * 60 * 1000;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const maxUploadBytes = 5 * 1024 * 1024;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -411,6 +415,7 @@ const deliveryEstimateQuerySchema = reverseGeocodeQuerySchema.extend({
 		.string()
 		.trim()
 		.regex(/^[0-9]{6}$/),
+	state: z.string().trim().max(80).optional().default(''),
 	weightKg: z.coerce.number().positive().max(100).optional(),
 	declaredValue: z.coerce.number().nonnegative().max(10_000_000).optional()
 });
@@ -496,21 +501,39 @@ const cancellationRequestSchema = z.object({
 	reason: z.string().trim().min(3).max(500)
 });
 
-const returnRequestSchema = z.object({
-	reason: z.string().trim().min(3).max(500),
-	conditionNotes: z.string().trim().max(1000).optional().default(''),
-	photos: z.array(z.string().trim().url()).max(6).optional().default([]),
-	items: z
-		.array(
-			z.object({
-				orderItemId: z.string().uuid(),
-				qty: z.number().int().positive().max(20),
-				reason: z.string().trim().max(500).optional().default('')
-			})
-		)
-		.min(1)
-		.max(50)
-});
+const returnRequestSchema = z
+	.object({
+		reason: z.string().trim().min(3).max(500),
+		conditionNotes: z.string().trim().max(1000).optional().default(''),
+		photos: z.array(z.string().trim().url()).min(1).max(6).optional().default([]),
+		videos: z.array(z.string().trim().url()).min(1).max(3).optional().default([]),
+		items: z
+			.array(
+				z.object({
+					orderItemId: z.string().uuid(),
+					qty: z.number().int().positive().max(20),
+					reason: z.string().trim().max(500).optional().default('')
+				})
+			)
+			.min(1)
+			.max(50)
+	})
+	.superRefine((input, ctx) => {
+		if (input.photos.length === 0) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['photos'],
+				message: 'At least one return photo is required'
+			});
+		}
+		if (input.videos.length === 0) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ['videos'],
+				message: 'At least one return video is required'
+			});
+		}
+	});
 
 const adminWorkflowActionSchema = z.object({
 	action: z.enum(['approve', 'reject', 'receive', 'close']),
@@ -592,30 +615,44 @@ function normalizedPackageWeightKg(weightKg: number | null | undefined) {
 
 function calculateManualDeliveryCharge(weightKg: number, subtotal: number) {
 	if (subtotal <= 0) return 0;
+	if (subtotal >= manualDeliveryFreeSubtotal) return 0;
 	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(weightKg)));
 	return Math.max(manualDeliveryMinCharge, chargeableKg * manualDeliveryRatePerKg);
 }
 
-function manualDeliveryDays(distanceMeters: number) {
-	const distanceKm = Math.max(0, distanceMeters / 1000);
-	if (distanceKm <= 25) return 1;
-	if (distanceKm <= 100) return 2;
-	if (distanceKm <= 500) return 4;
-	return 6;
+function getIstDateParts(now = new Date()) {
+	const istDate = new Date(now.getTime() + istOffsetMs);
+	return {
+		year: istDate.getUTCFullYear(),
+		month: istDate.getUTCMonth(),
+		day: istDate.getUTCDate(),
+		hour: istDate.getUTCHours()
+	};
 }
 
-function dateAfterDays(days: number) {
-	const date = new Date();
-	date.setDate(date.getDate() + Math.max(1, days));
-	return date.toISOString().slice(0, 10);
+function manualDeliveryPromise(now = new Date()) {
+	const parts = getIstDateParts(now);
+	const estimatedDeliveryDays = parts.hour < manualDeliveryCutoffHourIst ? 1 : 2;
+	const expected = new Date(Date.UTC(parts.year, parts.month, parts.day + estimatedDeliveryDays));
+	return {
+		estimatedDeliveryDays,
+		expectedDeliveryDate: expected.toISOString().slice(0, 10),
+		etd:
+			estimatedDeliveryDays === 1
+				? 'Tomorrow across Tamil Nadu'
+				: 'Next pickup cycle across Tamil Nadu',
+		label:
+			estimatedDeliveryDays === 1
+				? 'Before 5 PM pickup'
+				: 'After 5 PM pickup cycle'
+	};
 }
 
 function getManualDeliveryQuote(input: {
 	weightKg: number;
 	subtotal: number;
-	distanceMeters: number;
 }): CourierQuote {
-	const estimatedDeliveryDays = manualDeliveryDays(input.distanceMeters);
+	const promise = manualDeliveryPromise();
 	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(input.weightKg)));
 	return {
 		quoteId: `manual:standard:${chargeableKg}kg`,
@@ -623,10 +660,10 @@ function getManualDeliveryQuote(input: {
 		courierName: 'LapKart Manual Delivery',
 		rate: calculateManualDeliveryCharge(input.weightKg, input.subtotal),
 		rating: 0,
-		etd: `${estimatedDeliveryDays}-${estimatedDeliveryDays + 1} days`,
-		expectedDeliveryDate: dateAfterDays(estimatedDeliveryDays + 1),
-		estimatedDeliveryDays,
-		etdHours: estimatedDeliveryDays * 24,
+		etd: promise.etd,
+		expectedDeliveryDate: promise.expectedDeliveryDate,
+		estimatedDeliveryDays: promise.estimatedDeliveryDays,
+		etdHours: promise.estimatedDeliveryDays * 24,
 		mode: `Manual courier · ${chargeableKg} kg`,
 		recommended: true,
 		serviceType: 'standard'
@@ -690,10 +727,11 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 			etdHours: selectedCourier.etdHours,
 			expectedDeliveryDate: selectedCourier.expectedDeliveryDate
 		},
-		customerMessage: `Manual delivery from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}.`,
+		customerMessage: `Manual Tamil Nadu courier from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before dispatch.`,
 		limitations: [
-			'No multi-zone or hub inventory is configured yet.',
-			'Promise is calculated from the configured LapKart dispatch origin, live route, stock, and manual delivery rate card.'
+			'Delivery is currently limited to Tamil Nadu.',
+			'Live map tracking is not provided for manual courier delivery.',
+			'Promise is calculated from stock, the daily courier pickup cutoff, and the manual delivery rate card.'
 		]
 	};
 }
@@ -2073,16 +2111,11 @@ function canTransitionManualOrderStatus(
 	_shipmentStarted: boolean
 ) {
 	if (currentStatus === nextStatus) return true;
-	const progressiveStates = [
-		'pending',
-		'processing',
-		'confirmed',
-		'ready_for_delivery',
-		'shipped',
-		'out_for_delivery',
-		'delivered'
-	];
-	const currentIndex = progressiveStates.indexOf(currentStatus);
+	const progressiveStates = ['pending', 'processing', 'confirmed', 'out_for_delivery', 'delivered'];
+	const currentProgressStatus = ['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus)
+		? 'confirmed'
+		: currentStatus;
+	const currentIndex = progressiveStates.indexOf(currentProgressStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
 	if (nextStatus === 'cancelled') return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
@@ -2200,6 +2233,18 @@ function buildShippingAddress(address: CheckoutAddress) {
 		.join('\n');
 }
 
+function isTamilNaduState(state: string | null | undefined) {
+	const normalized = String(state ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z]/g, '');
+	return normalized === 'tamilnadu' || normalized === 'tn';
+}
+
+function isTamilNaduAddress(address: CheckoutAddress) {
+	return isTamilNaduState(address.state);
+}
+
 function isChennaiAddress(address: CheckoutAddress) {
 	const city = address.city.trim().toLowerCase();
 	const state = address.state.trim().toLowerCase();
@@ -2312,6 +2357,10 @@ async function buildCheckoutSummary(
 	userId: string,
 	input: z.infer<typeof checkoutCreatePaymentOrderSchema>
 ) {
+	if (!isTamilNaduAddress(input.address)) {
+		throw new HttpError(400, `Delivery is currently available only in ${manualDeliveryRegion}`);
+	}
+
 	const adminDb = getSupabaseAdmin();
 	const items = normalizeCheckoutItems(input.items);
 	const productIds = items.map((item) => item.id);
@@ -2375,8 +2424,7 @@ async function buildCheckoutSummary(
 	const couriers = [
 		getManualDeliveryQuote({
 			weightKg,
-			subtotal,
-			distanceMeters: route.distanceMeters
+			subtotal
 		})
 	];
 
@@ -2409,8 +2457,8 @@ async function buildCheckoutSummary(
 		products: productRows
 	});
 	const deliveryPromise = {
-		label: 'Manual delivery',
-		detail: selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`,
+		label: selectedCourier.rate === 0 ? 'Free Tamil Nadu delivery' : 'Tamil Nadu manual delivery',
+		detail: `${selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}. Daily pickup before 5 PM.`,
 		serviceType: selectedCourier.serviceType
 	} satisfies CheckoutSummary['deliveryPromise'];
 	const deliveryEstimate = {
@@ -3076,12 +3124,14 @@ async function handle(req: Request) {
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = deliveryEstimateQuerySchema.parse(parseQueryObject(url));
+		if (input.state && !isTamilNaduState(input.state)) {
+			throw new HttpError(400, `Delivery is currently available only in ${manualDeliveryRegion}`);
+		}
 		const route = await getOlaDeliveryRoute(input);
 		const couriers = [
 			getManualDeliveryQuote({
 				weightKg: normalizedPackageWeightKg(input.weightKg),
-				subtotal: Number(input.declaredValue ?? 0),
-				distanceMeters: route.distanceMeters
+				subtotal: Number(input.declaredValue ?? 0)
 			})
 		];
 		return json(req, 200, {
@@ -3281,7 +3331,7 @@ async function handle(req: Request) {
 			adminDb
 				.from('return_requests')
 				.select(
-					'id,status,reason,condition_notes,photos,admin_note,requested_at,resolved_at,received_at,reverse_shipment_id,refund_id'
+					'id,status,reason,condition_notes,photos,videos,admin_note,requested_at,resolved_at,received_at,reverse_shipment_id,refund_id'
 				)
 				.eq('order_id', orderId)
 				.order('requested_at', { ascending: false }),
@@ -3468,7 +3518,8 @@ async function handle(req: Request) {
 				user_id: user.id,
 				reason: input.reason,
 				condition_notes: input.conditionNotes || null,
-				photos: input.photos
+				photos: input.photos,
+				videos: input.videos
 			})
 			.select('*')
 			.single();
@@ -5640,7 +5691,7 @@ async function handle(req: Request) {
 					adminDb
 						.from('return_requests')
 						.select(
-							'id,order_id,status,reason,admin_note,requested_at,resolved_at,received_at,reverse_shipment_id,refund_id'
+							'id,order_id,status,reason,condition_notes,photos,videos,admin_note,requested_at,resolved_at,received_at,reverse_shipment_id,refund_id'
 						)
 						.in('order_id', orderIds)
 						.order('requested_at', { ascending: false }),

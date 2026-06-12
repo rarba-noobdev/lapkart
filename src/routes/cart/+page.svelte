@@ -16,6 +16,7 @@
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
 	import {
+		MANUAL_DELIVERY_FREE_SUBTOTAL,
 		MANUAL_DELIVERY_MIN_CHARGE,
 		calculateCartWeightKg,
 		calculateManualDeliveryCharge
@@ -145,9 +146,13 @@
 					<div class="flex items-center justify-between text-[12px]">
 						<span class="flex items-center gap-1.5 text-[var(--black-alpha-56)]">
 							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
-							Manual delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}. Chargeable weight {Math.max(1, Math.ceil(packageWeightKg))} kg.
+							Tamil Nadu delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}.
+							Free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}.
+							Chargeable weight {Math.max(1, Math.ceil(packageWeightKg))} kg.
 						</span>
-						<span class="text-[11px] font-medium text-[var(--heat-100)]">{formatINR(shipping)}</span>
+						<span class="text-[11px] font-medium text-[var(--heat-100)]">
+							{shipping === 0 ? 'Free' : formatINR(shipping)}
+						</span>
 					</div>
 				</div>
 			{/if}

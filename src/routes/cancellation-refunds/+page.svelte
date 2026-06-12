@@ -12,7 +12,7 @@
 		},
 		{
 			title: 'Return eligibility',
-			body: 'Products may be returned within 7 days of delivery if they are defective, damaged during shipping, or not matching the product description. Items must be unused, in original packaging, and include all accessories and documentation. Compatibility issues arising from incorrect model selection by the customer are not eligible for return. Dead-on-arrival (DOA) products are eligible for immediate replacement or full refund.'
+			body: 'Products may be returned within 7 days of delivery if they are defective, damaged during shipping, or not matching the product description. Customers must provide clear photos and videos before return approval. Items must be unused, in original packaging, and include all accessories and documentation. Compatibility issues arising from incorrect model selection by the customer are not eligible for return. Dead-on-arrival (DOA) products are eligible for immediate replacement or full refund.'
 		},
 		{
 			title: 'Refund policy',

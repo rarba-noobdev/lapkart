@@ -159,17 +159,15 @@
 	);
 
 	const ORDER_TIMELINE = [
-		{ id: 'pending', label: 'Placed' },
-		{ id: 'confirmed', label: 'Confirmed' },
-		{ id: 'ready_for_delivery', label: 'Ready' },
-		{ id: 'shipped', label: 'Shipped' },
-		{ id: 'out_for_delivery', label: 'On the way' },
+		{ id: 'confirmed', label: 'Paid' },
+		{ id: 'out_for_delivery', label: 'Out for delivery' },
 		{ id: 'delivered', label: 'Delivered' }
 	];
 	const timelineIndex = $derived.by(() => {
 		if (!selectedOrder) return -1;
 		const status = String(selectedOrder.status ?? '').toLowerCase();
-		if (status === 'processing') return 0;
+		if (['pending', 'processing', 'confirmed'].includes(status)) return 0;
+		if (['ready_for_delivery', 'packed', 'shipped'].includes(status)) return 1;
 		return ORDER_TIMELINE.findIndex((step) => step.id === status);
 	});
 	const timelineTerminal = $derived(
@@ -1074,6 +1072,31 @@
 												)}
 											</p>
 										{/if}
+										{#if selectedOrder.returnRequest.condition_notes}
+											<p>Condition: {selectedOrder.returnRequest.condition_notes}</p>
+										{/if}
+									</div>
+									<div class="mt-2 flex flex-wrap gap-1.5">
+										{#each selectedOrder.returnRequest.photos ?? [] as photoUrl, index (photoUrl)}
+											<a
+												href={photoUrl}
+												target="_blank"
+												rel="noreferrer"
+												class="rounded-md border border-[var(--border-muted)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--black-alpha-64)] hover:text-[var(--heat-100)]"
+											>
+												Photo {index + 1}
+											</a>
+										{/each}
+										{#each selectedOrder.returnRequest.videos ?? [] as videoUrl, index (videoUrl)}
+											<a
+												href={videoUrl}
+												target="_blank"
+												rel="noreferrer"
+												class="rounded-md border border-[var(--border-muted)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--black-alpha-64)] hover:text-[var(--heat-100)]"
+											>
+												Video {index + 1}
+											</a>
+										{/each}
 									</div>
 								</div>
 								<div class="flex flex-wrap gap-1.5">
@@ -1113,17 +1136,11 @@
 									{/if}
 
 									{#if selectedOrder.returnRequest.status === 'approved' && !selectedOrder.returnRequest.reverse_shipment_id}
-										<button
-											type="button"
-											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--black-alpha-24)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] disabled:opacity-50"
-											disabled={workflowAction !== null}
-											onclick={() =>
-												void runWorkflowAction('return-pickup', '/shipments/shiprocket/return', {
-													returnRequestId: selectedOrder.returnRequest?.id
-												})}
+										<span
+											class="rounded-md border border-[var(--border-muted)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
 										>
-											{workflowAction === 'return-pickup' ? 'Creating...' : 'Create reverse pickup'}
-										</button>
+											Manual return pickup
+										</span>
 									{/if}
 
 									{#if ['approved', 'reverse_pickup_scheduled'].includes(selectedOrder.returnRequest.status)}
