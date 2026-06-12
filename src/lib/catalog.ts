@@ -46,6 +46,7 @@ export type Product = {
 	compatibility: string;
 	warranty: string;
 	highlights: string[];
+	specifications?: Record<string, string>;
 	authenticity_grade?: 'oem' | 'compatible' | 'refurbished' | 'open_box';
 	condition_grade?: 'new' | 'open_box' | 'refurbished' | 'used';
 	hsn_code?: string;

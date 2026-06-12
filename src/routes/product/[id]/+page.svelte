@@ -47,10 +47,10 @@
 	const baseSpecLabels = new Set([
 		'compatibility',
 		'warranty',
-		'condition',
 		'weight',
 		'dimensions',
 		'package size',
+		'brand',
 		'authenticity',
 		'doa policy',
 		'cod',
@@ -81,7 +81,10 @@
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const packageSize = $derived(formatPackageSize(product));
-	const detailSpecs = $derived(labeledHighlightSpecs(product.highlights));
+	const detailSpecs = $derived(productSpecificationSpecs(product));
+	const hasDetailCondition = $derived(
+		detailSpecs.some((spec) => specLabelKey(spec.label) === 'condition')
+	);
 	const quantity = $derived(Math.max(1, Number(qty) || 1));
 	const seoTitle = $derived(productSeoTitle(product));
 	const productUrl = $derived(absoluteUrl(page.url.origin, `/product/${product.id}`));
@@ -107,7 +110,9 @@
 			: []),
 		...(packageSize ? [{ label: 'Package size', value: packageSize }] : []),
 		{ label: 'Authenticity', value: gradeLabel(product.authenticity_grade) },
-		{ label: 'Condition', value: gradeLabel(product.condition_grade ?? 'new') },
+		...(hasDetailCondition
+			? []
+			: [{ label: 'Condition', value: gradeLabel(product.condition_grade ?? 'new') }]),
 		{ label: 'DOA policy', value: `${product.doa_policy_days ?? 7}-day DOA support` },
 		{
 			label: 'COD',
@@ -164,22 +169,36 @@
 		return splitLabeledSpec(value) !== null;
 	}
 
-	function labeledHighlightSpecs(values: string[]) {
+	function productSpecificationSpecs(value: Product) {
 		const seen = new Set<string>();
 		const specs: { label: string; value: string }[] = [];
 
-		for (const value of values) {
-			const spec = splitLabeledSpec(value);
+		for (const [label, detail] of Object.entries(value.specifications ?? {})) {
+			const spec = normalizedSpec(label, detail, seen);
+			if (spec) specs.push(spec);
+		}
+
+		for (const highlight of value.highlights) {
+			const spec = splitLabeledSpec(highlight);
 			if (!spec) continue;
 
-			const key = specLabelKey(spec.label);
-			if (baseSpecLabels.has(key) || seen.has(key)) continue;
-
-			seen.add(key);
-			specs.push(spec);
+			const normalized = normalizedSpec(spec.label, spec.value, seen);
+			if (normalized) specs.push(normalized);
 		}
 
 		return specs;
+	}
+
+	function normalizedSpec(label: string, value: unknown, seen = new Set<string>()) {
+		const cleanLabel = String(label ?? '').trim();
+		const cleanValue = String(value ?? '').trim();
+		if (!cleanLabel || !cleanValue || cleanLabel.length > 48) return null;
+
+		const key = specLabelKey(cleanLabel);
+		if (baseSpecLabels.has(key) || seen.has(key)) return null;
+
+		seen.add(key);
+		return { label: cleanLabel, value: cleanValue };
 	}
 
 	function formatSpecNumber(value: number) {
@@ -207,7 +226,7 @@
 	<svelte:element this={'script'} type="application/ld+json">{jsonLd}</svelte:element>
 </svelte:head>
 
-<!-- â"€â"€â"€ Breadcrumb â"€â"€â"€ -->
+<!-- Breadcrumb -->
 <nav class="container mx-auto hidden px-4 pt-4 pb-1 md:block md:pt-5">
 	<ol
 		class="text-mono-x-small flex flex-wrap items-center gap-1 tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
@@ -224,13 +243,13 @@
 	</ol>
 </nav>
 
-<!-- â"€â"€â"€ Product layout: two-panel card â"€â"€â"€ -->
+<!-- Product layout: two-panel card -->
 <section class="container mx-auto px-0 pb-8 md:px-4 md:pb-14 lg:pb-14">
 	<div
 		class="motion-section overflow-hidden bg-white md:mt-4 md:rounded-lg md:border md:border-[var(--border-faint)] md:shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)]"
 	>
 		<div class="grid lg:grid-cols-2">
-			<!-- â"€â"€ LEFT PANEL: Gallery â"€â"€ -->
+			<!-- Left panel: Gallery -->
 			<div
 				class="relative border-b border-[var(--border-faint)] bg-[var(--background-lighter)] lg:border-r lg:border-b-0"
 			>
@@ -288,7 +307,7 @@
 				</div>
 			</div>
 
-			<!-- â"€â"€ RIGHT PANEL: Product info â"€â"€ -->
+			<!-- Right panel: Product info -->
 			<div class="px-4 py-4 sm:p-6 md:p-8 lg:p-8 xl:p-10">
 				<!-- Brand -->
 				<p class="text-mono-x-small tracking-[0.18em] text-[var(--heat-100)] uppercase">
@@ -313,7 +332,7 @@
 					<span class="text-body-small text-[var(--black-alpha-48)]">
 						{product.reviews.toLocaleString('en-IN')} ratings
 					</span>
-					<span class="text-body-small text-[var(--black-alpha-24)]">â€¢</span>
+					<span class="text-body-small text-[var(--black-alpha-24)]">&bull;</span>
 					<span
 						class="text-mono-x-small font-medium tracking-wider uppercase
 							{product.stock > 0 ? 'text-[var(--accent-forest)]' : 'text-[var(--accent-crimson)]'}"
@@ -324,12 +343,12 @@
 						<span
 							class="text-mono-x-small font-medium tracking-wider text-[var(--heat-100)] uppercase"
 						>
-							Â· only {product.stock} left
+							&middot; only {product.stock} left
 						</span>
 					{/if}
 				</div>
 
-				<!-- â"€â"€ Price â"€â"€ -->
+				<!-- Price -->
 				<div class="mt-4 border-t border-b border-[var(--border-faint)] py-4">
 					<div class="flex flex-wrap items-baseline gap-2.5">
 						<span
@@ -352,7 +371,7 @@
 					</p>
 				</div>
 
-				<!-- â"€â"€ Highlights â"€â"€ -->
+				<!-- Highlights -->
 				{#if visibleHighlights.length > 0}
 					<div class="mt-4">
 						<h2
@@ -372,7 +391,7 @@
 					</div>
 				{/if}
 
-				<!-- â"€â"€ Trust promises (inline) â"€â"€ -->
+				<!-- Trust promises -->
 				<div class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 sm:mt-5 sm:gap-x-5 sm:gap-y-2">
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
@@ -394,7 +413,7 @@
 					</span>
 				</div>
 
-				<!-- â"€â"€ Add-to-cart action â"€â"€ -->
+				<!-- Add-to-cart action -->
 				<div class="mt-5 grid gap-3 sm:mt-7 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
 					<!-- Quantity controls -->
 					<div
@@ -455,7 +474,7 @@
 		</div>
 	</div>
 
-	<!-- â"€â"€â"€ Specifications table (below the card) â"€â"€â"€ -->
+	<!-- Specifications table -->
 	<div
 		class="mt-0 overflow-hidden border-t border-[var(--border-faint)] bg-white md:mt-4 md:rounded-lg md:border md:shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
 	>
@@ -474,7 +493,7 @@
 		</div>
 	</div>
 
-	<!-- â"€â"€â"€ Related products â"€â"€â"€ -->
+	<!-- Related products -->
 	{#if related.length > 0}
 		<section class="mt-6 px-4 md:mt-14 md:px-0">
 			<div class="mb-3 flex items-end justify-between gap-4 sm:mb-5">

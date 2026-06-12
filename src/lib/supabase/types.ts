@@ -1077,6 +1077,7 @@ export type Database = {
 					search_keywords: string[] | null;
 					sku: string | null;
 					source_url: string | null;
+					specifications: Json;
 					status: string;
 					stock: number;
 					title: string;
@@ -1111,6 +1112,7 @@ export type Database = {
 					search_keywords?: string[] | null;
 					sku?: string | null;
 					source_url?: string | null;
+					specifications?: Json;
 					status?: string;
 					stock?: number;
 					title: string;
@@ -1145,6 +1147,7 @@ export type Database = {
 					search_keywords?: string[] | null;
 					sku?: string | null;
 					source_url?: string | null;
+					specifications?: Json;
 					status?: string;
 					stock?: number;
 					title?: string;

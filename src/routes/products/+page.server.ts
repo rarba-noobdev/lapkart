@@ -1,7 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { getCachedActiveCategoryCounts } from '$lib/server/catalog-cache';
 import { publicCatalogCacheControl } from '$lib/server/cache-control';
-import { searchProducts, type ProductSort } from '$lib/server/product-search';
+import {
+	searchProducts,
+	type ProductSearchResult,
+	type ProductSort
+} from '$lib/server/product-search';
 
 const sortValues = new Set<ProductSort>([
 	'relevance',
@@ -39,8 +43,12 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 	const maxPrice = parseNumber(url.searchParams.get('maxPrice'));
 	const minRating = parseNumber(url.searchParams.get('minRating'));
 	const page = parsePage(url.searchParams.get('page'));
+	const emptyResult: ProductSearchResult = { products: [], total: 0, source: 'supabase' };
 	const [{ user }, result, categoryCounts] = await Promise.all([
-		locals.safeGetSession(),
+		locals.safeGetSession().catch((error) => {
+			console.warn('Product listing session lookup failed; rendering public catalog.', error);
+			return { user: null, session: null };
+		}),
 		searchProducts(
 			{
 				category: category || undefined,
@@ -55,8 +63,14 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 				page
 			},
 			locals.supabase
-		),
-		getCachedActiveCategoryCounts(locals.supabase)
+		).catch((error) => {
+			console.warn('Product listing search failed; rendering empty catalog.', error);
+			return emptyResult;
+		}),
+		getCachedActiveCategoryCounts(locals.supabase).catch((error) => {
+			console.warn('Product listing category counts failed; rendering without counts.', error);
+			return {};
+		})
 	]);
 
 	setHeaders({ 'cache-control': publicCatalogCacheControl(user) });

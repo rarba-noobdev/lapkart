@@ -28,6 +28,7 @@ export type ProductRow = {
 	compatibility: string | null;
 	warranty: string | null;
 	highlights: string[] | null;
+	specifications?: Record<string, string> | null;
 	authenticity_grade: 'oem' | 'compatible' | 'refurbished' | 'open_box' | null;
 	condition_grade: 'new' | 'open_box' | 'refurbished' | 'used' | null;
 	hsn_code: string | null;
@@ -38,7 +39,7 @@ export type ProductRow = {
 };
 
 export const productSelectFields =
-	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,length_cm,breadth_cm,height_cm,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,length_cm,breadth_cm,height_cm,compatibility,warranty,highlights,specifications,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
 	'id,title,brand,category,image,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
@@ -92,6 +93,7 @@ export function normalizeProductRow(row: ProductRow): Product {
 		compatibility: row.compatibility ?? '',
 		warranty: row.warranty ?? '',
 		highlights: row.highlights ?? [],
+		specifications: row.specifications ?? undefined,
 		authenticity_grade: row.authenticity_grade ?? 'compatible',
 		condition_grade: row.condition_grade ?? 'new',
 		hsn_code: row.hsn_code ?? undefined,

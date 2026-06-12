@@ -230,7 +230,7 @@ function getAttribute(attrs, label) {
 function extractSpecs(title) {
 	const specs = [];
 	const patterns = [
-		/\b\d{2}(?:\.\d)?\s*(?:inch|inches|")\b/gi,
+		/\b\d{2}(?:\.\d)?\s*-?\s*(?:inch|inches|")/gi,
 		/\b\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}\b/gi,
 		/\b(?:30|40)\s*pin\b/gi,
 		/\b\d{2,3}\s*hz\b/gi,
@@ -275,25 +275,50 @@ function compatibilityFromTitle(title, brand) {
 
 function displaySpecEntries(attrs, compatibility, specs) {
 	const entries = [
-		['Brand', getAttribute(attrs, 'Brand')],
 		['Compatibility', compatibility],
 		['Condition', getAttribute(attrs, 'Condition') || 'Brand New A+ Grade Screen'],
 		['Mountings', getAttribute(attrs, 'Mountings')],
 		['MPN (Manufacturer Part Number)', getAttribute(attrs, 'MPN (Manufacturer Part Number)')],
 		['Optical Technology', getAttribute(attrs, 'Optical Technology')],
 		['Refresh Rate', getAttribute(attrs, 'Refresh Rate')],
-		['Resolution', getAttribute(attrs, 'Resolution') || specs.find((value) => /\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}/i.test(value))],
-		['Screen Size', getAttribute(attrs, 'Screen Size') || specs.find((value) => /\d{2}(?:\.\d)?\s*(?:inch|inches|")/i.test(value))],
+		[
+			'Resolution',
+			getAttribute(attrs, 'Resolution') ||
+				specs.find((value) => /\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}/i.test(value))
+		],
+		[
+			'Screen Size',
+			getAttribute(attrs, 'Screen Size') ||
+			specs.find((value) => /\d{2}(?:\.\d)?\s*-?\s*(?:inch|inches|")/i.test(value))
+		],
 		['Surface Type', getAttribute(attrs, 'Surface Type')],
-		['Video Connector', getAttribute(attrs, 'Video Connector') || specs.find((value) => /\b(?:30|40)\s*pin\b/i.test(value))],
-		['Warranty', WARRANTY],
-		['Weight', `${DEFAULT_WEIGHT_KG} kg`],
-		['Dimensions', `${DEFAULT_LENGTH_CM} x ${DEFAULT_BREADTH_CM} x ${DEFAULT_HEIGHT_CM} cm`]
+		[
+			'Video Connector',
+			getAttribute(attrs, 'Video Connector') ||
+				specs.find((value) => /\b(?:30|40)\s*pin\b/i.test(value))
+		]
 	];
 
 	return entries
 		.map(([label, value]) => [label, truncateAttribute(value ?? '', 140)])
 		.filter(([, value]) => value);
+}
+
+function buildSpecifications(entries) {
+	return Object.fromEntries(entries);
+}
+
+function buildHighlights(attrs) {
+	return uniqueAttributes(
+		[
+			'Laptop screen replacement',
+			getAttribute(attrs, 'Condition') || 'Brand New A+ Grade Screen',
+			'Compatibility checked before dispatch',
+			WARRANTY,
+			'Manual Tamil Nadu delivery'
+		],
+		8
+	);
 }
 
 function normalizeProduct(product) {
@@ -347,11 +372,15 @@ function normalizeProduct(product) {
 			[
 				title,
 				...displaySpecs.map(([label, value]) => `${label}: ${value}`),
+				`Warranty: ${WARRANTY}`,
+				`Weight: ${DEFAULT_WEIGHT_KG} kg`,
+				`Dimensions: ${DEFAULT_LENGTH_CM} x ${DEFAULT_BREADTH_CM} x ${DEFAULT_HEIGHT_CM} cm`,
 				descriptionSource || 'Compatible laptop screen replacement.'
 			].join('. '),
 			900
 		),
 		sku,
+		specifications: buildSpecifications(displaySpecs),
 		search_keywords: keywords,
 		price,
 		selling_price: price,
@@ -365,14 +394,7 @@ function normalizeProduct(product) {
 		height_cm: DEFAULT_HEIGHT_CM,
 		compatibility,
 		warranty: WARRANTY,
-		highlights: uniqueAttributes(
-			[
-				'Laptop screen replacement',
-				...displaySpecs.map(([label, value]) => `${label}: ${value}`),
-				'Manual Tamil Nadu delivery'
-			],
-			18
-		),
+		highlights: buildHighlights(attrs),
 		status: 'active',
 		authenticity_grade: 'compatible',
 		condition_grade: 'new',
@@ -409,6 +431,7 @@ incoming as (
     item->>'source_url' as source_url,
     nullif(item->>'description', '') as description,
     item->>'sku' as sku,
+    coalesce(item->'specifications', '{}'::jsonb) as specifications,
     array(select jsonb_array_elements_text(coalesce(item->'search_keywords', '[]'::jsonb))) as search_keywords,
     (item->>'price')::numeric as price,
     (item->>'selling_price')::numeric as selling_price,
@@ -445,6 +468,7 @@ insert into public.products (
   source_url,
   description,
   sku,
+  specifications,
   search_keywords,
   price,
   selling_price,
@@ -482,6 +506,7 @@ select
   source_url,
   description,
   sku,
+  specifications,
   nullif(search_keywords, array[]::text[]),
   price,
   selling_price,
@@ -519,6 +544,7 @@ on conflict (sku) do update set
   images = excluded.images,
   source_url = excluded.source_url,
   description = excluded.description,
+  specifications = excluded.specifications,
   search_keywords = excluded.search_keywords,
   price = excluded.price,
   selling_price = excluded.selling_price,

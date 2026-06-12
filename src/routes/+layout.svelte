@@ -15,17 +15,14 @@
 	import CookieConsent from '$lib/components/CookieConsent.svelte';
 	import { hydrateCart } from '$lib/cart';
 	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
-	import {
-		organizationJsonLd,
-		safeJsonLd,
-		shouldNoIndexPath,
-		websiteJsonLd
-	} from '$lib/seo';
+	import { organizationJsonLd, safeJsonLd, shouldNoIndexPath, websiteJsonLd } from '$lib/seo';
 
 	let { data, children }: LayoutProps = $props();
 	let { supabase, session, user, role, claims } = $derived(data);
 	const isLoginRoute = $derived(page.url.pathname === '/login');
-	const isAdminRoute = $derived(page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/'));
+	const isAdminRoute = $derived(
+		page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/')
+	);
 	const robotsNoIndex = $derived(shouldNoIndexPath(page.url.pathname));
 	const siteJsonLd = $derived(
 		safeJsonLd([organizationJsonLd(page.url.origin), websiteJsonLd(page.url.origin)])
@@ -109,64 +106,18 @@
 		gtag('js', new Date());
 		gtag('config', GA_ID);
 
-		let profileChannel: ReturnType<typeof supabase.channel> | null = null;
-		let currentProfileChannelUserId: string | null = null;
-
-		const syncProfileChannel = (userId: string | null | undefined) => {
-			if (currentProfileChannelUserId === (userId ?? null)) return;
-			currentProfileChannelUserId = userId ?? null;
-
-			if (profileChannel) {
-				void supabase.removeChannel(profileChannel);
-				profileChannel = null;
-			}
-
-			if (!userId) return;
-
-			profileChannel = supabase
-				.channel(`profile:${userId}`)
-				.on(
-					'postgres_changes',
-					{
-						event: '*',
-						schema: 'public',
-						table: 'profiles',
-						filter: `id=eq.${userId}`
-					},
-					() => {
-						void invalidate('app:profile');
-					}
-				)
-				.on(
-					'postgres_changes',
-					{
-						event: '*',
-						schema: 'public',
-						table: 'user_roles',
-						filter: `user_id=eq.${userId}`
-					},
-					() => {
-						void invalidate('supabase:auth');
-					}
-				)
-				.subscribe();
-		};
-
-		syncProfileChannel(user?.id);
-
 		const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-			syncProfileChannel(session?.user?.id);
 			if (event === 'SIGNED_OUT') {
 				// Purge any cached page HTML so a signed-out (or next) user can't
 				// pull a previous session's pages from the service worker cache.
 				navigator.serviceWorker?.controller?.postMessage({ type: 'clear-pages' });
 			}
 			if (session?.expires_at !== claims?.exp) void invalidate('supabase:auth');
+			if (session?.user?.id !== user?.id) void invalidate('app:profile');
 		});
 
 		return () => {
 			authListener.subscription.unsubscribe();
-			if (profileChannel) void supabase.removeChannel(profileChannel);
 		};
 	});
 </script>
@@ -198,11 +149,13 @@
 		</div>
 	{/if}
 	{#if !isLoginRoute && !isAdminRoute}
-		<div class="sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 backdrop-blur-xl px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 md:hidden">
+		<div
+			class="sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 backdrop-blur-xl md:hidden"
+		>
 			<SearchBar size="md" placeholder="Search parts" />
 		</div>
 	{/if}
-	<main class="flex min-w-0 w-full flex-1 flex-col">
+	<main class="flex w-full min-w-0 flex-1 flex-col">
 		{#if showSkeleton && skeletonRoute}
 			<RouteSkeleton pathname={skeletonRoute} />
 		{:else}
