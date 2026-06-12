@@ -79,6 +79,10 @@
 	const packageWeightKg = $derived(calculateCartWeightKg(rows));
 	const shipping = $derived(calculateManualDeliveryCharge(packageWeightKg, subtotal));
 	const total = $derived(subtotal + shipping);
+	const freeDeliveryRemaining = $derived(Math.max(0, MANUAL_DELIVERY_FREE_SUBTOTAL - subtotal));
+	const freeDeliveryProgress = $derived(
+		Math.min(100, Math.max(0, (subtotal / MANUAL_DELIVERY_FREE_SUBTOTAL) * 100))
+	);
 </script>
 
 <svelte:head>
@@ -143,17 +147,29 @@
 
 			{#if subtotal > 0}
 				<div class="mb-4 rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:mb-5" in:fade={{ duration: 160 }}>
-					<div class="flex items-center justify-between text-[12px]">
+					<div class="flex items-center justify-between gap-3 text-[12px]">
 						<span class="flex items-center gap-1.5 text-[var(--black-alpha-56)]">
 							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
-							Tamil Nadu delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}.
-							Free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}.
+							{#if freeDeliveryRemaining > 0}
+								Add {formatINR(freeDeliveryRemaining)} more for free Tamil Nadu delivery.
+							{:else}
+								Free Tamil Nadu delivery unlocked.
+							{/if}
 							Chargeable weight {Math.max(1, Math.ceil(packageWeightKg))} kg.
 						</span>
 						<span class="text-[11px] font-medium text-[var(--heat-100)]">
 							{shipping === 0 ? 'Free' : formatINR(shipping)}
 						</span>
 					</div>
+					<div class="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--background-lighter)]">
+						<div
+							class="h-full rounded-full bg-[var(--heat-100)] transition-[width] duration-300"
+							style={`width: ${freeDeliveryProgress}%`}
+						></div>
+					</div>
+					<p class="mt-1.5 text-[11px] text-[var(--black-alpha-40)]">
+						Delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)} and is free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}.
+					</p>
 				</div>
 			{/if}
 

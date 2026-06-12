@@ -2,6 +2,7 @@ export const MANUAL_DELIVERY_MIN_CHARGE = 50;
 export const MANUAL_DELIVERY_RATE_PER_KG = 40;
 export const MANUAL_DELIVERY_FREE_SUBTOTAL = 2000;
 export const MANUAL_DELIVERY_REGION = 'Tamil Nadu';
+export const COD_HANDLING_FEE = 40;
 export const DEFAULT_PACKAGE_WEIGHT_KG = 0.5;
 
 export type WeightedCartRow = {

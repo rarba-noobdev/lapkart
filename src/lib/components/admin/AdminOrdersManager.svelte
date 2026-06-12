@@ -52,19 +52,23 @@
 		'needs-action': [
 			'pending',
 			'processing',
+			'on_hold',
 			'confirmed',
 			'cancellation_requested',
 			'return_requested'
 		],
 		'in-transit': ['ready_for_delivery', 'shipped', 'out_for_delivery'],
 		delivered: ['delivered'],
-		cancelled: ['cancelled', 'returned', 'refunded']
+		cancelled: ['cancelled', 'returned', 'rto', 'refunded']
 	};
 
 	type AdminOrderPatch = {
 		id: string;
 		status?: string | null;
 		paymentStatus?: string | null;
+		rtoRisk?: number | null;
+		holdReason?: string | null;
+		codFee?: number | null;
 		updatedAt?: string | null;
 	};
 
@@ -166,7 +170,7 @@
 	const timelineIndex = $derived.by(() => {
 		if (!selectedOrder) return -1;
 		const status = String(selectedOrder.status ?? '').toLowerCase();
-		if (['pending', 'processing', 'confirmed'].includes(status)) return 0;
+		if (['pending', 'processing', 'on_hold', 'confirmed'].includes(status)) return 0;
 		if (['ready_for_delivery', 'packed', 'shipped'].includes(status)) return 1;
 		return ORDER_TIMELINE.findIndex((step) => step.id === status);
 	});
@@ -175,6 +179,7 @@
 			? [
 					'cancelled',
 					'returned',
+					'rto',
 					'refunded',
 					'cancellation_requested',
 					'return_requested'
@@ -268,6 +273,9 @@
 				...order,
 				status: patch.status ?? order.status,
 				paymentStatus: patch.paymentStatus ?? order.paymentStatus,
+				rtoRisk: patch.rtoRisk ?? order.rtoRisk,
+				holdReason: patch.holdReason ?? order.holdReason,
+				codFee: patch.codFee ?? order.codFee,
 				updatedAt: patch.updatedAt ?? order.updatedAt
 			};
 		});
@@ -308,6 +316,9 @@
 				id,
 				status: typeof row.status === 'string' ? row.status : null,
 				paymentStatus: typeof row.payment_status === 'string' ? row.payment_status : null,
+				rtoRisk: Number.isFinite(Number(row.rto_risk)) ? Number(row.rto_risk) : null,
+				holdReason: typeof row.hold_reason === 'string' ? row.hold_reason : null,
+				codFee: Number.isFinite(Number(row.cod_fee)) ? Number(row.cod_fee) : null,
 				updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null
 			},
 			!saving
@@ -730,6 +741,17 @@
 						<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">Total</p>
 						<p class="text-[13px] font-medium text-foreground">{formatINR(selectedOrder.total)}</p>
 					</div>
+					{#if selectedOrder.codFee > 0 || selectedOrder.rtoRisk > 0}
+						<div>
+							<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">Risk</p>
+							<p class="text-[13px] font-medium text-foreground">
+								{selectedOrder.rtoRisk}/100
+								{#if selectedOrder.codFee > 0}
+									<span class="text-[var(--black-alpha-40)]"> · COD {formatINR(selectedOrder.codFee)}</span>
+								{/if}
+							</p>
+						</div>
+					{/if}
 					<div class="ml-auto flex flex-wrap items-center gap-1.5">
 						<span
 							class={`rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${
@@ -751,8 +773,20 @@
 						>
 							{selectedOrder.paymentStatus}
 						</span>
+						{#if selectedOrder.holdReason}
+							<span class="rounded-md bg-[var(--accent-honey)]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--accent-honey)] uppercase">
+								Review hold
+							</span>
+						{/if}
 					</div>
 				</div>
+
+				{#if selectedOrder.holdReason}
+					<div class="rounded-lg border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 p-3 text-[12px] text-[var(--black-alpha-72)]">
+						<span class="font-medium text-foreground">Hold reason:</span>
+						{selectedOrder.holdReason}
+					</div>
+				{/if}
 
 				<!-- Fulfilment progress timeline -->
 				{#if !timelineTerminal && timelineIndex >= 0}

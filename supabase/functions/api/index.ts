@@ -103,11 +103,16 @@ type CheckoutProductRow = {
 	image: string;
 	images: string[] | null;
 	price: number | string;
+	selling_price?: number | string | null;
+	max_discount_pct?: number | string | null;
 	stock: number | null;
 	status: string | null;
 	weight_kg: number | string | null;
 	local_delivery_eligible?: boolean | null;
 	cod_eligible?: boolean | null;
+	cod_allowed?: boolean | null;
+	returnable?: boolean | null;
+	is_universal?: boolean | null;
 };
 
 type CheckoutOrderItem = {
@@ -157,6 +162,12 @@ type CheckoutSummary = {
 		eligible: boolean;
 		reason: string | null;
 		cap: number;
+		fee: number;
+	};
+	pricing: {
+		chargeableWeightKg: number;
+		freeDeliveryRemaining: number;
+		codFee: number;
 	};
 	deliveryPromise: {
 		label: string;
@@ -213,6 +224,8 @@ const manualDeliveryRatePerKg = 40;
 const manualDeliveryFreeSubtotal = 2000;
 const manualDeliveryRegion = 'Tamil Nadu';
 const manualDeliveryCutoffHourIst = 17;
+const manualCodFee = 40;
+const manualCodMaxOrderValue = 4000;
 const istOffsetMs = 5.5 * 60 * 60 * 1000;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -221,8 +234,32 @@ const featureFlagCache: { expiresAt: number; values: Map<string, boolean> } = {
 	expiresAt: 0,
 	values: new Map()
 };
+type CommerceSettings = {
+	manualDeliveryMinCharge: number;
+	manualDeliveryRatePerKg: number;
+	manualDeliveryFreeSubtotal: number;
+	manualDeliveryRegion: string;
+	manualDeliveryCutoffHourIst: number;
+	defaultPackageWeightKg: number;
+	codFee: number;
+	codMaxOrderValue: number;
+};
+const defaultCommerceSettings: CommerceSettings = {
+	manualDeliveryMinCharge,
+	manualDeliveryRatePerKg,
+	manualDeliveryFreeSubtotal,
+	manualDeliveryRegion,
+	manualDeliveryCutoffHourIst,
+	defaultPackageWeightKg: config.shiprocketDefaultWeightKg,
+	codFee: manualCodFee,
+	codMaxOrderValue: manualCodMaxOrderValue
+};
+const commerceSettingsCache: { expiresAt: number; value: CommerceSettings | null } = {
+	expiresAt: 0,
+	value: null
+};
 const adminProductSelect =
-	'id,title,brand,category,description,image,images,price,mrp,stock,status,sku,source_url,compatibility,warranty,highlights,search_keywords,weight_kg,length_cm,breadth_cm,height_cm,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible,updated_at';
+	'id,title,brand,category,description,image,images,price,mrp,stock,status,sku,source_url,compatibility,warranty,highlights,search_keywords,weight_kg,length_cm,breadth_cm,height_cm,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible,cost_price,selling_price,max_discount_pct,cod_allowed,returnable,is_universal,updated_at';
 const adminCouponSelect =
 	'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active,created_at,updated_at';
 
@@ -324,6 +361,8 @@ const productUpsertSchema = z.object({
 	image: z.string().trim().min(1).max(1200),
 	images: z.array(z.string().trim().min(1).max(1200)).max(12).optional().default([]),
 	price: z.coerce.number().nonnegative().max(10_000_000),
+	sellingPrice: z.coerce.number().nonnegative().max(10_000_000).optional(),
+	costPrice: z.coerce.number().nonnegative().max(10_000_000).optional().default(0),
 	mrp: z.coerce.number().nonnegative().max(10_000_000),
 	stock: z.coerce.number().int().min(0).max(1_000_000),
 	status: z.enum(['active', 'draft', 'archived']).optional().default('active'),
@@ -346,7 +385,10 @@ const productUpsertSchema = z.object({
 	gstRate: z.coerce.number().min(0).max(28).optional().default(18),
 	doaPolicyDays: z.coerce.number().int().min(0).max(30).optional().default(7),
 	localDeliveryEligible: z.boolean().optional().default(true),
-	codEligible: z.boolean().optional().default(true)
+	codEligible: z.boolean().optional().default(true),
+	codAllowed: z.boolean().optional().default(true),
+	returnable: z.boolean().optional().default(true),
+	isUniversal: z.boolean().optional().default(false)
 });
 
 const productUpdateSchema = productUpsertSchema
@@ -366,11 +408,13 @@ const orderStatusSchema = z.enum([
 	'processing',
 	'confirmed',
 	'packed',
+	'on_hold',
 	'shipped',
 	'out_for_delivery',
 	'delivered',
 	'cancelled',
-	'returned'
+	'returned',
+	'rto'
 ]);
 
 const paymentStatusSchema = z.enum([
@@ -457,7 +501,8 @@ const checkoutCreatePaymentOrderSchema = z.object({
 	address: checkoutAddressSchema,
 	selectedQuoteId: z.string().trim().min(1).max(120).nullable().optional(),
 	saveAddress: z.boolean().optional().default(true),
-	couponCode: z.string().trim().max(40).optional().default('')
+	couponCode: z.string().trim().max(40).optional().default(''),
+	paymentMode: z.enum(['razorpay', 'cod']).optional().default('razorpay')
 });
 
 const checkoutCompletePaymentSchema = z.object({
@@ -603,21 +648,113 @@ const productImportSchema = z.object({
 	products: z.array(productImportRowSchema).min(1).max(200)
 });
 
+function settingNumber(value: unknown, fallback: number) {
+	const parsed =
+		typeof value === 'number'
+			? value
+			: typeof value === 'string'
+				? Number(value)
+				: Number.NaN;
+	return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function settingString(value: unknown, fallback: string) {
+	return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+async function getCommerceSettings(): Promise<CommerceSettings> {
+	const now = Date.now();
+	if (commerceSettingsCache.value && commerceSettingsCache.expiresAt > now) {
+		return commerceSettingsCache.value;
+	}
+
+	const settings = { ...defaultCommerceSettings };
+	try {
+		const { data, error } = await getSupabaseAdmin()
+			.from('app_settings')
+			.select('key,value')
+			.in('key', [
+				'manual_min_delivery_fee',
+				'manual_rate_per_kg',
+				'free_delivery_threshold',
+				'manual_delivery_region',
+				'manual_cutoff_hour_ist',
+				'default_package_weight_kg',
+				'cod_fee',
+				'cod_max_order_value'
+			]);
+		if (error) throw error;
+
+		for (const row of data ?? []) {
+			const key = String((row as { key: string }).key);
+			const value = (row as { value: unknown }).value;
+			switch (key) {
+				case 'manual_min_delivery_fee':
+					settings.manualDeliveryMinCharge = settingNumber(value, settings.manualDeliveryMinCharge);
+					break;
+				case 'manual_rate_per_kg':
+					settings.manualDeliveryRatePerKg = settingNumber(value, settings.manualDeliveryRatePerKg);
+					break;
+				case 'free_delivery_threshold':
+					settings.manualDeliveryFreeSubtotal = settingNumber(
+						value,
+						settings.manualDeliveryFreeSubtotal
+					);
+					break;
+				case 'manual_delivery_region':
+					settings.manualDeliveryRegion = settingString(value, settings.manualDeliveryRegion);
+					break;
+				case 'manual_cutoff_hour_ist':
+					settings.manualDeliveryCutoffHourIst = settingNumber(
+						value,
+						settings.manualDeliveryCutoffHourIst
+					);
+					break;
+				case 'default_package_weight_kg':
+					settings.defaultPackageWeightKg = settingNumber(value, settings.defaultPackageWeightKg);
+					break;
+				case 'cod_fee':
+					settings.codFee = settingNumber(value, settings.codFee);
+					break;
+				case 'cod_max_order_value':
+					settings.codMaxOrderValue = settingNumber(value, settings.codMaxOrderValue);
+					break;
+			}
+		}
+	} catch (settingsError) {
+		console.warn('Commerce settings unavailable, using safe defaults.', settingsError);
+	}
+
+	commerceSettingsCache.value = settings;
+	commerceSettingsCache.expiresAt = now + 60_000;
+	return settings;
+}
+
 function roundMoney(value: number) {
 	return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function normalizedPackageWeightKg(weightKg: number | null | undefined) {
+function normalizedPackageWeightKg(
+	weightKg: number | null | undefined,
+	settings = defaultCommerceSettings
+) {
 	return Number.isFinite(weightKg) && Number(weightKg) > 0
 		? Number(weightKg)
-		: config.shiprocketDefaultWeightKg;
+		: settings.defaultPackageWeightKg;
 }
 
-function calculateManualDeliveryCharge(weightKg: number, subtotal: number) {
+function calculateManualDeliveryCharge(
+	weightKg: number,
+	subtotal: number,
+	settings = defaultCommerceSettings
+) {
 	if (subtotal <= 0) return 0;
-	if (subtotal >= manualDeliveryFreeSubtotal) return 0;
-	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(weightKg)));
-	return Math.max(manualDeliveryMinCharge, chargeableKg * manualDeliveryRatePerKg);
+	if (subtotal >= settings.manualDeliveryFreeSubtotal) return 0;
+	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(weightKg, settings)));
+	return Math.max(
+		settings.manualDeliveryMinCharge,
+		chargeableKg * settings.manualDeliveryRatePerKg
+	);
 }
 
 function getIstDateParts(now = new Date()) {
@@ -630,9 +767,9 @@ function getIstDateParts(now = new Date()) {
 	};
 }
 
-function manualDeliveryPromise(now = new Date()) {
+function manualDeliveryPromise(settings = defaultCommerceSettings, now = new Date()) {
 	const parts = getIstDateParts(now);
-	const estimatedDeliveryDays = parts.hour < manualDeliveryCutoffHourIst ? 1 : 2;
+	const estimatedDeliveryDays = parts.hour < settings.manualDeliveryCutoffHourIst ? 1 : 2;
 	const expected = new Date(Date.UTC(parts.year, parts.month, parts.day + estimatedDeliveryDays));
 	return {
 		estimatedDeliveryDays,
@@ -651,20 +788,22 @@ function manualDeliveryPromise(now = new Date()) {
 function getManualDeliveryQuote(input: {
 	weightKg: number;
 	subtotal: number;
+	settings?: CommerceSettings;
 }): CourierQuote {
-	const promise = manualDeliveryPromise();
-	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(input.weightKg)));
+	const settings = input.settings ?? defaultCommerceSettings;
+	const promise = manualDeliveryPromise(settings);
+	const chargeableKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(input.weightKg, settings)));
 	return {
 		quoteId: `manual:standard:${chargeableKg}kg`,
 		courierCompanyId: null,
 		courierName: 'LapKart Manual Delivery',
-		rate: calculateManualDeliveryCharge(input.weightKg, input.subtotal),
+		rate: calculateManualDeliveryCharge(input.weightKg, input.subtotal, settings),
 		rating: 0,
 		etd: promise.etd,
 		expectedDeliveryDate: promise.expectedDeliveryDate,
 		estimatedDeliveryDays: promise.estimatedDeliveryDays,
 		etdHours: promise.estimatedDeliveryDays * 24,
-		mode: `Manual courier · ${chargeableKg} kg`,
+		mode: `Manual courier - ${chargeableKg} kg`,
 		recommended: true,
 		serviceType: 'standard'
 	};
@@ -727,6 +866,16 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 			etdHours: selectedCourier.etdHours,
 			expectedDeliveryDate: selectedCourier.expectedDeliveryDate
 		},
+		pricing: {
+			subtotal: summary.subtotal,
+			shipping: summary.shipping,
+			discountTotal: summary.discountTotal,
+			codFee: summary.pricing.codFee,
+			total: summary.total,
+			chargeableWeightKg: summary.pricing.chargeableWeightKg,
+			freeDeliveryRemaining: summary.pricing.freeDeliveryRemaining
+		},
+		cod: summary.cod,
 		customerMessage: `Manual Tamil Nadu courier from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before dispatch.`,
 		limitations: [
 			'Delivery is currently limited to Tamil Nadu.',
@@ -2117,8 +2266,13 @@ function canTransitionManualOrderStatus(
 		: currentStatus;
 	const currentIndex = progressiveStates.indexOf(currentProgressStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
+	if (nextStatus === 'on_hold') {
+		return !['cancelled', 'returned', 'delivered', 'rto'].includes(currentStatus);
+	}
+	if (currentStatus === 'on_hold') return ['confirmed', 'cancelled'].includes(nextStatus);
 	if (nextStatus === 'cancelled') return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
+	if (nextStatus === 'rto') return ['ready_for_delivery', 'shipped', 'out_for_delivery'].includes(currentStatus);
 	if (currentIndex === -1 || nextIndex === -1) return false;
 	return nextIndex > currentIndex;
 }
@@ -2254,18 +2408,89 @@ function isChennaiAddress(address: CheckoutAddress) {
 
 function getCodIneligibilityReason({
 	address,
-	total,
-	products
+	totalBeforeCod,
+	products,
+	settings,
+	rpcReason
 }: {
 	address: CheckoutAddress;
-	total: number;
+	totalBeforeCod: number;
 	products: CheckoutProductRow[];
+	settings: CommerceSettings;
+	rpcReason?: string | null;
 }) {
 	if (!isChennaiAddress(address)) return 'COD is currently limited to Chennai delivery addresses';
-	if (total > 4000) return 'COD is available only up to INR 4000';
-	const codBlockedProduct = products.find((product) => product.cod_eligible === false);
+	if (totalBeforeCod > settings.codMaxOrderValue) {
+		return `COD is available only up to INR ${settings.codMaxOrderValue}`;
+	}
+	if (rpcReason) return rpcReason;
+	const codBlockedProduct = products.find(
+		(product) => product.cod_eligible === false || product.cod_allowed === false
+	);
 	if (codBlockedProduct) return `${codBlockedProduct.title} is not eligible for COD`;
 	return null;
+}
+
+function firstCodReasonFromRpc(value: unknown) {
+	if (!value || typeof value !== 'object') return null;
+	const allowed = (value as { allowed?: unknown }).allowed;
+	if (allowed === true) return null;
+	const reasons = (value as { reasons?: unknown }).reasons;
+	if (Array.isArray(reasons)) {
+		const reason = reasons.find((entry) => typeof entry === 'string' && entry.trim());
+		return reason ? String(reason) : null;
+	}
+	return null;
+}
+
+async function getDatabaseCodReason({
+	userId,
+	pincode,
+	items
+}: {
+	userId: string;
+	pincode: string;
+	items: Array<{ id: string; qty: number }>;
+}) {
+	try {
+		const { data, error } = await getSupabaseAdmin().rpc('can_use_cod', {
+			p_cart_items: items.map((item) => ({ id: item.id, qty: item.qty })),
+			p_customer_id: userId,
+			p_pincode: pincode
+		});
+		if (error) throw error;
+		return firstCodReasonFromRpc(data);
+	} catch (error) {
+		console.warn('Database COD gate unavailable, using checkout fallback rules.', error);
+		return null;
+	}
+}
+
+async function getRtoRiskScore({
+	userId,
+	pincode,
+	total,
+	paymentMode
+}: {
+	userId: string;
+	pincode: string;
+	total: number;
+	paymentMode: 'razorpay' | 'cod';
+}) {
+	try {
+		const { data, error } = await getSupabaseAdmin().rpc('rto_risk_score', {
+			p_customer_id: userId,
+			p_pincode: pincode,
+			p_cart_value: total,
+			p_payment_mode: paymentMode
+		});
+		if (error) throw error;
+		const score = Number(data ?? 0);
+		return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+	} catch (error) {
+		console.warn('RTO risk scoring unavailable, using checkout fallback score.', error);
+		return paymentMode === 'cod' ? 35 : 5;
+	}
 }
 
 async function validateCouponForCheckout({
@@ -2355,19 +2580,22 @@ async function validateCouponForCheckout({
 
 async function buildCheckoutSummary(
 	userId: string,
-	input: z.infer<typeof checkoutCreatePaymentOrderSchema>
+	input: z.infer<typeof checkoutCreatePaymentOrderSchema>,
+	paymentModeOverride?: 'razorpay' | 'cod'
 ) {
+	const settings = await getCommerceSettings();
 	if (!isTamilNaduAddress(input.address)) {
-		throw new HttpError(400, `Delivery is currently available only in ${manualDeliveryRegion}`);
+		throw new HttpError(400, `Delivery is currently available only in ${settings.manualDeliveryRegion}`);
 	}
 
 	const adminDb = getSupabaseAdmin();
 	const items = normalizeCheckoutItems(input.items);
+	const paymentMode = paymentModeOverride ?? input.paymentMode ?? 'razorpay';
 	const productIds = items.map((item) => item.id);
 	const { data: products, error } = await adminDb
 		.from('products')
 		.select(
-			'id,title,brand,image,images,price,stock,status,weight_kg,local_delivery_eligible,cod_eligible'
+			'id,title,brand,image,images,price,selling_price,stock,status,weight_kg,local_delivery_eligible,cod_eligible,cod_allowed,returnable,is_universal,max_discount_pct'
 		)
 		.in('id', productIds);
 	if (error) throw error;
@@ -2387,7 +2615,7 @@ async function buildCheckoutSummary(
 		if (typeof product.stock === 'number' && product.stock < item.qty) {
 			throw new HttpError(400, `${product.title} only has ${product.stock} unit(s) in stock`);
 		}
-		const price = roundMoney(Number(product.price));
+		const price = roundMoney(Number(product.selling_price ?? product.price));
 		if (!Number.isFinite(price) || price < 0) {
 			throw new HttpError(400, `${product.title} has an invalid price`);
 		}
@@ -2403,14 +2631,14 @@ async function buildCheckoutSummary(
 
 	const subtotal = roundMoney(orderItems.reduce((sum, item) => sum + item.price * item.qty, 0));
 	const weightKg = Math.max(
-		config.shiprocketDefaultWeightKg,
+		settings.defaultPackageWeightKg,
 		roundMoney(
 			items.reduce((sum, item) => {
 				const product = productsById.get(item.id);
-				const weight = Number(product?.weight_kg ?? config.shiprocketDefaultWeightKg);
+				const weight = Number(product?.weight_kg ?? settings.defaultPackageWeightKg);
 				return (
 					sum +
-					(Number.isFinite(weight) && weight > 0 ? weight : config.shiprocketDefaultWeightKg) *
+					(Number.isFinite(weight) && weight > 0 ? weight : settings.defaultPackageWeightKg) *
 						item.qty
 				);
 			}, 0)
@@ -2424,7 +2652,8 @@ async function buildCheckoutSummary(
 	const couriers = [
 		getManualDeliveryQuote({
 			weightKg,
-			subtotal
+			subtotal,
+			settings
 		})
 	];
 
@@ -2449,16 +2678,29 @@ async function buildCheckoutSummary(
 	});
 	const discountTotal = coupon?.discountAmount ?? 0;
 	const shipping = roundMoney(selectedRate);
-	const total = roundMoney(Math.max(0, subtotal + shipping - discountTotal));
+	const codFee = paymentMode === 'cod' ? roundMoney(settings.codFee) : 0;
+	const totalBeforeCod = roundMoney(Math.max(0, subtotal + shipping - discountTotal));
+	const total = roundMoney(Math.max(0, totalBeforeCod + codFee));
 	const amountPaise = Math.round(total * 100);
+	const rpcCodReason = await getDatabaseCodReason({
+		userId,
+		pincode: input.address.pincode,
+		items
+	});
 	const codReason = getCodIneligibilityReason({
 		address: input.address,
-		total,
-		products: productRows
+		totalBeforeCod,
+		products: productRows,
+		settings,
+		rpcReason: rpcCodReason
 	});
+	const chargeableWeightKg = Math.max(1, Math.ceil(normalizedPackageWeightKg(weightKg, settings)));
+	const freeDeliveryRemaining = roundMoney(
+		Math.max(0, settings.manualDeliveryFreeSubtotal - subtotal)
+	);
 	const deliveryPromise = {
 		label: selectedCourier.rate === 0 ? 'Free Tamil Nadu delivery' : 'Tamil Nadu manual delivery',
-		detail: `${selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}. Daily pickup before 5 PM.`,
+		detail: `${selectedCourier.etd || `${selectedCourier.estimatedDeliveryDays} day(s)`}. Daily pickup before ${settings.manualDeliveryCutoffHourIst}:00 IST.`,
 		serviceType: selectedCourier.serviceType
 	} satisfies CheckoutSummary['deliveryPromise'];
 	const deliveryEstimate = {
@@ -2482,7 +2724,13 @@ async function buildCheckoutSummary(
 		cod: {
 			eligible: codReason === null,
 			reason: codReason,
-			cap: 4000
+			cap: settings.codMaxOrderValue,
+			fee: settings.codFee
+		},
+		pricing: {
+			chargeableWeightKg,
+			freeDeliveryRemaining,
+			codFee
 		},
 		deliveryPromise,
 		deliveryEstimate,
@@ -2499,7 +2747,13 @@ async function buildCheckoutSummary(
 				cod: {
 					eligible: codReason === null,
 					reason: codReason,
-					cap: 4000
+					cap: settings.codMaxOrderValue,
+					fee: settings.codFee
+				},
+				pricing: {
+					chargeableWeightKg,
+					freeDeliveryRemaining,
+					codFee
 				},
 				deliveryPromise,
 				deliveryPromiseSnapshot: {},
@@ -2523,6 +2777,13 @@ function productPayloadFromInput(
 	if ('images' in input)
 		payload.images = input.images && input.images.length > 0 ? input.images : null;
 	if ('price' in input && input.price !== undefined) payload.price = input.price;
+	if ('sellingPrice' in input && input.sellingPrice !== undefined) {
+		payload.selling_price = input.sellingPrice;
+		payload.price = input.sellingPrice;
+	} else if ('price' in input && input.price !== undefined) {
+		payload.selling_price = input.price;
+	}
+	if ('costPrice' in input && input.costPrice !== undefined) payload.cost_price = input.costPrice;
 	if ('mrp' in input && input.mrp !== undefined) payload.mrp = input.mrp;
 	if ('stock' in input && input.stock !== undefined) payload.stock = input.stock;
 	if ('status' in input && input.status !== undefined) payload.status = input.status;
@@ -2557,6 +2818,18 @@ function productPayloadFromInput(
 	if ('codEligible' in input && input.codEligible !== undefined) {
 		payload.cod_eligible = input.codEligible;
 	}
+	if ('codAllowed' in input && input.codAllowed !== undefined) {
+		payload.cod_allowed = input.codAllowed;
+		if (!('codEligible' in input) || input.codEligible === undefined) {
+			payload.cod_eligible = input.codAllowed;
+		}
+	}
+	if ('returnable' in input && input.returnable !== undefined) {
+		payload.returnable = input.returnable;
+	}
+	if ('isUniversal' in input && input.isUniversal !== undefined) {
+		payload.is_universal = input.isUniversal;
+	}
 	return payload;
 }
 
@@ -2578,8 +2851,15 @@ function productsToCsv(rows: Array<Record<string, unknown>>) {
 		'sku',
 		'status',
 		'price',
+		'selling_price',
+		'cost_price',
+		'max_discount_pct',
 		'mrp',
 		'stock',
+		'weight_kg',
+		'cod_allowed',
+		'returnable',
+		'is_universal',
 		'image',
 		'images',
 		'updated_at'
@@ -2718,7 +2998,7 @@ async function handle(req: Request) {
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
-		const summary = await buildCheckoutSummary(user.id, input);
+		const summary = await buildCheckoutSummary(user.id, input, 'cod');
 		if (!summary.cod.eligible) {
 			throw new HttpError(400, summary.cod.reason ?? 'COD is not available for this order');
 		}
@@ -2744,6 +3024,13 @@ async function handle(req: Request) {
 
 		const orderId = crypto.randomUUID();
 		const address = input.address;
+		const rtoRisk = await getRtoRiskScore({
+			userId: user.id,
+			pincode: address.pincode,
+			total: summary.total,
+			paymentMode: 'cod'
+		});
+		const holdForRisk = rtoRisk >= 75;
 		const phone = phoneDigits(address.phone);
 		const shippingAddress = buildShippingAddress(address);
 		const tracking = [
@@ -2761,13 +3048,17 @@ async function handle(req: Request) {
 				p_order_id: orderId,
 				p_user_id: user.id,
 				p_order_payload: {
-					status: 'confirmed',
+					status: holdForRisk ? 'on_hold' : 'confirmed',
 					payment_status: 'cod_pending',
 					payment_method: 'cod',
 					subtotal: summary.subtotal,
 					shipping: summary.shipping,
 					discount_total: summary.discountTotal,
 					total: summary.total,
+					cod_fee: summary.pricing.codFee,
+					cod_confirmed: false,
+					rto_risk: rtoRisk,
+					hold_reason: holdForRisk ? 'High RTO risk score requires manual review' : null,
 					coupon_id: summary.coupon?.id ?? null,
 					coupon_code: summary.coupon?.code ?? null,
 					shipping_name: address.fullName,
@@ -2858,7 +3149,7 @@ async function handle(req: Request) {
 			},
 			{ onConflict: 'order_id' }
 		);
-		await autoFulfillOrder(adminDb, finalOrderId);
+		if (!holdForRisk) await autoFulfillOrder(adminDb, finalOrderId);
 
 		return json(req, 201, { orderId: finalOrderId, summary, codReference });
 	}
@@ -2869,7 +3160,7 @@ async function handle(req: Request) {
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'payment', paymentRateLimit, user.id);
 		const input = checkoutCreatePaymentOrderSchema.parse(await req.json());
-		const summary = await buildCheckoutSummary(user.id, input);
+		const summary = await buildCheckoutSummary(user.id, input, 'razorpay');
 		const razorpayOrder = await createRazorpayOrder(
 			summary.amountPaise,
 			`lk_${Date.now()}_${user.id.slice(0, 8)}`,
@@ -2969,6 +3260,12 @@ async function handle(req: Request) {
 
 		const orderId = crypto.randomUUID();
 		const address = checkout.address;
+		const rtoRisk = await getRtoRiskScore({
+			userId: user.id,
+			pincode: address.pincode,
+			total: checkout.total,
+			paymentMode: 'razorpay'
+		});
 		const phone = phoneDigits(address.phone);
 		const shippingAddress = buildShippingAddress(address);
 		const tracking = [
@@ -2994,6 +3291,10 @@ async function handle(req: Request) {
 					shipping: checkout.shipping,
 					discount_total: checkout.discountTotal,
 					total: checkout.total,
+					cod_fee: 0,
+					cod_confirmed: false,
+					rto_risk: rtoRisk,
+					hold_reason: null,
 					coupon_id: checkout.coupon?.id ?? null,
 					coupon_code: checkout.coupon?.code ?? null,
 					shipping_name: address.fullName,
@@ -3124,14 +3425,16 @@ async function handle(req: Request) {
 		const user = await requireUser(req);
 		await enforceDurableRateLimit(req, 'map', mapRateLimit, user.id);
 		const input = deliveryEstimateQuerySchema.parse(parseQueryObject(url));
+		const settings = await getCommerceSettings();
 		if (input.state && !isTamilNaduState(input.state)) {
-			throw new HttpError(400, `Delivery is currently available only in ${manualDeliveryRegion}`);
+			throw new HttpError(400, `Delivery is currently available only in ${settings.manualDeliveryRegion}`);
 		}
 		const route = await getOlaDeliveryRoute(input);
 		const couriers = [
 			getManualDeliveryQuote({
-				weightKg: normalizedPackageWeightKg(input.weightKg),
-				subtotal: Number(input.declaredValue ?? 0)
+				weightKg: normalizedPackageWeightKg(input.weightKg, settings),
+				subtotal: Number(input.declaredValue ?? 0),
+				settings
 			})
 		];
 		return json(req, 200, {
@@ -4890,8 +5193,17 @@ async function handle(req: Request) {
 	if (req.method === 'GET' && path === '/admin/analytics') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'read_admin');
-		const [orders, products, users, cancellations, returnsResult, refunds, shipments, support] =
-			await Promise.all([
+		const [
+			orders,
+			products,
+			users,
+			cancellations,
+			returnsResult,
+			refunds,
+			shipments,
+			support,
+			profitability
+		] = await Promise.all([
 				adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
 				adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
 				adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
@@ -4919,7 +5231,12 @@ async function handle(req: Request) {
 				adminDb
 					.from('product_questions')
 					.select('id', { count: 'exact', head: true })
-					.eq('status', 'pending')
+					.eq('status', 'pending'),
+				adminDb
+					.from('order_profitability')
+					.select('order_id,created_at,status,total,product_cost,estimated_net_margin,rto_risk')
+					.order('created_at', { ascending: false })
+					.limit(500)
 			]);
 		if (orders.error) throw orders.error;
 		if (products.error) throw products.error;
@@ -4929,11 +5246,22 @@ async function handle(req: Request) {
 		if (refunds.error) throw refunds.error;
 		if (shipments.error) throw shipments.error;
 		if (support.error) throw support.error;
+		if (profitability.error) {
+			console.warn('Profitability view unavailable for admin analytics.', profitability.error);
+		}
 		const orderRows = orders.data ?? [];
+		const pnlRows = profitability.error ? [] : (profitability.data ?? []);
 		const cancellationRows = cancellations.data ?? [];
 		const returnRows = returnsResult.data ?? [];
 		const refundRows = refunds.data ?? [];
 		const revenue = orderRows.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+		const estimatedNetMargin = roundMoney(
+			pnlRows.reduce((sum, order) => sum + Number(order.estimated_net_margin ?? 0), 0)
+		);
+		const productCost = roundMoney(
+			pnlRows.reduce((sum, order) => sum + Number(order.product_cost ?? 0), 0)
+		);
+		const highRiskOrders = pnlRows.filter((order) => Number(order.rto_risk ?? 0) >= 75).length;
 		const deliveredOrders = orderRows.filter(
 			(order) => String(order.status ?? '').toLowerCase() === 'delivered'
 		).length;
@@ -5010,6 +5338,9 @@ async function handle(req: Request) {
 			pickupsPending,
 			lowStock,
 			openSupport,
+			estimatedNetMargin,
+			productCost,
+			highRiskOrders,
 			periodReports: [
 				buildPeriodReport('daily', 'Today', periodStart(0)),
 				buildPeriodReport('weekly', 'Last 7 days', periodStart(6)),
@@ -5634,7 +5965,7 @@ async function handle(req: Request) {
 		let ordersQuery = adminDb
 			.from('orders')
 			.select(
-				'id,user_id,created_at,updated_at,status,payment_status,payment_method,subtotal,shipping,total,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_service_type,shipping_courier_name',
+				'id,user_id,created_at,updated_at,status,payment_status,payment_method,subtotal,shipping,cod_fee,total,rto_risk,hold_reason,shipping_name,shipping_phone,shipping_email,shipping_line1,shipping_line2,shipping_city,shipping_state,shipping_pincode,shipping_service_type,shipping_courier_name',
 				{ count: 'exact' }
 			);
 		if (q) {
@@ -5799,7 +6130,10 @@ async function handle(req: Request) {
 					paymentMethod: order.payment_method,
 					subtotal: Number(order.subtotal ?? 0),
 					shipping: Number(order.shipping ?? 0),
+					codFee: Number(order.cod_fee ?? 0),
 					total: Number(order.total ?? 0),
+					rtoRisk: Number(order.rto_risk ?? 0),
+					holdReason: order.hold_reason ?? null,
 					shippingName: order.shipping_name,
 					shippingPhone: order.shipping_phone,
 					shippingEmail: order.shipping_email,
@@ -5942,9 +6276,15 @@ async function handle(req: Request) {
 						).replaceAll('_', ' ')}`
 			);
 		}
-		const reasonRequired = ['cancelled', 'returned'].includes(nextOrderStatus);
+		const reasonRequired = ['cancelled', 'returned', 'on_hold', 'rto'].includes(nextOrderStatus);
 		if (reasonRequired && !input.reason?.trim()) {
-			throw new HttpError(400, 'Add a clear reason for cancellation or return changes');
+			throw new HttpError(400, 'Add a clear reason for this manual order status change');
+		}
+		if (payload.status === 'on_hold' && input.reason?.trim()) {
+			payload.hold_reason = input.reason.trim();
+		}
+		if (payload.status === 'confirmed' && currentOrderStatus === 'on_hold') {
+			payload.hold_reason = null;
 		}
 		const changedFields = Object.entries(payload).filter(([key, value]) => {
 			const existingValue = (existingOrder as Record<string, unknown>)[key];
@@ -5998,7 +6338,7 @@ async function handle(req: Request) {
 			.from('orders')
 			.update(payload)
 			.eq('id', orderId)
-			.select('id,status,payment_status,updated_at')
+			.select('id,status,payment_status,updated_at,cod_fee,rto_risk,hold_reason')
 			.single();
 		if (error) throw error;
 		const { error: eventError } = await adminDb.from('admin_order_events').insert({
@@ -6040,12 +6380,15 @@ async function handle(req: Request) {
 			}
 		}
 		return json(req, 200, {
-			order: {
-				id: data.id,
-				status: data.status,
-				paymentStatus: data.payment_status,
-				updatedAt: data.updated_at
-			}
+				order: {
+					id: data.id,
+					status: data.status,
+					paymentStatus: data.payment_status,
+					codFee: Number(data.cod_fee ?? 0),
+					rtoRisk: Number(data.rto_risk ?? 0),
+					holdReason: data.hold_reason ?? null,
+					updatedAt: data.updated_at
+				}
 		});
 	}
 

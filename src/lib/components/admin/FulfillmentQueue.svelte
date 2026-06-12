@@ -62,19 +62,20 @@
 		try {
 			if (showLoading) loading = true;
 			error = null;
-			const [accountResponse, queueResponse] = await Promise.all([
+			const [accountResponse, queueResponse] = await Promise.allSettled([
 				requestAdmin<ShiprocketAccount>('/shiprocket/account'),
 				requestAdmin<{ orders: FulfillmentOrder[] }>('/admin/fulfillment/orders')
 			]);
-			account = accountResponse;
-			const nextOrders = queueResponse.orders ?? [];
+			if (queueResponse.status === 'rejected') throw queueResponse.reason;
+			account = accountResponse.status === 'fulfilled' ? accountResponse.value : null;
+			const nextOrders = queueResponse.value.orders ?? [];
 			orders = nextOrders;
 			syncQueueState(nextOrders);
 		} catch (requestError) {
 			error =
 				requestError instanceof Error
 					? requestError.message
-					: 'Could not load Shiprocket fulfillment';
+					: 'Could not load fulfillment queue';
 		} finally {
 			if (showLoading) loading = false;
 		}
@@ -260,16 +261,16 @@
 				<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
 					Fulfillment desk
 				</p>
-				<p class="mt-1 text-[16px] font-medium text-foreground">Shiprocket queue</p>
+				<p class="mt-1 text-[16px] font-medium text-foreground">Manual dispatch queue</p>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-4">
 				<div class="flex items-center gap-1.5">
 					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-						>Wallet</span
+						>Provider</span
 					>
 					<span class="text-[14px] font-medium text-foreground"
-						>{account ? formatINR(account.walletBalance) : '...'}</span
+						>{account ? `Shiprocket ${formatINR(account.walletBalance)}` : 'Manual'}</span
 					>
 				</div>
 				<div class="h-4 w-px bg-[var(--border-faint)]"></div>
@@ -278,7 +279,7 @@
 						>Pickup</span
 					>
 					<span class="text-[14px] font-medium text-foreground"
-						>{account?.configuredPickupLocation || '...'}</span
+						>{account?.configuredPickupLocation || 'Daily courier pickup'}</span
 					>
 					{#if account && !account.pickupLocationVerified}
 						<span class="text-[10px] text-[var(--accent-crimson)]">Not synced</span>

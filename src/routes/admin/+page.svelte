@@ -68,6 +68,9 @@
 		pickupsPending: number;
 		lowStock: number;
 		openSupport: number;
+		estimatedNetMargin: number;
+		productCost: number;
+		highRiskOrders: number;
 		periodReports: Array<{
 			id: 'daily' | 'weekly' | 'monthly';
 			label: string;
@@ -137,6 +140,12 @@
 		doa_policy_days: number | null;
 		local_delivery_eligible: boolean | null;
 		cod_eligible: boolean | null;
+		cost_price: number | null;
+		selling_price: number | null;
+		max_discount_pct: number | null;
+		cod_allowed: boolean | null;
+		returnable: boolean | null;
+		is_universal: boolean | null;
 		updated_at: string;
 	};
 
@@ -149,6 +158,8 @@
 		image: string;
 		imagesText: string;
 		price: string;
+		costPrice: string;
+		maxDiscountPct: string;
 		mrp: string;
 		stock: string;
 		status: 'active' | 'draft' | 'archived';
@@ -169,6 +180,9 @@
 		doaPolicyDays: string;
 		localDeliveryEligible: boolean;
 		codEligible: boolean;
+		codAllowed: boolean;
+		returnable: boolean;
+		isUniversal: boolean;
 	};
 
 	type AdminUserRecord = {
@@ -264,7 +278,8 @@
 		orders: Package,
 		products: Boxes,
 		users: Users,
-		revenue: TrendingUp
+		revenue: TrendingUp,
+		margin: TrendingUp
 	};
 
 	const categoryOptions = categories.map((category) => ({
@@ -368,7 +383,8 @@
 		{ id: 'orders', label: 'Total Orders', value: analytics?.orders ?? 0 },
 		{ id: 'products', label: 'Products', value: analytics?.products ?? 0 },
 		{ id: 'users', label: 'Customers', value: analytics?.users ?? 0 },
-		{ id: 'revenue', label: 'Revenue', value: formatINR(analytics?.revenue ?? 0) }
+		{ id: 'revenue', label: 'Revenue', value: formatINR(analytics?.revenue ?? 0) },
+		{ id: 'margin', label: 'Est. net margin', value: formatINR(analytics?.estimatedNetMargin ?? 0) }
 	]);
 
 	const maxMonthlyRevenue = $derived(
@@ -411,6 +427,13 @@
 				count: analytics?.openSupport ?? 0,
 				hint: 'Unanswered questions',
 				action: () => setView('support')
+			},
+			{
+				id: 'rto',
+				label: 'High RTO risk',
+				count: analytics?.highRiskOrders ?? 0,
+				hint: 'Review before dispatch',
+				action: () => openOperations('orders', 'needs-action')
 			}
 		].filter((card) => card.count > 0)
 	);
@@ -425,6 +448,8 @@
 			image: '',
 			imagesText: '',
 			price: '',
+			costPrice: '',
+			maxDiscountPct: '0',
 			mrp: '',
 			stock: '0',
 			status: 'draft',
@@ -444,7 +469,10 @@
 			gstRate: '18',
 			doaPolicyDays: '7',
 			localDeliveryEligible: true,
-			codEligible: true
+			codEligible: true,
+			codAllowed: true,
+			returnable: true,
+			isUniversal: false
 		};
 	}
 
@@ -462,7 +490,9 @@
 			description: product.description ?? '',
 			image: product.image,
 			imagesText: (product.images ?? []).join('\n'),
-			price: String(Number(product.price ?? 0)),
+			price: String(Number(product.selling_price ?? product.price ?? 0)),
+			costPrice: String(Number(product.cost_price ?? 0)),
+			maxDiscountPct: String(Number(product.max_discount_pct ?? 0)),
 			mrp: String(Number(product.mrp ?? 0)),
 			stock: String(Number(product.stock ?? 0)),
 			status: normalizeProductStatus(product.status),
@@ -482,7 +512,10 @@
 			gstRate: product.gst_rate === null ? '18' : String(product.gst_rate),
 			doaPolicyDays: product.doa_policy_days === null ? '7' : String(product.doa_policy_days),
 			localDeliveryEligible: product.local_delivery_eligible !== false,
-			codEligible: product.cod_eligible !== false
+			codEligible: product.cod_eligible !== false,
+			codAllowed: product.cod_allowed !== false,
+			returnable: product.returnable !== false,
+			isUniversal: product.is_universal === true
 		};
 	}
 
@@ -846,6 +879,8 @@
 				image: productEditor.image,
 				images: parseLines(productEditor.imagesText),
 				price: Number(productEditor.price),
+				sellingPrice: Number(productEditor.price),
+				costPrice: payloadNumber(productEditor.costPrice) ?? 0,
 				mrp: Number(productEditor.mrp),
 				stock: Number(productEditor.stock),
 				status: productEditor.status,
@@ -865,7 +900,10 @@
 				gstRate: payloadNumber(productEditor.gstRate) ?? 18,
 				doaPolicyDays: payloadNumber(productEditor.doaPolicyDays) ?? 7,
 				localDeliveryEligible: productEditor.localDeliveryEligible,
-				codEligible: productEditor.codEligible
+				codEligible: productEditor.codAllowed,
+				codAllowed: productEditor.codAllowed,
+				returnable: productEditor.returnable,
+				isUniversal: productEditor.isUniversal
 			};
 
 			if (selectedProductId === 'new' || !productEditor.id) {
@@ -1862,11 +1900,28 @@
 												<h3 class="section-title">Pricing &amp; availability</h3>
 												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
 													<label>
-														<span class="field-label">Price</span>
+														<span class="field-label">Selling price</span>
 														<input
 															bind:value={productEditor.price}
 															class="input-field"
 															inputmode="decimal"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Cost price</span>
+														<input
+															bind:value={productEditor.costPrice}
+															class="input-field"
+															inputmode="decimal"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Max discount (%)</span>
+														<input
+															value={productEditor.maxDiscountPct}
+															class="input-field bg-[var(--background-lighter)] text-[var(--black-alpha-56)]"
+															readonly
+															aria-readonly="true"
 														/>
 													</label>
 													<label>
@@ -1963,11 +2018,31 @@
 													<label class="checkbox-field">
 														<input
 															type="checkbox"
-															bind:checked={productEditor.codEligible}
+															bind:checked={productEditor.codAllowed}
 															class="size-3.5 accent-[var(--heat-100)]"
 														/>
 														<span class="text-[11px] text-[var(--black-alpha-56)]"
-															>COD eligible</span
+															>COD allowed</span
+														>
+													</label>
+													<label class="checkbox-field">
+														<input
+															type="checkbox"
+															bind:checked={productEditor.returnable}
+															class="size-3.5 accent-[var(--heat-100)]"
+														/>
+														<span class="text-[11px] text-[var(--black-alpha-56)]"
+															>Returnable</span
+														>
+													</label>
+													<label class="checkbox-field">
+														<input
+															type="checkbox"
+															bind:checked={productEditor.isUniversal}
+															class="size-3.5 accent-[var(--heat-100)]"
+														/>
+														<span class="text-[11px] text-[var(--black-alpha-56)]"
+															>Universal fit</span
 														>
 													</label>
 												</div>

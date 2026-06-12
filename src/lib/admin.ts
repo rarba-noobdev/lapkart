@@ -102,7 +102,10 @@ export type AdminOrderRecord = {
 	paymentMethod: string;
 	subtotal: number;
 	shipping: number;
+	codFee: number;
 	total: number;
+	rtoRisk: number;
+	holdReason: string | null;
 	shippingName: string | null;
 	shippingPhone: string | null;
 	shippingEmail: string | null;
@@ -223,10 +226,12 @@ export const manualOrderStatusOptions = [
 	{ value: 'pending', label: 'Pending' },
 	{ value: 'processing', label: 'Processing' },
 	{ value: 'confirmed', label: 'Paid' },
+	{ value: 'on_hold', label: 'On hold' },
 	{ value: 'out_for_delivery', label: 'Out for delivery' },
 	{ value: 'delivered', label: 'Delivered' },
 	{ value: 'cancelled', label: 'Cancelled' },
-	{ value: 'returned', label: 'Returned' }
+	{ value: 'returned', label: 'Returned' },
+	{ value: 'rto', label: 'RTO' }
 ] as const;
 
 export const manualOrderStatusValues = new Set(
@@ -243,11 +248,13 @@ export const paymentStatusOptions = [
 	{ value: 'refunded', label: 'Refunded' }
 ] as const;
 
-const terminalOrderStatuses = new Set(['cancelled', 'refunded', 'returned']);
+const terminalOrderStatuses = new Set(['cancelled', 'refunded', 'returned', 'rto']);
 const terminalPaymentStatuses = new Set(['refunded', 'cod_cancelled']);
 const blockedFulfillmentStatuses = new Set([
 	'cancelled',
 	'cancellation_requested',
+	'on_hold',
+	'rto',
 	'return_requested',
 	'refunded'
 ]);
@@ -341,6 +348,7 @@ export function statusTone(value: string): 'heat' | 'warning' | 'neutral' | 'dan
 	}
 
 	if (normalized.includes('partially_refunded')) return 'warning';
+	if (normalized.includes('hold') || normalized.includes('rto')) return 'warning';
 
 	if (
 		['paid', 'delivered', 'completed', 'approved', 'sent', 'processed', 'refunded'].some((state) =>
@@ -398,9 +406,15 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 	const currentIndex = progressiveStates.indexOf(currentProgressStatus);
 	const nextIndex = progressiveStates.indexOf(nextStatus);
 
+	if (nextStatus === 'on_hold') {
+		return !['cancelled', 'returned', 'delivered', 'rto'].includes(currentStatus);
+	}
+	if (currentStatus === 'on_hold') return ['confirmed', 'cancelled'].includes(nextStatus);
 	if (nextStatus === 'cancelled')
 		return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
+	if (nextStatus === 'rto')
+		return ['ready_for_delivery', 'packed', 'shipped', 'out_for_delivery'].includes(currentStatus);
 	if (currentIndex === -1 || nextIndex === -1) return false;
 	return nextIndex > currentIndex;
 }
@@ -417,6 +431,7 @@ export function canAdminReturnOrder(order: AdminOrderRecord) {
 export function nextProgressiveOrderStatus(order: AdminOrderRecord) {
 	const progressiveStates = ['pending', 'processing', 'confirmed', 'out_for_delivery', 'delivered'];
 	const currentStatus = order.status.toLowerCase();
+	if (currentStatus === 'on_hold') return null;
 	if (['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus)) return 'out_for_delivery';
 
 	const currentIndex = progressiveStates.indexOf(currentStatus);
@@ -461,7 +476,7 @@ export function statusOptionLabel(value: string) {
 }
 
 export function adminReasonRequired(nextStatus: string) {
-	return ['cancelled', 'returned'].includes(nextStatus);
+	return ['cancelled', 'returned', 'on_hold', 'rto'].includes(nextStatus);
 }
 
 export function orderCanCreateShipment(order: FulfillmentOrder) {

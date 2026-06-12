@@ -25,6 +25,7 @@
 	import { formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
 	import {
+		COD_HANDLING_FEE,
 		MANUAL_DELIVERY_FREE_SUBTOTAL,
 		MANUAL_DELIVERY_REGION,
 		calculateCartWeightKg,
@@ -94,6 +95,12 @@
 			eligible: boolean;
 			reason: string | null;
 			cap: number;
+			fee: number;
+		};
+		pricing: {
+			chargeableWeightKg: number;
+			freeDeliveryRemaining: number;
+			codFee: number;
 		};
 		deliveryPromise: {
 			label: string;
@@ -194,7 +201,13 @@
 	);
 
 	const discountTotal = $derived(appliedSummary?.discountTotal ?? 0);
-	const payableTotal = $derived(appliedSummary?.total ?? subtotal + shipping);
+	const totalBeforeCod = $derived(Math.max(0, subtotal + shipping - discountTotal));
+	const codFee = $derived(
+		paymentMode === 'cod'
+			? (appliedSummary?.pricing.codFee ?? appliedSummary?.cod.fee ?? COD_HANDLING_FEE)
+			: 0
+	);
+	const payableTotal = $derived(appliedSummary?.total ?? totalBeforeCod + codFee);
 	const hasDeliveryPin = $derived(address.latitude !== null && address.longitude !== null);
 	const hasValidAddress = $derived(
 		address.fullName.trim().length > 1 &&
@@ -217,7 +230,7 @@
 
 	const localCodAllowed = $derived(
 		isLocalCodAddress(address.city, address.state, address.pincode) &&
-			payableTotal <= 4000 &&
+			totalBeforeCod <= 4000 &&
 			rows.every((row) => row.product.cod_eligible !== false)
 	);
 
@@ -227,7 +240,8 @@
 			reason: localCodAllowed
 				? null
 				: 'COD is available only for Chennai-area orders up to INR 4,000 on eligible products.',
-			cap: 4000
+			cap: 4000,
+			fee: COD_HANDLING_FEE
 		}
 	);
 	const currentUser = $derived(page.data.user ?? auth.user ?? null);
@@ -241,6 +255,7 @@
 			selectedQuoteId,
 			subtotal,
 			couponCode,
+			paymentMode,
 			rows.length
 		].join('|')
 	);
@@ -564,7 +579,8 @@
 					address,
 					selectedQuoteId,
 					saveAddress,
-					couponCode: code
+					couponCode: code,
+					paymentMode
 				})
 			});
 
@@ -654,7 +670,8 @@
 						address,
 						selectedQuoteId,
 						saveAddress,
-						couponCode: couponCode.trim().toUpperCase()
+						couponCode: couponCode.trim().toUpperCase(),
+						paymentMode: 'cod'
 					})
 				});
 
@@ -701,7 +718,8 @@
 					address,
 					selectedQuoteId,
 					saveAddress,
-					couponCode: couponCode.trim().toUpperCase()
+					couponCode: couponCode.trim().toUpperCase(),
+					paymentMode: 'razorpay'
 				})
 			});
 
@@ -1166,7 +1184,7 @@
 							</div>
 							<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
 								{codEligibility.eligible
-									? `Up to ${formatINR(codEligibility.cap)}`
+									? `Up to ${formatINR(codEligibility.cap)} · ${formatINR(codEligibility.fee)} handling fee`
 									: (codEligibility.reason ?? 'Not available for this order.')}
 							</p>
 						</button>
@@ -1249,6 +1267,12 @@
 						<div class="flex justify-between text-[var(--accent-forest)]">
 							<span>{appliedSummary?.coupon?.code ?? 'Coupon'}</span>
 							<span>-{formatINR(discountTotal)}</span>
+						</div>
+					{/if}
+					{#if codFee > 0}
+						<div class="flex justify-between">
+							<span>COD handling</span>
+							<span class="text-foreground">{formatINR(codFee)}</span>
 						</div>
 					{/if}
 					<div class="flex justify-between border-t border-[var(--border-faint)] pt-2 text-[14px] font-semibold text-foreground">
