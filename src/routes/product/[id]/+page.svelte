@@ -44,6 +44,19 @@
 	let added = $state(false);
 	let selectedImage = $state<string | null>(null);
 
+	const baseSpecLabels = new Set([
+		'compatibility',
+		'warranty',
+		'condition',
+		'weight',
+		'dimensions',
+		'package size',
+		'authenticity',
+		'doa policy',
+		'cod',
+		'stock'
+	]);
+
 	const galleryImages = $derived(
 		Array.from(new Set([product.image, ...(product.images ?? [])].filter(Boolean)))
 	);
@@ -62,10 +75,13 @@
 					'Returns and warranty support remain visible after checkout.'
 				]
 	);
+	const visibleHighlights = $derived(highlights.filter((highlight) => !isLabeledSpec(highlight)));
 	const compatibility = $derived(
 		product.compatibility || 'Compatibility guidance is available before dispatch.'
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
+	const packageSize = $derived(formatPackageSize(product));
+	const detailSpecs = $derived(labeledHighlightSpecs(product.highlights));
 	const quantity = $derived(Math.max(1, Number(qty) || 1));
 	const seoTitle = $derived(productSeoTitle(product));
 	const productUrl = $derived(absoluteUrl(page.url.origin, `/product/${product.id}`));
@@ -85,6 +101,11 @@
 	const specs = $derived([
 		{ label: 'Compatibility', value: compatibility },
 		{ label: 'Warranty', value: warranty },
+		...detailSpecs,
+		...(product.weight_kg
+			? [{ label: 'Weight', value: `${formatSpecNumber(product.weight_kg)} kg` }]
+			: []),
+		...(packageSize ? [{ label: 'Package size', value: packageSize }] : []),
 		{ label: 'Authenticity', value: gradeLabel(product.authenticity_grade) },
 		{ label: 'Condition', value: gradeLabel(product.condition_grade ?? 'new') },
 		{ label: 'DOA policy', value: `${product.doa_policy_days ?? 7}-day DOA support` },
@@ -119,6 +140,55 @@
 			.split('_')
 			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 			.join(' ');
+	}
+
+	function specLabelKey(value: string) {
+		return value
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim();
+	}
+
+	function splitLabeledSpec(value: string) {
+		const separator = value.indexOf(':');
+		if (separator <= 0) return null;
+
+		const label = value.slice(0, separator).trim();
+		const detail = value.slice(separator + 1).trim();
+		if (!label || !detail || label.length > 48) return null;
+
+		return { label, value: detail };
+	}
+
+	function isLabeledSpec(value: string) {
+		return splitLabeledSpec(value) !== null;
+	}
+
+	function labeledHighlightSpecs(values: string[]) {
+		const seen = new Set<string>();
+		const specs: { label: string; value: string }[] = [];
+
+		for (const value of values) {
+			const spec = splitLabeledSpec(value);
+			if (!spec) continue;
+
+			const key = specLabelKey(spec.label);
+			if (baseSpecLabels.has(key) || seen.has(key)) continue;
+
+			seen.add(key);
+			specs.push(spec);
+		}
+
+		return specs;
+	}
+
+	function formatSpecNumber(value: number) {
+		return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
+	}
+
+	function formatPackageSize(value: Product) {
+		if (!value.length_cm || !value.breadth_cm || !value.height_cm) return '';
+		return `${formatSpecNumber(value.length_cm)} x ${formatSpecNumber(value.breadth_cm)} x ${formatSpecNumber(value.height_cm)} cm`;
 	}
 </script>
 
@@ -190,7 +260,9 @@
 
 					<!-- Thumbnail row -->
 					{#if galleryImages.length > 1}
-						<div class="mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mt-4 sm:justify-center sm:gap-2 sm:px-0">
+						<div
+							class="mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mt-4 sm:justify-center sm:gap-2 sm:px-0"
+						>
 							{#each galleryImages as image, index (image)}
 								<button
 									type="button"
@@ -281,7 +353,7 @@
 				</div>
 
 				<!-- â"€â"€ Highlights â"€â"€ -->
-				{#if highlights.length > 0}
+				{#if visibleHighlights.length > 0}
 					<div class="mt-4">
 						<h2
 							class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
@@ -289,7 +361,7 @@
 							Highlights
 						</h2>
 						<ul class="mt-2.5 space-y-1.5">
-							{#each highlights as highlight (highlight)}
+							{#each visibleHighlights as highlight (highlight)}
 								<li class="text-body-small flex items-start gap-2 text-foreground">
 									<span class="mt-[7px] size-1 shrink-0 rounded-full bg-[var(--black-alpha-32)]"
 									></span>

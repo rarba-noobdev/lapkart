@@ -22,6 +22,9 @@ export type ProductRow = {
 	reviews: number;
 	stock: number;
 	weight_kg?: string | number | null;
+	length_cm?: string | number | null;
+	breadth_cm?: string | number | null;
+	height_cm?: string | number | null;
 	compatibility: string | null;
 	warranty: string | null;
 	highlights: string[] | null;
@@ -35,7 +38,7 @@ export type ProductRow = {
 };
 
 export const productSelectFields =
-	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,length_cm,breadth_cm,height_cm,compatibility,warranty,highlights,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
 	'id,title,brand,category,image,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
@@ -66,6 +69,9 @@ function getClient(client?: ProductClient) {
 
 export function normalizeProductRow(row: ProductRow): Product {
 	const weightKg = Number(row.weight_kg);
+	const lengthCm = Number(row.length_cm);
+	const breadthCm = Number(row.breadth_cm);
+	const heightCm = Number(row.height_cm);
 	return {
 		id: row.id,
 		title: row.title,
@@ -80,6 +86,9 @@ export function normalizeProductRow(row: ProductRow): Product {
 		reviews: row.reviews,
 		stock: row.stock,
 		weight_kg: Number.isFinite(weightKg) && weightKg > 0 ? weightKg : undefined,
+		length_cm: Number.isFinite(lengthCm) && lengthCm > 0 ? lengthCm : undefined,
+		breadth_cm: Number.isFinite(breadthCm) && breadthCm > 0 ? breadthCm : undefined,
+		height_cm: Number.isFinite(heightCm) && heightCm > 0 ? heightCm : undefined,
 		compatibility: row.compatibility ?? '',
 		warranty: row.warranty ?? '',
 		highlights: row.highlights ?? [],

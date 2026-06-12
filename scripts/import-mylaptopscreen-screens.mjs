@@ -20,7 +20,10 @@ const sqlDir = join(outDir, 'mylaptopscreen-screens-sql');
 const STORE_API = 'https://mylaptopscreen.com/wp-json/wc/store/v1/products';
 const WARRANTY = '6 months replacement warranty';
 const DEFAULT_STOCK = 10;
-const DEFAULT_WEIGHT_KG = 0.5;
+const DEFAULT_WEIGHT_KG = 1;
+const DEFAULT_LENGTH_CM = 45;
+const DEFAULT_BREADTH_CM = 25;
+const DEFAULT_HEIGHT_CM = 10;
 const sourceBrandPattern = /\b(my\s*laptop\s*screen|mylaptopscreen)\b/gi;
 
 const applePattern = /\b(apple|macbook|imac|ipad|macbook\s+pro|macbook\s+air)\b/i;
@@ -81,8 +84,23 @@ function cleanText(value) {
 		.trim();
 }
 
+function cleanAttributeText(value) {
+	return decodeHtml(value)
+		.replace(/\breplcaement\b/gi, 'replacement')
+		.replace(/\s*,\s*/g, ', ')
+		.replace(/\s+/g, ' ')
+		.replace(/\s+([,.)])/g, '$1')
+		.replace(/[(]\s+/g, '(')
+		.trim();
+}
+
 function truncate(value, max) {
 	const text = cleanText(value);
+	return text.length <= max ? text : text.slice(0, max - 1).trimEnd();
+}
+
+function truncateAttribute(value, max) {
+	const text = cleanAttributeText(value);
 	return text.length <= max ? text : text.slice(0, max - 1).trimEnd();
 }
 
@@ -142,11 +160,78 @@ function unique(values, max = 24) {
 	return out;
 }
 
+function uniqueAttributes(values, max = 24) {
+	const seen = new Set();
+	const out = [];
+	for (const value of values) {
+		const text = cleanAttributeText(value);
+		const key = text.toLowerCase();
+		if (!text || seen.has(key)) continue;
+		seen.add(key);
+		out.push(text);
+		if (out.length >= max) break;
+	}
+	return out;
+}
+
+function uniqueUrls(values, max = 8) {
+	const seen = new Set();
+	const out = [];
+	for (const value of values) {
+		const text = decodeHtml(value).trim();
+		if (!/^https?:\/\//i.test(text)) continue;
+		const key = text.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(text);
+		if (out.length >= max) break;
+	}
+	return out;
+}
+
+function canonicalAttributeName(name) {
+	const key = cleanAttributeText(name)
+		.toLowerCase()
+		.replace(/[:()]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+	if (key === 'brand') return 'Brand';
+	if (key === 'compatibility') return 'Compatibility';
+	if (key === 'condition') return 'Condition';
+	if (key === 'mountings' || key === 'mounting') return 'Mountings';
+	if (key.includes('manufacturer part number') || key === 'mpn') {
+		return 'MPN (Manufacturer Part Number)';
+	}
+	if (key === 'optical technology') return 'Optical Technology';
+	if (key === 'refresh rate') return 'Refresh Rate';
+	if (key === 'resolution') return 'Resolution';
+	if (key === 'screen size') return 'Screen Size';
+	if (key === 'surface type') return 'Surface Type';
+	if (key === 'video connector' || key === 'video connector ') return 'Video Connector';
+	if (key === 'warranty') return 'Warranty';
+	return cleanAttributeText(name).replace(/:$/, '');
+}
+
+function collectAttributes(product) {
+	const map = new Map();
+	for (const attribute of product.attributes ?? []) {
+		const label = canonicalAttributeName(attribute.name);
+		const values = uniqueAttributes((attribute.terms ?? []).map((term) => term.name), 8);
+		if (!label || !values.length) continue;
+		map.set(label, values.join(', '));
+	}
+	return map;
+}
+
+function getAttribute(attrs, label) {
+	return attrs.get(label) ?? '';
+}
+
 function extractSpecs(title) {
 	const specs = [];
 	const patterns = [
 		/\b\d{2}(?:\.\d)?\s*(?:inch|inches|")\b/gi,
-		/\b\d{3,4}\s*[x×]\s*\d{3,4}\b/gi,
+		/\b\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}\b/gi,
 		/\b(?:30|40)\s*pin\b/gi,
 		/\b\d{2,3}\s*hz\b/gi,
 		/\b(?:hd|fhd|qhd|uhd|ips|oled|edp|lcd|led)\b/gi
@@ -157,8 +242,13 @@ function extractSpecs(title) {
 	return unique(specs, 10);
 }
 
-function extractPartNumbers(product, title) {
-	const values = [product.sku, product.slug];
+function extractPartNumbers(product, title, attrs = new Map()) {
+	const values = [
+		product.sku,
+		product.slug,
+		getAttribute(attrs, 'MPN (Manufacturer Part Number)'),
+		getAttribute(attrs, 'Compatibility')
+	];
 	const partPatterns = [
 		/\b[A-Z]{1,5}\d{2,}[A-Z0-9.-]{2,}\b/g,
 		/\b[A-Z0-9]{2,}-[A-Z0-9.-]{2,}\b/g,
@@ -175,12 +265,35 @@ function compatibilityFromTitle(title, brand) {
 	return truncate(
 		title
 			.replace(/\b(laptop|screen|display|lcd|led|replacement|full hd|fhd|ips|edp|panel)\b/gi, ' ')
-			.replace(/\b\d{3,4}\s*[x×]\s*\d{3,4}\b/gi, ' ')
+			.replace(/\b\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}\b/gi, ' ')
 			.replace(/\b(?:30|40)\s*pin\b/gi, ' ')
 			.replace(/\s+/g, ' ')
 			.trim() || `${brand} laptop screen`,
 		500
 	);
+}
+
+function displaySpecEntries(attrs, compatibility, specs) {
+	const entries = [
+		['Brand', getAttribute(attrs, 'Brand')],
+		['Compatibility', compatibility],
+		['Condition', getAttribute(attrs, 'Condition') || 'Brand New A+ Grade Screen'],
+		['Mountings', getAttribute(attrs, 'Mountings')],
+		['MPN (Manufacturer Part Number)', getAttribute(attrs, 'MPN (Manufacturer Part Number)')],
+		['Optical Technology', getAttribute(attrs, 'Optical Technology')],
+		['Refresh Rate', getAttribute(attrs, 'Refresh Rate')],
+		['Resolution', getAttribute(attrs, 'Resolution') || specs.find((value) => /\d{3,4}\s*(?:x|\u00d7)\s*\d{3,4}/i.test(value))],
+		['Screen Size', getAttribute(attrs, 'Screen Size') || specs.find((value) => /\d{2}(?:\.\d)?\s*(?:inch|inches|")/i.test(value))],
+		['Surface Type', getAttribute(attrs, 'Surface Type')],
+		['Video Connector', getAttribute(attrs, 'Video Connector') || specs.find((value) => /\b(?:30|40)\s*pin\b/i.test(value))],
+		['Warranty', WARRANTY],
+		['Weight', `${DEFAULT_WEIGHT_KG} kg`],
+		['Dimensions', `${DEFAULT_LENGTH_CM} x ${DEFAULT_BREADTH_CM} x ${DEFAULT_HEIGHT_CM} cm`]
+	];
+
+	return entries
+		.map(([label, value]) => [label, truncateAttribute(value ?? '', 140)])
+		.filter(([, value]) => value);
 }
 
 function normalizeProduct(product) {
@@ -189,17 +302,19 @@ function normalizeProduct(product) {
 	const regular = moneyFromStoreApi(product.prices, 'regular_price');
 	if (!title || price <= 0) return null;
 
-	const images = unique(
-		(product.images ?? []).flatMap((image) => [image.src, image.thumbnail]).filter(Boolean),
-		8
-	);
+	const images = uniqueUrls((product.images ?? []).map((image) => image.src).filter(Boolean), 1);
 	if (!images.length) return null;
 
+	const attrs = collectAttributes(product);
 	const brand = resolveBrand(product);
 	const specs = extractSpecs(title);
-	const parts = extractPartNumbers(product, title);
+	const compatibility = truncateAttribute(
+		getAttribute(attrs, 'Compatibility') || compatibilityFromTitle(title, brand),
+		500
+	);
+	const parts = extractPartNumbers(product, title, attrs);
+	const displaySpecs = displaySpecEntries(attrs, compatibility, specs);
 	const categories = unique((product.categories ?? []).map((category) => category.name), 6);
-	const compatibility = compatibilityFromTitle(title, brand);
 	const descriptionSource = stripHtml(product.short_description || product.description);
 	const sku = truncate(product.sku || `MLS-${product.id}`, 120);
 	const mrp = regular > price ? regular : Math.round(price * 1.18);
@@ -208,6 +323,7 @@ function normalizeProduct(product) {
 			sku,
 			...parts,
 			...specs,
+			...displaySpecs.flatMap(([label, value]) => [label, value]),
 			brand,
 			...categories,
 			compatibility,
@@ -227,8 +343,12 @@ function normalizeProduct(product) {
 		image: images[0],
 		images,
 		source_url: product.permalink || `https://mylaptopscreen.com/product/${product.slug}/`,
-		description: truncate(
-			`${title}. ${descriptionSource || 'Compatible laptop screen replacement.'}`,
+		description: truncateAttribute(
+			[
+				title,
+				...displaySpecs.map(([label, value]) => `${label}: ${value}`),
+				descriptionSource || 'Compatible laptop screen replacement.'
+			].join('. '),
 			900
 		),
 		sku,
@@ -240,16 +360,18 @@ function normalizeProduct(product) {
 		reviews: Number(product.review_count || 0) || 0,
 		stock: product.is_in_stock === false ? 0 : DEFAULT_STOCK,
 		weight_kg: DEFAULT_WEIGHT_KG,
+		length_cm: DEFAULT_LENGTH_CM,
+		breadth_cm: DEFAULT_BREADTH_CM,
+		height_cm: DEFAULT_HEIGHT_CM,
 		compatibility,
 		warranty: WARRANTY,
-		highlights: unique(
+		highlights: uniqueAttributes(
 			[
 				'Laptop screen replacement',
-				...specs,
-				WARRANTY,
+				...displaySpecs.map(([label, value]) => `${label}: ${value}`),
 				'Manual Tamil Nadu delivery'
 			],
-			12
+			18
 		),
 		status: 'active',
 		authenticity_grade: 'compatible',
@@ -295,6 +417,9 @@ incoming as (
     (item->>'reviews')::integer as reviews,
     (item->>'stock')::integer as stock,
     (item->>'weight_kg')::numeric as weight_kg,
+    (item->>'length_cm')::numeric as length_cm,
+    (item->>'breadth_cm')::numeric as breadth_cm,
+    (item->>'height_cm')::numeric as height_cm,
     item->>'compatibility' as compatibility,
     item->>'warranty' as warranty,
     array(select jsonb_array_elements_text(coalesce(item->'highlights', '[]'::jsonb))) as highlights,
@@ -329,6 +454,9 @@ insert into public.products (
   reviews,
   stock,
   weight_kg,
+  length_cm,
+  breadth_cm,
+  height_cm,
   compatibility,
   warranty,
   highlights,
@@ -363,6 +491,9 @@ select
   reviews,
   stock,
   weight_kg,
+  length_cm,
+  breadth_cm,
+  height_cm,
   compatibility,
   warranty,
   nullif(highlights, array[]::text[]),
@@ -396,6 +527,9 @@ on conflict (sku) do update set
   reviews = excluded.reviews,
   stock = excluded.stock,
   weight_kg = excluded.weight_kg,
+  length_cm = excluded.length_cm,
+  breadth_cm = excluded.breadth_cm,
+  height_cm = excluded.height_cm,
   compatibility = excluded.compatibility,
   warranty = excluded.warranty,
   highlights = excluded.highlights,

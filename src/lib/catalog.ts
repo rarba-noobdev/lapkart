@@ -40,6 +40,9 @@ export type Product = {
 	reviews: number;
 	stock: number;
 	weight_kg?: number;
+	length_cm?: number;
+	breadth_cm?: number;
+	height_cm?: number;
 	compatibility: string;
 	warranty: string;
 	highlights: string[];
