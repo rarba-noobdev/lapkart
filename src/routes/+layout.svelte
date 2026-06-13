@@ -13,6 +13,7 @@
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import RouteSkeleton from '$lib/components/RouteSkeleton.svelte';
 	import CookieConsent from '$lib/components/CookieConsent.svelte';
+	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
 	import { hydrateCart } from '$lib/cart';
 	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
 	import { organizationJsonLd, safeJsonLd, shouldNoIndexPath, websiteJsonLd } from '$lib/seo';
@@ -133,6 +134,8 @@
 </svelte:head>
 
 <NavigationLoader />
+
+<OfflineBanner />
 
 <CookieConsent />
 

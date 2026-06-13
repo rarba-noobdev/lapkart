@@ -82,8 +82,9 @@ These cannot be done from code. Nothing below is optional for a real launch.
 - [ ] **Review prompt** 3 days after delivery (one-tap stars) — push/WhatsApp stub
 - [ ] **Frictionless checkout** — pincode-first address (auto-fill city/state),
       single-screen accordion, sticky "Pay Rs X"; guest phone-OTP blocked on SMS provider
-- [ ] **Re-engagement** — abandoned-cart edge stub (4h, only when stock genuinely
-      low), exit-intent "save cart to WhatsApp", PWA offline cart toast
+- [x] **Re-engagement (no-provider parts)** — exit-intent "save cart to WhatsApp"
+      bottom sheet (CartSaveSheet, wa.me, no API), offline banner (OfflineBanner).
+- [ ] Abandoned-cart WhatsApp nudge (4h) — needs WhatsApp Business API ([YOU]).
 
 ---
 

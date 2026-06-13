@@ -13,6 +13,7 @@
 		Truck
 	} from '@lucide/svelte';
 	import { cartState, hydrateCart, removeFromCart, setCartQty, type CartItem } from '$lib/cart';
+	import CartSaveSheet from '$lib/components/CartSaveSheet.svelte';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
 	import {
@@ -371,6 +372,10 @@
 		</div>
 	{/if}
 </section>
+
+{#if rows.length > 0}
+	<CartSaveSheet items={rows.map((row) => ({ title: row.product.title, qty: row.item.qty }))} />
+{/if}
 
 <!-- Bottom spacer for mobile tab bar -->
 <div class="h-24 md:hidden"></div>
