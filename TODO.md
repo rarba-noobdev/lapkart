@@ -92,27 +92,36 @@ These cannot be done from code. Nothing below is optional for a real launch.
 Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
 **store credit with expiry**, never cash; per-customer caps.
 
-- [ ] Schema: `promotions`, `customer_rewards`, extend `coupons`
-      (first_order_only, free_delivery / store_credit types, applicable_categories),
-      `store_credits.source_promotion_id`, `products.clearance`
+- [x] Schema: `promotions`, `customer_rewards`, `store_credits.source_promotion_id`
+      + `source_reward_id`, `products.clearance` (migration 202606130002, applied)
 - [x] Coupon apply + server validation (already existed in checkout via edge fn
       `validateCouponForCheckout`) + **auto-suggest best valid coupon**
       (`GET /checkout/suggested-coupon`, one-tap chip in checkout)
-- [ ] **[YOU]** Create launch coupons in the admin (Promos tab) — e.g. a ₹50-off
-      min ₹999 "WELCOME50". Not auto-seeded because a live coupon is real money.
+- [x] **Scratch card** after delivered + prepaid: trigger issues a locked card,
+      weighted server-side draw, GPay-style canvas scratch-off (reveals at 60%),
+      30-day store-credit payout, per-promotion budget cap auto-pause. `/rewards`
+      page shows balance + cards. Seeded one promotion (budget Rs 5000).
+- [ ] **[CRITICAL] Store-credit redemption at checkout** — store_credits is issued
+      but NOT yet consumed in the money path. Scratch-card credit is unspendable
+      until checkout applies it (reduce payable, mark balance consumed atomically
+      inside `complete_checkout_payment` + COD order RPC, margin-floor gated).
+      Highest-risk change (touches order total + payment amount) — do carefully.
+- [ ] **[YOU]** Set the scratch-card promotion `budget_cap` in the DB/admin to a
+      real number, and create launch coupons (e.g. WELCOME50). Not auto-seeded
+      large because live rewards/coupons are real money.
+- [ ] "Pay online to earn a scratch card" nudge on the COD option at checkout.
 - [ ] Extend coupons: `first_order_only`, `free_delivery` / `store_credit`
-      discount types, `applicable_categories`, pincode gating (needed for a
-      "CHENNAI free delivery" style coupon; current schema is percent/fixed only)
-- [ ] Scratch card after delivered + prepaid: locked reward, weighted server-side
-      draw, canvas scratch-off (reveal at 60%), 30-day credit expiry, budget cap
+      discount types, `applicable_categories`, pincode gating (for a
+      "CHENNAI free delivery" coupon; current schema is percent/fixed only)
 - [ ] Streak / repeat-purchase ladder (`order_streak`, app_settings ladder,
       progress ring on profile)
 - [ ] Referral (both-sides credit, Tamil + English share text, return-window hold,
       10/month cap)
-- [ ] Flash / festival sales (margin-gated or clearance, real countdown + sold bar,
-      festival theming)
+- [ ] Flash / festival sales (margin-gated or `clearance` final-sale, real
+      countdown + sold bar, festival theming)
 - [ ] Promo analytics in admin (redemptions, breakage, incremental orders, margin
       impact) + per-promotion kill switch
+- [ ] Admin promotions CRUD UI (currently promotions are DB/SQL-managed)
 
 ---
 

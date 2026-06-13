@@ -56,6 +56,7 @@
 							{ label: 'All components', to: '/products' },
 							{ label: 'Laptop screens', to: '/products?category=displays' },
 							{ label: 'Cart', to: '/cart' },
+							{ label: 'Rewards', to: '/rewards' },
 							{ label: 'Account', to: '/profile' }
 						]
 					},

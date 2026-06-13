@@ -2099,6 +2099,26 @@ export type Database = {
 					purchased_at: string;
 				}[];
 			};
+			list_my_rewards: {
+				Args: Record<string, never>;
+				Returns: {
+					id: string;
+					type: string;
+					status: string;
+					value: number | null;
+					expires_at: string | null;
+					created_at: string;
+					revealed_at: string | null;
+				}[];
+			};
+			reveal_scratch_card: {
+				Args: { p_reward_id: string };
+				Returns: number;
+			};
+			my_store_credit_balance: {
+				Args: Record<string, never>;
+				Returns: number;
+			};
 			refresh_product_weekly_order_counts: {
 				Args: Record<string, never>;
 				Returns: undefined;
