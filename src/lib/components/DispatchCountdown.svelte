@@ -12,9 +12,10 @@
 	 */
 	let { cutoffHour = MANUAL_DISPATCH_CUTOFF_HOUR_IST }: { cutoffHour?: number } = $props();
 
-	let now = $state(Date.now());
+	let now = $state<number | null>(null);
 
 	onMount(() => {
+		now = Date.now();
 		const timer = setInterval(() => {
 			now = Date.now();
 		}, 30_000);
@@ -23,14 +24,15 @@
 
 	// Current wall-clock time in IST (UTC+5:30), independent of the device tz.
 	const istParts = $derived.by(() => {
+		if (now === null) return null;
 		const ist = new Date(now + 5.5 * 60 * 60 * 1000);
 		return { hour: ist.getUTCHours(), minute: ist.getUTCMinutes() };
 	});
 
-	const beforeCutoff = $derived(istParts.hour < cutoffHour);
+	const beforeCutoff = $derived(istParts ? istParts.hour < cutoffHour : false);
 
 	const remaining = $derived.by(() => {
-		if (!beforeCutoff) return null;
+		if (!beforeCutoff || !istParts) return null;
 		const minutesLeft = (cutoffHour - istParts.hour) * 60 - istParts.minute;
 		const hours = Math.floor(minutesLeft / 60);
 		const minutes = minutesLeft % 60;
@@ -42,7 +44,9 @@
 	class="inline-flex items-center gap-1.5 rounded-md border border-[var(--heat-16)] bg-[var(--heat-4)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--heat-100)]"
 >
 	<Clock class="size-3.5 shrink-0" strokeWidth={2.2} />
-	{#if remaining}
+	{#if now === null}
+		<span>Dispatch cutoff {cutoffHour}:00 IST</span>
+	{:else if remaining}
 		<span>
 			Order in
 			{#if remaining.hours > 0}{remaining.hours}h

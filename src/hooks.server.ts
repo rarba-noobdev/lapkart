@@ -127,6 +127,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event, {
 		filterSerializedResponseHeaders(name) {
 			return name === 'content-range' || name === 'x-supabase-api-version';
+		},
+		preload({ type }) {
+			return type === 'js' || type === 'font';
 		}
 	});
 
