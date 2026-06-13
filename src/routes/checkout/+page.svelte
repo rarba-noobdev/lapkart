@@ -15,6 +15,7 @@
 		Package,
 		ReceiptText,
 		ShieldCheck,
+		Sparkles,
 		Tag,
 		Truck,
 		Wallet
@@ -1354,6 +1355,15 @@
 							</p>
 						</button>
 					</div>
+
+					{#if paymentMode === 'cod'}
+						<p
+							class="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--heat-4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--heat-100)]"
+						>
+							<Sparkles class="size-3.5 shrink-0" strokeWidth={2} />
+							Pay online to earn a scratch card when your order is delivered.
+						</p>
+					{/if}
 
 					{#if appliedSummary?.deliveryPromise}
 						<div

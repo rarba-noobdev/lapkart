@@ -108,8 +108,8 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
       the checkout summary. Covers prepaid + COD.
       - [ ] **[YOU] TEST a real low-value prepaid + COD order** end to end before
             trusting it — I cannot run payments in this environment.
-      - [ ] Restore consumed store credit when an order is **cancelled/refunded**
-            (admin_cancel_order + refund flow do not yet credit it back).
+      - [x] Restore consumed store credit when an order is cancelled/refunded/
+            returned (trigger restore_store_credit_on_cancel, idempotent).
       - [ ] Note: redemption is intentionally NOT margin-floor gated (the credit
             was already a booked marketing cost at issuance); revisit if needed.
       - [ ] Concurrency: two simultaneous checkouts by the same user could each
@@ -118,14 +118,18 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
 - [ ] **[YOU]** Set the scratch-card promotion `budget_cap` in the DB/admin to a
       real number, and create launch coupons (e.g. WELCOME50). Not auto-seeded
       large because live rewards/coupons are real money.
-- [ ] "Pay online to earn a scratch card" nudge on the COD option at checkout.
+- [x] "Pay online to earn a scratch card" nudge on the COD option at checkout.
 - [ ] Extend coupons: `first_order_only`, `free_delivery` / `store_credit`
       discount types, `applicable_categories`, pincode gating (for a
       "CHENNAI free delivery" coupon; current schema is percent/fixed only)
-- [ ] Streak / repeat-purchase ladder (`order_streak`, app_settings ladder,
-      progress ring on profile)
-- [ ] Referral (both-sides credit, Tamil + English share text, return-window hold,
-      10/month cap)
+- [x] Streak / repeat-purchase ladder — `streak_ladder` app_setting, delivery
+      trigger issues store credit at milestones, `my_streak_progress()` RPC +
+      progress bar on /rewards.
+- [x] Referral — `referrals` table + profiles.referral_code/referred_by,
+      `my_referral_code()` / `apply_referral_code()` RPCs, delivery-trigger
+      qualification (referee credited at first prepaid >= min order), nightly
+      `release_referral_rewards()` cron (referrer credited after return window,
+      10/month cap). /rewards has code, WhatsApp share (Tamil+English), apply box.
 - [ ] Flash / festival sales (margin-gated or `clearance` final-sale, real
       countdown + sold bar, festival theming)
 - [ ] Promo analytics in admin (redemptions, breakage, incremental orders, margin

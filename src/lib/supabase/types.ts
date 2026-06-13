@@ -2119,6 +2119,18 @@ export type Database = {
 				Args: Record<string, never>;
 				Returns: number;
 			};
+			my_streak_progress: {
+				Args: Record<string, never>;
+				Returns: { delivered: number; next_target: number | null; next_credit: number | null }[];
+			};
+			my_referral_code: {
+				Args: Record<string, never>;
+				Returns: string;
+			};
+			apply_referral_code: {
+				Args: { p_code: string };
+				Returns: string;
+			};
 			refresh_product_weekly_order_counts: {
 				Args: Record<string, never>;
 				Returns: undefined;
