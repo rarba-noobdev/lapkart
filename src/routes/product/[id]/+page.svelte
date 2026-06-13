@@ -5,7 +5,9 @@
 		ArrowUpRight,
 		Check,
 		ChevronRight,
+		Lock,
 		Minus,
+		PackageCheck,
 		Plus,
 		RotateCcw,
 		ShieldCheck,
@@ -16,6 +18,7 @@
 	import { flip } from 'svelte/animate';
 	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
+	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { MANUAL_DELIVERY_FREE_SUBTOTAL, MANUAL_DELIVERY_MIN_CHARGE } from '$lib/shipping';
@@ -43,6 +46,27 @@
 	let qty = $state(1);
 	let added = $state(false);
 	let selectedImage = $state<string | null>(null);
+
+	// Sticky add-to-cart bar visibility: shown only when the in-page primary CTA
+	// has scrolled out of view, observed below.
+	let ctaEl = $state<HTMLElement | null>(null);
+	let ctaInView = $state(true);
+	const showStickyBar = $derived(!ctaInView && product.stock > 0);
+
+	$effect(() => {
+		const node = ctaEl;
+		if (!node || typeof IntersectionObserver === 'undefined') return;
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				ctaInView = entry.isIntersecting;
+			},
+			{ rootMargin: '0px 0px -40px 0px' }
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	});
+
+	const savings = $derived(Math.max(0, Math.round(product.mrp - product.price)));
 
 	const baseSpecLabels = new Set([
 		'compatibility',
@@ -364,6 +388,11 @@
 								{discount}% off
 							</span>
 						{/if}
+						{#if savings > 0}
+							<span class="text-body-small font-medium text-[var(--accent-forest)]">
+								You save {formatINR(savings)}
+							</span>
+						{/if}
 					</div>
 					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-56)] uppercase">
 						Inclusive of taxes / Tamil Nadu delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
@@ -391,26 +420,48 @@
 					</div>
 				{/if}
 
-				<!-- Trust promises -->
-				<div class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 sm:mt-5 sm:gap-x-5 sm:gap-y-2">
+				<!-- Trust strip -->
+				<div
+					class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 sm:mt-5 sm:grid-cols-3"
+				>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
-						<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Courier delivery
+						<PackageCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+						Tested before dispatch
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
-						<ShieldCheck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Genuine product
+						<RotateCcw class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+						{product.doa_policy_days ?? 7}-day replacement
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
-						<RotateCcw class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.2} />
-						{product.doa_policy_days ?? 7}-day DOA
+						<ShieldCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+						GST invoice
 					</span>
+					<span
+						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
+					>
+						<Lock class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+						Secure UPI payments
+					</span>
+					<span
+						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)] sm:col-span-1"
+					>
+						<Truck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+						Chennai warehouse
+					</span>
+					{#if product.cod_eligible}
+						<span
+							class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
+						>
+							<Check class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
+							COD available
+						</span>
+					{/if}
 				</div>
 
 				<!-- Add-to-cart action -->
@@ -446,6 +497,7 @@
 
 					<!-- Primary CTA -->
 					<button
+						bind:this={ctaEl}
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
@@ -523,3 +575,5 @@
 		</section>
 	{/if}
 </section>
+
+<ProductStickyBar {product} bind:qty {added} visible={showStickyBar} onAdd={handleAddToCart} />
