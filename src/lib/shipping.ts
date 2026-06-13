@@ -4,6 +4,10 @@ export const MANUAL_DELIVERY_FREE_SUBTOTAL = 2000;
 export const MANUAL_DELIVERY_REGION = 'Tamil Nadu';
 export const COD_HANDLING_FEE = 40;
 export const DEFAULT_PACKAGE_WEIGHT_KG = 0.5;
+// Mirrors app_settings.manual_cutoff_hour_ist (24h, IST). Orders placed before
+// this hour ship same day; the PDP countdown is driven entirely by this real
+// value — no fabricated timer.
+export const MANUAL_DISPATCH_CUTOFF_HOUR_IST = 17;
 
 export type WeightedCartRow = {
 	item: { qty: number };

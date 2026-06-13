@@ -2,6 +2,7 @@ export const SITEMAP_PRODUCT_LIMIT = 5000;
 
 export type SitemapImage = {
 	loc: string;
+	title?: string;
 	caption?: string;
 };
 
@@ -35,19 +36,23 @@ export function xmlDate(value?: string | null) {
 
 export function sitemapXml(urls: SitemapUrl[]) {
 	const hasImages = urls.some((url) => url.images?.length);
-	const imageNamespace = hasImages ? ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"' : '';
+	const imageNamespace = hasImages
+		? ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'
+		: '';
 
 	return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${imageNamespace}>\n${urls
 		.map(
 			(url) => `  <url>
-    <loc>${xmlEscape(url.loc)}</loc>${url.lastmod ? `\n    <lastmod>${xmlEscape(url.lastmod)}</lastmod>` : ''}${url.changefreq ? `\n    <changefreq>${url.changefreq}</changefreq>` : ''}${url.priority ? `\n    <priority>${url.priority}</priority>` : ''}${(url.images ?? [])
-				.map(
-					(image) => `
+    <loc>${xmlEscape(url.loc)}</loc>${url.lastmod ? `\n    <lastmod>${xmlEscape(url.lastmod)}</lastmod>` : ''}${url.changefreq ? `\n    <changefreq>${url.changefreq}</changefreq>` : ''}${url.priority ? `\n    <priority>${url.priority}</priority>` : ''}${(
+			url.images ?? []
+		)
+			.map(
+				(image) => `
     <image:image>
-      <image:loc>${xmlEscape(image.loc)}</image:loc>${image.caption ? `\n      <image:caption>${xmlEscape(image.caption)}</image:caption>` : ''}
+      <image:loc>${xmlEscape(image.loc)}</image:loc>${image.title ? `\n      <image:title>${xmlEscape(image.title)}</image:title>` : ''}${image.caption ? `\n      <image:caption>${xmlEscape(image.caption)}</image:caption>` : ''}
     </image:image>`
-				)
-				.join('')}
+			)
+			.join('')}
   </url>`
 		)
 		.join('\n')}\n</urlset>`;

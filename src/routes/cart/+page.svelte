@@ -16,6 +16,7 @@
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { listProductsByIds } from '$lib/products';
 	import {
+		COD_HANDLING_FEE,
 		MANUAL_DELIVERY_FREE_SUBTOTAL,
 		MANUAL_DELIVERY_MIN_CHARGE,
 		calculateCartWeightKg,
@@ -96,22 +97,32 @@
 			<div class="grid gap-6 lg:grid-cols-[1fr_360px]">
 				<div class="space-y-2">
 					{#each [1, 2, 3] as i (i)}
-						<div class="h-[100px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
+						<div
+							class="h-[100px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"
+						></div>
 					{/each}
 				</div>
-				<div class="h-[240px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"></div>
+				<div
+					class="h-[240px] animate-pulse rounded-lg border border-[var(--border-faint)] bg-white"
+				></div>
 			</div>
 		</div>
 	{:else if error}
 		<div class="container mx-auto px-4 py-8">
-			<div class="rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-5 text-[13px] text-[var(--accent-crimson)]">
+			<div
+				class="rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-5 text-[13px] text-[var(--accent-crimson)]"
+			>
 				{error}
 			</div>
 		</div>
 	{:else if rows.length === 0}
 		<!-- Empty cart -->
-		<div class="container mx-auto flex flex-col items-center justify-center px-4 py-24 text-center sm:py-32">
-			<div class="grid size-16 place-items-center rounded-lg border border-[var(--border-muted)] bg-white text-[var(--heat-100)]">
+		<div
+			class="container mx-auto flex flex-col items-center justify-center px-4 py-24 text-center sm:py-32"
+		>
+			<div
+				class="grid size-16 place-items-center rounded-lg border border-[var(--border-muted)] bg-white text-[var(--heat-100)]"
+			>
 				<ShoppingBag class="size-7" strokeWidth={1.5} />
 			</div>
 			<h1 class="mt-4 text-[20px] font-medium text-foreground sm:text-[24px]">Cart is empty</h1>
@@ -140,13 +151,18 @@
 					</a>
 					<div>
 						<h1 class="text-[18px] font-medium text-foreground sm:text-[22px]">Cart</h1>
-						<p class="text-[12px] text-[var(--black-alpha-48)]">{rows.length} item{rows.length === 1 ? '' : 's'}</p>
+						<p class="text-[12px] text-[var(--black-alpha-48)]">
+							{rows.length} item{rows.length === 1 ? '' : 's'}
+						</p>
 					</div>
 				</div>
 			</div>
 
 			{#if subtotal > 0}
-				<div class="mb-4 rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:mb-5" in:fade={{ duration: 160 }}>
+				<div
+					class="mb-4 rounded-lg border border-[var(--border-faint)] bg-white p-3 sm:mb-5"
+					in:fade={{ duration: 160 }}
+				>
 					<div class="flex items-center justify-between gap-3 text-[12px]">
 						<span class="flex items-center gap-1.5 text-[var(--black-alpha-56)]">
 							<Truck class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
@@ -168,7 +184,9 @@
 						></div>
 					</div>
 					<p class="mt-1.5 text-[11px] text-[var(--black-alpha-40)]">
-						Delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)} and is free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}.
+						Delivery starts at {formatINR(MANUAL_DELIVERY_MIN_CHARGE)} and is free from {formatINR(
+							MANUAL_DELIVERY_FREE_SUBTOTAL
+						)}.
 					</p>
 				</div>
 			{/if}
@@ -199,21 +217,27 @@
 								<div class="min-w-0 flex-1">
 									<div class="flex items-start justify-between gap-2">
 										<div class="min-w-0">
-											<p class="text-[10px] tracking-[0.12em] text-[var(--black-alpha-56)] uppercase">
+											<p
+												class="text-[10px] tracking-[0.12em] text-[var(--black-alpha-56)] uppercase"
+											>
 												{row.product.brand}
 											</p>
 											<a
 												href={resolve(`/product/${row.product.id}`)}
-												class="mt-0.5 line-clamp-2 block text-[13px] font-medium leading-snug text-foreground transition-colors hover:text-[var(--heat-100)] sm:text-[14px]"
+												class="mt-0.5 line-clamp-2 block text-[13px] leading-snug font-medium text-foreground transition-colors hover:text-[var(--heat-100)] sm:text-[14px]"
 											>
 												{row.product.title}
 											</a>
 										</div>
 										<!-- Price (desktop) -->
 										<div class="hidden shrink-0 text-right sm:block">
-											<p class="text-[15px] font-semibold text-foreground">{formatINR(row.product.price * row.item.qty)}</p>
+											<p class="text-[15px] font-semibold text-foreground">
+												{formatINR(row.product.price * row.item.qty)}
+											</p>
 											{#if discountPct(row.product) > 0}
-												<p class="text-[11px] text-[var(--black-alpha-32)] line-through">{formatINR(row.product.mrp * row.item.qty)}</p>
+												<p class="text-[11px] text-[var(--black-alpha-32)] line-through">
+													{formatINR(row.product.mrp * row.item.qty)}
+												</p>
 											{/if}
 										</div>
 									</div>
@@ -231,7 +255,9 @@
 											>
 												<Minus class="size-3" />
 											</button>
-											<span class="w-7 text-center text-[12px] font-medium text-foreground">{row.item.qty}</span>
+											<span class="w-7 text-center text-[12px] font-medium text-foreground"
+												>{row.item.qty}</span
+											>
 											<button
 												type="button"
 												class="grid size-10 place-items-center text-[var(--black-alpha-48)] transition-colors hover:text-[var(--heat-100)] sm:size-8"
@@ -244,7 +270,9 @@
 
 										<!-- Price (mobile) -->
 										<div class="sm:hidden">
-											<p class="text-[13px] font-semibold text-foreground">{formatINR(row.product.price * row.item.qty)}</p>
+											<p class="text-[13px] font-semibold text-foreground">
+												{formatINR(row.product.price * row.item.qty)}
+											</p>
 										</div>
 
 										<!-- Remove -->
@@ -284,23 +312,33 @@
 							{/if}
 							<div class="flex justify-between text-[var(--black-alpha-64)]">
 								<span>Delivery</span>
-								<span class="text-foreground">{formatINR(shipping)}</span>
+								<span class="text-foreground">{shipping === 0 ? 'FREE' : formatINR(shipping)}</span>
+							</div>
+							<div class="flex justify-between text-[var(--black-alpha-48)]">
+								<span>COD handling (if chosen)</span>
+								<span>+ {formatINR(COD_HANDLING_FEE)}</span>
 							</div>
 							<div class="border-t border-dashed border-[var(--border-muted)] pt-2.5">
 								<div class="flex items-baseline justify-between">
-									<span class="text-[14px] font-medium text-foreground">Total</span>
+									<span class="text-[14px] font-medium text-foreground">Total (prepaid)</span>
 									<span class="text-[20px] font-semibold text-foreground">{formatINR(total)}</span>
 								</div>
+								<p class="mt-1 text-[11px] text-[var(--black-alpha-40)]">
+									This is the final price. No hidden charges added at payment. Pay online to skip
+									the COD fee.
+								</p>
 							</div>
 						</div>
 
 						{#if savings > 0}
-							<div class="mx-4 mb-3 rounded-md bg-[var(--accent-forest)]/8 px-3 py-2 text-[12px] font-medium text-[var(--accent-forest)]">
+							<div
+								class="mx-4 mb-3 rounded-md bg-[var(--accent-forest)]/8 px-3 py-2 text-[12px] font-medium text-[var(--accent-forest)]"
+							>
 								You save {formatINR(savings)} on this order
 							</div>
 						{/if}
 
-						<div class="border-t border-[var(--border-faint)] p-4 space-y-2">
+						<div class="space-y-2 border-t border-[var(--border-faint)] p-4">
 							<a
 								href={resolve('/checkout')}
 								class="button button-primary flex h-11 w-full items-center justify-center gap-2 rounded-md text-[13px] font-medium text-white"
@@ -317,7 +355,9 @@
 					</div>
 
 					<!-- Trust note -->
-					<div class="mt-3 flex items-center justify-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white px-4 py-3">
+					<div
+						class="mt-3 flex items-center justify-center gap-4 rounded-lg border border-[var(--border-faint)] bg-white px-4 py-3"
+					>
 						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-56)]">
 							<Package class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Genuine parts
 						</span>

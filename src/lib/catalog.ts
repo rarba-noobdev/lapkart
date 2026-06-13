@@ -34,6 +34,10 @@ export type Product = {
 	image: string;
 	images?: string[];
 	source_url?: string;
+	description?: string;
+	sku?: string;
+	search_keywords?: string[];
+	updated_at?: string;
 	price: number;
 	mrp: number;
 	rating: number;

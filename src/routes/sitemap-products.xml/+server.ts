@@ -1,11 +1,13 @@
 import type { RequestHandler } from './$types';
-import { absoluteUrl } from '$lib/seo';
+import { absoluteUrl, categoryName } from '$lib/seo';
 import { SITEMAP_PRODUCT_LIMIT, XML_HEADERS, sitemapXml, xmlDate } from '$lib/server/sitemap';
 
 type SitemapProductRow = {
 	id: string;
 	title: string;
+	category: string;
 	image: string | null;
+	sku: string | null;
 	updated_at: string | null;
 };
 
@@ -20,7 +22,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const to = from + SITEMAP_PRODUCT_LIMIT - 1;
 	const { data, error } = await locals.supabase
 		.from('products')
-		.select('id,title,image,updated_at')
+		.select('id,title,category,image,sku,updated_at')
 		.eq('status', 'active')
 		.order('updated_at', { ascending: false })
 		.range(from, to);
@@ -30,13 +32,20 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const urls = ((data ?? []) as SitemapProductRow[]).map((product) => ({
 		loc: absoluteUrl(url.origin, `/product/${product.id}`),
 		lastmod: xmlDate(product.updated_at),
-		changefreq: 'weekly' as const,
-		priority: '0.7',
+		changefreq: 'daily' as const,
+		priority: '0.8',
 		images: product.image
 			? [
 					{
 						loc: absoluteUrl(url.origin, product.image),
-						caption: product.title
+						title: product.title,
+						caption: [
+							product.title,
+							categoryName(product.category),
+							product.sku ? `SKU ${product.sku}` : ''
+						]
+							.filter(Boolean)
+							.join(' - ')
 					}
 				]
 			: undefined

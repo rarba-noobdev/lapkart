@@ -19,6 +19,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
+	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
 	import { MANUAL_DELIVERY_FREE_SUBTOTAL, MANUAL_DELIVERY_MIN_CHARGE } from '$lib/shipping';
@@ -27,7 +28,9 @@
 		breadcrumbListJsonLd,
 		categoryName,
 		productJsonLd,
+		productSeoBrand,
 		productSeoDescription,
+		productSeoKeywordContent,
 		productSeoTitle,
 		safeJsonLd
 	} from '$lib/seo';
@@ -49,13 +52,15 @@
 
 	// Sticky add-to-cart bar visibility: shown only when the in-page primary CTA
 	// has scrolled out of view, observed below.
-	let ctaEl = $state<HTMLElement | null>(null);
 	let ctaInView = $state(true);
 	const showStickyBar = $derived(!ctaInView && product.stock > 0);
 
-	$effect(() => {
-		const node = ctaEl;
-		if (!node || typeof IntersectionObserver === 'undefined') return;
+	function observeCtaVisibility(node: HTMLElement) {
+		if (typeof IntersectionObserver === 'undefined') {
+			ctaInView = true;
+			return;
+		}
+
 		const observer = new IntersectionObserver(
 			([entry]) => {
 				ctaInView = entry.isIntersecting;
@@ -63,8 +68,9 @@
 			{ rootMargin: '0px 0px -40px 0px' }
 		);
 		observer.observe(node);
+
 		return () => observer.disconnect();
-	});
+	}
 
 	const savings = $derived(Math.max(0, Math.round(product.mrp - product.price)));
 
@@ -113,6 +119,8 @@
 	const seoTitle = $derived(productSeoTitle(product));
 	const productUrl = $derived(absoluteUrl(page.url.origin, `/product/${product.id}`));
 	const seoDescription = $derived(productSeoDescription(product));
+	const seoKeywords = $derived(productSeoKeywordContent(product));
+	const seoBrand = $derived(productSeoBrand(product));
 	const seoImage = $derived(absoluteUrl(page.url.origin, galleryImages[0] ?? product.image));
 	const jsonLd = $derived(
 		safeJsonLd([
@@ -194,7 +202,7 @@
 	}
 
 	function productSpecificationSpecs(value: Product) {
-		const seen = new Set<string>();
+		const seen: string[] = [];
 		const specs: { label: string; value: string }[] = [];
 
 		for (const [label, detail] of Object.entries(value.specifications ?? {})) {
@@ -213,15 +221,15 @@
 		return specs;
 	}
 
-	function normalizedSpec(label: string, value: unknown, seen = new Set<string>()) {
+	function normalizedSpec(label: string, value: unknown, seen: string[] = []) {
 		const cleanLabel = String(label ?? '').trim();
 		const cleanValue = String(value ?? '').trim();
 		if (!cleanLabel || !cleanValue || cleanLabel.length > 48) return null;
 
 		const key = specLabelKey(cleanLabel);
-		if (baseSpecLabels.has(key) || seen.has(key)) return null;
+		if (baseSpecLabels.has(key) || seen.includes(key)) return null;
 
-		seen.add(key);
+		seen.push(key);
 		return { label: cleanLabel, value: cleanValue };
 	}
 
@@ -238,15 +246,32 @@
 <svelte:head>
 	<title>{seoTitle}</title>
 	<meta name="description" content={seoDescription} />
+	<meta
+		name="robots"
+		content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1"
+	/>
+	{#if seoKeywords}
+		<meta name="keywords" content={seoKeywords} />
+	{/if}
 	<link rel="canonical" href={productUrl} />
 	<meta property="og:type" content="product" />
 	<meta property="og:title" content={seoTitle} />
 	<meta property="og:description" content={seoDescription} />
 	<meta property="og:image" content={seoImage} />
+	<meta property="og:image:alt" content={product.title} />
 	<meta property="og:url" content={productUrl} />
+	<meta property="product:retailer_item_id" content={product.sku ?? product.id} />
+	{#if seoBrand}
+		<meta property="product:brand" content={seoBrand} />
+	{/if}
+	<meta property="product:availability" content={product.stock > 0 ? 'in stock' : 'out of stock'} />
 	<meta property="product:price:amount" content={String(product.price)} />
 	<meta property="product:price:currency" content="INR" />
 	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content={seoTitle} />
+	<meta name="twitter:description" content={seoDescription} />
+	<meta name="twitter:image" content={seoImage} />
+	<meta name="twitter:image:alt" content={product.title} />
 	<svelte:element this={'script'} type="application/ld+json">{jsonLd}</svelte:element>
 </svelte:head>
 
@@ -398,6 +423,11 @@
 						Inclusive of taxes / Tamil Nadu delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
 						/ free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}
 					</p>
+					{#if product.stock > 0}
+						<div class="mt-3">
+							<DispatchCountdown />
+						</div>
+					{/if}
 				</div>
 
 				<!-- Highlights -->
@@ -497,7 +527,7 @@
 
 					<!-- Primary CTA -->
 					<button
-						bind:this={ctaEl}
+						{@attach observeCtaVisibility}
 						type="button"
 						disabled={product.stock <= 0}
 						aria-label={product.stock <= 0 ? 'Product is out of stock' : 'Add product to cart'}
