@@ -132,9 +132,13 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
       10/month cap). /rewards has code, WhatsApp share (Tamil+English), apply box.
 - [ ] Flash / festival sales (margin-gated or `clearance` final-sale, real
       countdown + sold bar, festival theming)
-- [ ] Promo analytics in admin (redemptions, breakage, incremental orders, margin
-      impact) + per-promotion kill switch
-- [ ] Admin promotions CRUD UI (currently promotions are DB/SQL-managed)
+- [x] Admin promotions management — `GET /admin/promotions` (per-promotion
+      credit issued / redeemed / outstanding / breakage + budget vs spent),
+      `PATCH /admin/promotions/:id` (kill switch, budget, name, dates).
+      AdminPromotionsManager panel in the Promos tab.
+- [ ] Admin **create** promotions UI (create new scratch/flash promotions from
+      the panel; today new promotions are seeded via SQL, existing ones are
+      fully manageable). Incremental-orders / margin-impact analytics deferred.
 
 ---
 

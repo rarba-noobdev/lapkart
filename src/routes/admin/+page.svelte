@@ -6,6 +6,7 @@
 	import AdminOrdersManager from '$lib/components/admin/AdminOrdersManager.svelte';
 	import AdminSupportManager from '$lib/components/admin/AdminSupportManager.svelte';
 	import AdminGrievanceManager from '$lib/components/admin/AdminGrievanceManager.svelte';
+	import AdminPromotionsManager from '$lib/components/admin/AdminPromotionsManager.svelte';
 	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
 	import type { AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
@@ -2875,6 +2876,9 @@
 							{/if}
 						{:else if view === 'promos'}
 							<!-- PROMOS TAB -->
+							<div class="mb-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
+								<AdminPromotionsManager />
+							</div>
 							{#if couponsLoading && !coupons.length}
 								<div class="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
 									<div class="skeleton-card h-[300px]"></div>

@@ -5880,6 +5880,111 @@ async function handle(req: Request) {
 		return json(req, 200, { deleted: true, couponId });
 	}
 
+	// Promotions (scratch cards, streak, referral, flash) with reward analytics.
+	if (req.method === 'GET' && path === '/admin/promotions') {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'read_admin');
+		const { data: promotions, error: promoError } = await adminDb
+			.from('promotions')
+			.select('id,type,name,config,starts_at,ends_at,active,budget_cap,spent,created_at')
+			.order('created_at', { ascending: false });
+		if (promoError) throw promoError;
+		const promoIds = (promotions ?? []).map((promo) => promo.id);
+		const { data: credits, error: creditError } = promoIds.length
+			? await adminDb
+					.from('store_credits')
+					.select('source_promotion_id,amount,balance,expires_at')
+					.in('source_promotion_id', promoIds)
+			: { data: [], error: null };
+		if (creditError) throw creditError;
+		const nowMs = Date.now();
+		const stats = new Map<
+			string,
+			{ issued: number; redeemed: number; outstanding: number; expired: number; count: number }
+		>();
+		for (const credit of credits ?? []) {
+			const key = String(credit.source_promotion_id);
+			const row = stats.get(key) ?? {
+				issued: 0,
+				redeemed: 0,
+				outstanding: 0,
+				expired: 0,
+				count: 0
+			};
+			const amount = Number(credit.amount ?? 0);
+			const balance = Number(credit.balance ?? 0);
+			const expired =
+				credit.expires_at !== null && new Date(String(credit.expires_at)).getTime() <= nowMs;
+			row.issued += amount;
+			row.redeemed += amount - balance;
+			row.count += 1;
+			if (expired) row.expired += balance;
+			else row.outstanding += balance;
+			stats.set(key, row);
+		}
+		return json(req, 200, {
+			promotions: (promotions ?? []).map((promo) => {
+				const stat = stats.get(promo.id) ?? {
+					issued: 0,
+					redeemed: 0,
+					outstanding: 0,
+					expired: 0,
+					count: 0
+				};
+				return {
+					id: promo.id,
+					type: promo.type,
+					name: promo.name,
+					config: promo.config,
+					startsAt: promo.starts_at,
+					endsAt: promo.ends_at,
+					active: promo.active,
+					budgetCap: promo.budget_cap === null ? null : Number(promo.budget_cap),
+					spent: Number(promo.spent ?? 0),
+					createdAt: promo.created_at,
+					rewardsIssued: stat.count,
+					creditIssued: roundMoney(stat.issued),
+					creditRedeemed: roundMoney(stat.redeemed),
+					creditOutstanding: roundMoney(stat.outstanding),
+					creditExpired: roundMoney(stat.expired)
+				};
+			})
+		});
+	}
+
+	const promotionMatch = matchRoute(path, /^\/admin\/promotions\/([^/]+)$/);
+	if (req.method === 'PATCH' && promotionMatch) {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'manage_promos');
+		const { promotionId } = z
+			.object({ promotionId: z.string().uuid() })
+			.parse({ promotionId: promotionMatch[1] });
+		const input = z
+			.object({
+				active: z.boolean().optional(),
+				name: z.string().trim().min(1).max(120).optional(),
+				budgetCap: z.number().nonnegative().nullable().optional(),
+				startsAt: z.string().datetime().nullable().optional(),
+				endsAt: z.string().datetime().nullable().optional()
+			})
+			.parse(await req.json());
+		const patch: Record<string, unknown> = {};
+		if ('active' in input) patch.active = input.active;
+		if ('name' in input) patch.name = input.name;
+		if ('budgetCap' in input) patch.budget_cap = input.budgetCap;
+		if ('startsAt' in input) patch.starts_at = input.startsAt;
+		if ('endsAt' in input) patch.ends_at = input.endsAt;
+		if (!Object.keys(patch).length) throw new HttpError(400, 'No promotion fields to update');
+		const { data, error } = await adminDb
+			.from('promotions')
+			.update(patch)
+			.eq('id', promotionId)
+			.select('id,active,name,budget_cap,spent')
+			.single();
+		if (error) throw error;
+		return json(req, 200, { promotion: data });
+	}
+
 	if (req.method === 'GET' && path === '/admin/users') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_users');
