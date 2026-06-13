@@ -629,6 +629,13 @@
 									<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
 										Updates the live product record.
 									</p>
+									<a
+										href={resolve(`/admin?section=catalog&q=${product.id}`)}
+										class="text-label-small mt-2 inline-flex items-center gap-1 text-[var(--heat-100)] transition-colors hover:text-foreground"
+									>
+										Open full catalog editor
+										<ArrowUpRight class="size-3.5" />
+									</a>
 								</div>
 								<button
 									type="button"

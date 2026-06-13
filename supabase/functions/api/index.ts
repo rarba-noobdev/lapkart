@@ -395,6 +395,11 @@ const productUpdateSchema = productUpsertSchema
 	.partial()
 	.refine((value) => Object.keys(value).length > 0, 'At least one product field must be provided');
 
+const productBulkUpdateSchema = z.object({
+	productIds: z.array(z.string().uuid()).min(1).max(500),
+	update: productUpdateSchema
+});
+
 const adminUserUpdateSchema = z
 	.object({
 		role: z.enum(['owner', 'admin', 'user']).optional(),
@@ -5562,15 +5567,23 @@ async function handle(req: Request) {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'read_admin');
 		const { page, pageSize, from, to } = parsePagination(url, 50, 100);
-		const q = escapeIlike(url.searchParams.get('q') ?? '');
+		const rawQ = url.searchParams.get('q')?.trim() ?? '';
+		const q = escapeIlike(rawQ);
 		const category = url.searchParams.get('category')?.trim();
 		const status = url.searchParams.get('status')?.trim();
 		const sort = url.searchParams.get('sort') ?? 'updated-desc';
 		let query = adminDb.from('products').select(adminProductSelect, { count: 'exact' });
 		if (q) {
-			query = query.or(
-				`title.ilike.%${q}%,brand.ilike.%${q}%,sku.ilike.%${q}%,category.ilike.%${q}%`
-			);
+			const searchTerms = [
+				`title.ilike.%${q}%`,
+				`brand.ilike.%${q}%`,
+				`sku.ilike.%${q}%`,
+				`category.ilike.%${q}%`
+			];
+			if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawQ)) {
+				searchTerms.push(`id.eq.${rawQ}`);
+			}
+			query = query.or(searchTerms.join(','));
 		}
 		if (category) query = query.eq('category', category);
 		if (status) query = query.eq('status', status);
@@ -5599,6 +5612,19 @@ async function handle(req: Request) {
 			.single();
 		if (error) throw error;
 		return json(req, 201, { product: data });
+	}
+
+	if (req.method === 'PATCH' && path === '/admin/products/bulk') {
+		const adminDb = getSupabaseAdmin();
+		await requireStaff(req, 'manage_catalog');
+		const input = productBulkUpdateSchema.parse(await req.json());
+		const { data, error } = await adminDb
+			.from('products')
+			.update(productPayloadFromInput(input.update))
+			.in('id', input.productIds)
+			.select(adminProductSelect);
+		if (error) throw error;
+		return json(req, 200, { products: data ?? [], updated: data?.length ?? 0 });
 	}
 
 	const productMatch = matchRoute(path, /^\/admin\/products\/([^/]+)$/);

@@ -17,6 +17,7 @@
 		Activity,
 		ArrowUpRight,
 		Boxes,
+		Check,
 		Flame,
 		LayoutDashboard,
 		LifeBuoy,
@@ -28,7 +29,8 @@
 		Trash2,
 		TrendingUp,
 		Truck,
-		Users
+		Users,
+		X
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { fade, fly, crossfade } from 'svelte/transition';
@@ -185,6 +187,30 @@
 		isUniversal: boolean;
 	};
 
+	type ProductStatus = ProductEditorState['status'];
+	type ProductStatusFilter = '' | ProductStatus;
+	type ProductSort =
+		| 'updated-desc'
+		| 'price-asc'
+		| 'price-desc'
+		| 'stock-asc'
+		| 'stock-desc'
+		| 'title-asc';
+	type BulkBoolean = '' | 'true' | 'false';
+
+	type BulkProductEditorState = {
+		price: string;
+		mrp: string;
+		stock: string;
+		status: ProductStatusFilter;
+		category: string;
+		warranty: string;
+		compatibility: string;
+		localDeliveryEligible: BulkBoolean;
+		codAllowed: BulkBoolean;
+		returnable: BulkBoolean;
+	};
+
 	type AdminUserRecord = {
 		id: string;
 		email: string | null;
@@ -286,11 +312,25 @@
 		value: category.slug,
 		label: category.name
 	}));
+	const productStatusOptions: Array<{ value: ProductStatus; label: string }> = [
+		{ value: 'active', label: 'Active' },
+		{ value: 'draft', label: 'Draft' },
+		{ value: 'archived', label: 'Archived' }
+	];
+	const productSortOptions: Array<{ value: ProductSort; label: string }> = [
+		{ value: 'updated-desc', label: 'Recently updated' },
+		{ value: 'title-asc', label: 'Title A-Z' },
+		{ value: 'price-asc', label: 'Price low-high' },
+		{ value: 'price-desc', label: 'Price high-low' },
+		{ value: 'stock-asc', label: 'Low stock first' },
+		{ value: 'stock-desc', label: 'High stock first' }
+	];
 	const defaultCategory = categoryOptions[0]?.value ?? '';
 	const categoryNameBySlug = new Map(categories.map((category) => [category.slug, category.name]));
 	const currentUser = $derived(page.data.user ?? null);
 	const currentRole = $derived(page.data.role ?? null);
 	const auth = getAuthContext();
+	const initialProductSearch = page.url.searchParams.get('q')?.trim() ?? '';
 
 	let booting = $state(true);
 	let loading = $state(false);
@@ -330,7 +370,10 @@
 	let usersError = $state<string | null>(null);
 	let couponsError = $state<string | null>(null);
 
-	let productSearch = $state('');
+	let productSearch = $state(initialProductSearch);
+	let productCategoryFilter = $state('');
+	let productStatusFilter = $state<ProductStatusFilter>('');
+	let productSort = $state<ProductSort>('updated-desc');
 	let productPage = $state(1);
 	let productTotal = $state(0);
 	let productTotalPages = $state(1);
@@ -341,6 +384,16 @@
 	let productSaving = $state(false);
 	let productDeleting = $state(false);
 	let productNotice = $state<Notice | null>(null);
+	let selectedProductIds = $state<string[]>([]);
+	let bulkEditor = $state<BulkProductEditorState>(emptyBulkProductEditor());
+	let bulkSaving = $state(false);
+	let bulkNotice = $state<Notice | null>(null);
+	const selectedProducts = $derived(
+		products.filter((product) => selectedProductIds.includes(product.id))
+	);
+	const allVisibleProductsSelected = $derived(
+		products.length > 0 && products.every((product) => selectedProductIds.includes(product.id))
+	);
 
 	let userSearch = $state('');
 	let selectedUserId = $state<string | null>(null);
@@ -476,6 +529,21 @@
 		};
 	}
 
+	function emptyBulkProductEditor(): BulkProductEditorState {
+		return {
+			price: '',
+			mrp: '',
+			stock: '',
+			status: '',
+			category: '',
+			warranty: '',
+			compatibility: '',
+			localDeliveryEligible: '',
+			codAllowed: '',
+			returnable: ''
+		};
+	}
+
 	function normalizeProductStatus(status: string): ProductEditorState['status'] {
 		if (status === 'active' || status === 'draft' || status === 'archived') return status;
 		return 'active';
@@ -579,6 +647,53 @@
 		return Number(value);
 	}
 
+	function optionalBulkNumber(input: string, label: string, integer = false) {
+		const value = input.trim();
+		if (!value) return null;
+
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed) || parsed < 0 || (integer && !Number.isInteger(parsed))) {
+			throw new Error(`${label} must be a valid ${integer ? 'whole number' : 'amount'}.`);
+		}
+
+		return parsed;
+	}
+
+	function bulkBoolean(value: BulkBoolean) {
+		if (!value) return undefined;
+		return value === 'true';
+	}
+
+	function bulkProductUpdatePayload() {
+		const update: Record<string, unknown> = {};
+		const price = optionalBulkNumber(bulkEditor.price, 'Selling price');
+		const mrp = optionalBulkNumber(bulkEditor.mrp, 'MRP');
+		const stock = optionalBulkNumber(bulkEditor.stock, 'Stock', true);
+		const localDeliveryEligible = bulkBoolean(bulkEditor.localDeliveryEligible);
+		const codAllowed = bulkBoolean(bulkEditor.codAllowed);
+		const returnable = bulkBoolean(bulkEditor.returnable);
+
+		if (price !== null) {
+			update.price = price;
+			update.sellingPrice = price;
+		}
+		if (mrp !== null) update.mrp = mrp;
+		if (stock !== null) update.stock = stock;
+		if (bulkEditor.status) update.status = bulkEditor.status;
+		if (bulkEditor.category) update.category = bulkEditor.category;
+		if (bulkEditor.warranty.trim()) update.warranty = bulkEditor.warranty.trim();
+		if (bulkEditor.compatibility.trim()) update.compatibility = bulkEditor.compatibility.trim();
+		if (localDeliveryEligible !== undefined) update.localDeliveryEligible = localDeliveryEligible;
+		if (codAllowed !== undefined) update.codAllowed = codAllowed;
+		if (returnable !== undefined) update.returnable = returnable;
+
+		if (Object.keys(update).length === 0) {
+			throw new Error('Fill at least one bulk field before applying.');
+		}
+
+		return update;
+	}
+
 	function toDateTimeInput(value: string | null) {
 		if (!value) return '';
 		const date = new Date(value);
@@ -634,6 +749,9 @@
 			});
 			const q = productSearch.trim();
 			if (q) params.set('q', q);
+			if (productCategoryFilter) params.set('category', productCategoryFilter);
+			if (productStatusFilter) params.set('status', productStatusFilter);
+			params.set('sort', productSort);
 			const response = await requestAdmin<{
 				products: AdminProduct[];
 				pagination?: { page: number; total: number; totalPages: number };
@@ -651,12 +769,16 @@
 		}
 	}
 
+	function reloadProductsFromFirstPage() {
+		productPage = 1;
+		void loadProducts(true);
+	}
+
 	function queueProductSearch() {
 		if (productSearchTimer) window.clearTimeout(productSearchTimer);
 		productSearchTimer = window.setTimeout(() => {
 			productSearchTimer = null;
-			productPage = 1;
-			void loadProducts(true);
+			reloadProductsFromFirstPage();
 		}, 300);
 	}
 
@@ -665,6 +787,59 @@
 		if (target === productPage) return;
 		productPage = target;
 		void loadProducts(true);
+	}
+
+	function openProductEditor(product: AdminProduct) {
+		selectedProductId = product.id;
+		productEditor = mapProductToEditor(product);
+		productNotice = null;
+	}
+
+	function handleProductRowKeydown(event: KeyboardEvent, product: AdminProduct) {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		openProductEditor(product);
+	}
+
+	function toggleProductSelection(productId: string) {
+		bulkNotice = null;
+		selectedProductIds = selectedProductIds.includes(productId)
+			? selectedProductIds.filter((id) => id !== productId)
+			: [...selectedProductIds, productId];
+	}
+
+	function selectVisibleProducts() {
+		const nextIds = [...selectedProductIds];
+		for (const product of products) {
+			if (!nextIds.includes(product.id)) nextIds.push(product.id);
+		}
+		selectedProductIds = nextIds;
+		bulkNotice = null;
+	}
+
+	function deselectVisibleProducts() {
+		const visibleIds = products.map((product) => product.id);
+		selectedProductIds = selectedProductIds.filter((id) => !visibleIds.includes(id));
+		bulkNotice = null;
+	}
+
+	function selectLowStockProducts() {
+		const nextIds = [...selectedProductIds];
+		for (const product of products) {
+			if (product.stock <= 5 && !nextIds.includes(product.id)) nextIds.push(product.id);
+		}
+		selectedProductIds = nextIds;
+		bulkNotice = null;
+	}
+
+	function clearProductSelection() {
+		selectedProductIds = [];
+		bulkNotice = null;
+	}
+
+	function resetBulkProductEditor() {
+		bulkEditor = emptyBulkProductEditor();
+		bulkNotice = null;
 	}
 
 	async function refreshCatalogSearch() {
@@ -938,6 +1113,49 @@
 			};
 		} finally {
 			productSaving = false;
+		}
+	}
+
+	async function applyBulkProductUpdate() {
+		if (bulkSaving || selectedProductIds.length === 0) return;
+		bulkSaving = true;
+		bulkNotice = null;
+		productNotice = null;
+
+		try {
+			const update = bulkProductUpdatePayload();
+			const response = await requestAdmin<{ products: AdminProduct[]; updated: number }>(
+				'/admin/products/bulk',
+				{
+					method: 'PATCH',
+					body: JSON.stringify({
+						productIds: selectedProductIds,
+						update
+					})
+				}
+			);
+			const updatedProducts = new Map(
+				(response.products ?? []).map((product) => [product.id, product])
+			);
+			products = products.map((product) => updatedProducts.get(product.id) ?? product);
+
+			if (productEditor.id && updatedProducts.has(productEditor.id)) {
+				productEditor = mapProductToEditor(updatedProducts.get(productEditor.id)!);
+			}
+
+			const updatedCount = response.updated ?? response.products?.length ?? 0;
+			bulkNotice = {
+				tone: 'success',
+				text: `Updated ${updatedCount} product${updatedCount === 1 ? '' : 's'}.`
+			};
+			await Promise.all([loadProducts(true), loadAnalytics(), refreshCatalogSearch()]);
+		} catch (bulkError) {
+			bulkNotice = {
+				tone: 'error',
+				text: bulkError instanceof Error ? bulkError.message : 'Could not update selected products'
+			};
+		} finally {
+			bulkSaving = false;
 		}
 	}
 
@@ -1682,67 +1900,149 @@
 												class="input-field h-8 text-[12px]"
 												placeholder="Search title, brand, SKU, category..."
 											/>
+											<div class="mt-2 grid grid-cols-2 gap-2">
+												<select
+													bind:value={productCategoryFilter}
+													class="input-field h-8 text-[12px]"
+													onchange={reloadProductsFromFirstPage}
+												>
+													<option value="">All categories</option>
+													{#each categoryOptions as option (option.value)}
+														<option value={option.value}>{option.label}</option>
+													{/each}
+												</select>
+												<select
+													bind:value={productStatusFilter}
+													class="input-field h-8 text-[12px]"
+													onchange={reloadProductsFromFirstPage}
+												>
+													<option value="">All status</option>
+													{#each productStatusOptions as option (option.value)}
+														<option value={option.value}>{option.label}</option>
+													{/each}
+												</select>
+												<select
+													bind:value={productSort}
+													class="input-field col-span-2 h-8 text-[12px]"
+													onchange={reloadProductsFromFirstPage}
+												>
+													{#each productSortOptions as option (option.value)}
+														<option value={option.value}>{option.label}</option>
+													{/each}
+												</select>
+											</div>
+											<div class="mt-2 flex flex-wrap gap-1.5">
+												<button
+													type="button"
+													class="catalog-mini-action"
+													disabled={!products.length}
+													onclick={allVisibleProductsSelected
+														? deselectVisibleProducts
+														: selectVisibleProducts}
+												>
+													{allVisibleProductsSelected ? 'Deselect page' : 'Select page'}
+												</button>
+												<button
+													type="button"
+													class="catalog-mini-action"
+													disabled={!products.some((product) => product.stock <= 5)}
+													onclick={selectLowStockProducts}
+												>
+													Low stock
+												</button>
+												{#if selectedProductIds.length > 0}
+													<button
+														type="button"
+														class="catalog-mini-action text-[var(--accent-crimson)]"
+														onclick={clearProductSelection}
+													>
+														Clear {selectedProductIds.length}
+													</button>
+												{/if}
+											</div>
 										</div>
 
 										<div class="catalog-list">
 											{#each products as product, idx (product.id)}
-												<button
-													type="button"
-													class="catalog-item {product.id === selectedProductId ? 'selected' : ''}"
-													onclick={() => {
-														selectedProductId = product.id;
-														productEditor = mapProductToEditor(product);
-														productNotice = null;
-													}}
+												<div
+													class="catalog-row {selectedProductIds.includes(product.id)
+														? 'bulk-selected'
+														: ''}"
 													in:fly={{ x: -8, duration: 200, delay: Math.min(idx * 20, 300) }}
 												>
-													<div
-														class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5"
+													<button
+														type="button"
+														class="catalog-select {selectedProductIds.includes(product.id)
+															? 'active'
+															: ''}"
+														aria-label={selectedProductIds.includes(product.id)
+															? `Deselect ${product.title}`
+															: `Select ${product.title}`}
+														aria-pressed={selectedProductIds.includes(product.id)}
+														onclick={() => toggleProductSelection(product.id)}
 													>
-														<img
-															src={product.image || 'https://placehold.co/100x100?text=%20'}
-															alt={product.title}
-															class="max-h-full max-w-full object-contain"
-														/>
-													</div>
-													<div class="min-w-0 flex-1">
-														<div class="flex items-start justify-between gap-1">
-															<p class="line-clamp-1 text-[12px] font-medium text-foreground">
-																{product.title}
-															</p>
-															<p class="shrink-0 text-[11px] font-medium text-foreground">
-																{formatINR(product.price)}
-															</p>
+														{#if selectedProductIds.includes(product.id)}
+															<Check class="size-3.5" strokeWidth={2.4} />
+														{/if}
+													</button>
+													<div
+														role="button"
+														tabindex="0"
+														class="catalog-item {product.id === selectedProductId
+															? 'selected'
+															: ''}"
+														onclick={() => openProductEditor(product)}
+														onkeydown={(event) => handleProductRowKeydown(event, product)}
+													>
+														<div
+															class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5"
+														>
+															<img
+																src={product.image || 'https://placehold.co/100x100?text=%20'}
+																alt={product.title}
+																class="max-h-full max-w-full object-contain"
+															/>
 														</div>
-														<p class="mt-0.5 truncate text-[10px] text-[var(--black-alpha-40)]">
-															{product.brand} · {categoryNameBySlug.get(product.category) ??
-																product.category}
-														</p>
-														<div class="mt-1 flex items-center gap-1">
-															<span
-																class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
-																	{product.status === 'active'
-																	? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
-																	: product.status === 'archived'
-																		? 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'
-																		: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
-																>{product.status}</span
-															>
-															<span
-																class="flex items-center gap-1 text-[9px] text-[var(--black-alpha-32)]"
-															>
+														<div class="min-w-0 flex-1">
+															<div class="flex items-start justify-between gap-1">
+																<p class="line-clamp-1 text-[12px] font-medium text-foreground">
+																	{product.title}
+																</p>
+																<p class="shrink-0 text-[11px] font-medium text-foreground">
+																	{formatINR(product.price)}
+																</p>
+															</div>
+															<p class="mt-0.5 truncate text-[10px] text-[var(--black-alpha-40)]">
+																{product.brand} · {categoryNameBySlug.get(product.category) ??
+																	product.category}
+															</p>
+															<div class="mt-1 flex items-center gap-1">
 																<span
-																	class="size-1.5 rounded-full {product.stock <= 0
-																		? 'bg-[var(--accent-crimson)]'
-																		: product.stock <= 5
-																			? 'bg-[var(--accent-honey)]'
-																			: 'bg-[var(--accent-forest)]'}"
-																></span>
-																{product.stock} in stock
-															</span>
+																	class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
+																	{product.status === 'active'
+																		? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
+																		: product.status === 'archived'
+																			? 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'
+																			: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
+																>
+																	{product.status}
+																</span>
+																<span
+																	class="flex items-center gap-1 text-[9px] text-[var(--black-alpha-32)]"
+																>
+																	<span
+																		class="size-1.5 rounded-full {product.stock <= 0
+																			? 'bg-[var(--accent-crimson)]'
+																			: product.stock <= 5
+																				? 'bg-[var(--accent-honey)]'
+																				: 'bg-[var(--accent-forest)]'}"
+																	></span>
+																	{product.stock} in stock
+																</span>
+															</div>
 														</div>
 													</div>
-												</button>
+												</div>
 											{/each}
 
 											{#if !products.length}
@@ -1781,6 +2081,165 @@
 
 									<!-- Product editor -->
 									<div class="editor-panel">
+										{#if selectedProductIds.length > 0}
+											<section class="bulk-editor" in:fly={{ y: -6, duration: 180 }}>
+												<div class="flex flex-wrap items-start justify-between gap-3">
+													<div>
+														<p
+															class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
+														>
+															Bulk edit
+														</p>
+														<h2 class="mt-1 text-[15px] font-medium text-foreground">
+															{selectedProductIds.length} selected product{selectedProductIds.length ===
+															1
+																? ''
+																: 's'}
+														</h2>
+														<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
+															Only filled fields will be applied to the selected products.
+															{#if selectedProductIds.length !== selectedProducts.length}
+																{selectedProducts.length} selected item{selectedProducts.length ===
+																1
+																	? ''
+																	: 's'} visible on this page.
+															{/if}
+														</p>
+													</div>
+													<button
+														type="button"
+														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground"
+														onclick={clearProductSelection}
+													>
+														<X class="size-3.5" strokeWidth={2} />
+														Clear
+													</button>
+												</div>
+
+												<div class="mt-3 grid gap-2.5 md:grid-cols-3 xl:grid-cols-4">
+													<label>
+														<span class="field-label">Set selling price</span>
+														<input
+															bind:value={bulkEditor.price}
+															class="input-field bg-white"
+															inputmode="decimal"
+															placeholder="Leave unchanged"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Set MRP</span>
+														<input
+															bind:value={bulkEditor.mrp}
+															class="input-field bg-white"
+															inputmode="decimal"
+															placeholder="Leave unchanged"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Set stock</span>
+														<input
+															bind:value={bulkEditor.stock}
+															class="input-field bg-white"
+															inputmode="numeric"
+															placeholder="Leave unchanged"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Set status</span>
+														<select bind:value={bulkEditor.status} class="input-field bg-white">
+															<option value="">Leave unchanged</option>
+															{#each productStatusOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span class="field-label">Move category</span>
+														<select bind:value={bulkEditor.category} class="input-field bg-white">
+															<option value="">Leave unchanged</option>
+															{#each categoryOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span class="field-label">Warranty</span>
+														<input
+															bind:value={bulkEditor.warranty}
+															class="input-field bg-white"
+															placeholder="Leave unchanged"
+														/>
+													</label>
+													<label>
+														<span class="field-label">Local delivery</span>
+														<select
+															bind:value={bulkEditor.localDeliveryEligible}
+															class="input-field bg-white"
+														>
+															<option value="">Leave unchanged</option>
+															<option value="true">Enabled</option>
+															<option value="false">Disabled</option>
+														</select>
+													</label>
+													<label>
+														<span class="field-label">COD</span>
+														<select bind:value={bulkEditor.codAllowed} class="input-field bg-white">
+															<option value="">Leave unchanged</option>
+															<option value="true">Allowed</option>
+															<option value="false">Disabled</option>
+														</select>
+													</label>
+													<label>
+														<span class="field-label">Returnable</span>
+														<select bind:value={bulkEditor.returnable} class="input-field bg-white">
+															<option value="">Leave unchanged</option>
+															<option value="true">Yes</option>
+															<option value="false">No</option>
+														</select>
+													</label>
+													<label class="md:col-span-3 xl:col-span-4">
+														<span class="field-label">Compatibility</span>
+														<textarea
+															bind:value={bulkEditor.compatibility}
+															class="input-field min-h-[64px] bg-white py-2"
+															placeholder="Leave unchanged"
+														></textarea>
+													</label>
+												</div>
+
+												{#if bulkNotice}
+													<div
+														class="mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+															bulkNotice.tone
+														)}"
+													>
+														<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
+														<span>{bulkNotice.text}</span>
+													</div>
+												{/if}
+
+												<div class="mt-3 flex flex-wrap gap-2">
+													<button
+														type="button"
+														class="button button-primary inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-[12px] font-medium text-white disabled:opacity-50"
+														disabled={bulkSaving}
+														onclick={applyBulkProductUpdate}
+													>
+														<Check class="size-3.5" strokeWidth={2.4} />
+														{bulkSaving ? 'Applying...' : 'Apply to selected'}
+													</button>
+													<button
+														type="button"
+														class="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground"
+														onclick={resetBulkProductEditor}
+														disabled={bulkSaving}
+													>
+														Reset fields
+													</button>
+												</div>
+											</section>
+										{/if}
+
 										<div class="border-b border-[var(--border-faint)] p-5">
 											<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
 												<div
@@ -3011,9 +3470,86 @@
 		gap: 2px;
 	}
 
+	.catalog-mini-action {
+		display: inline-flex;
+		height: 26px;
+		align-items: center;
+		border-radius: 5px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 0 8px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--black-alpha-64);
+		transition:
+			border-color 150ms ease,
+			color 150ms ease,
+			background-color 150ms ease;
+	}
+
+	.catalog-mini-action:hover:not(:disabled) {
+		border-color: var(--black-alpha-24);
+		color: var(--foreground);
+	}
+
+	.catalog-mini-action:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.catalog-row {
+		display: flex;
+		align-items: stretch;
+		gap: 4px;
+		border-radius: 8px;
+		padding: 2px;
+		transition:
+			background-color 150ms ease,
+			box-shadow 150ms ease;
+	}
+
+	.catalog-row.bulk-selected {
+		background: var(--heat-4);
+		box-shadow: inset 0 0 0 1px rgba(250, 93, 25, 0.1);
+	}
+
+	.catalog-select {
+		display: grid;
+		width: 28px;
+		min-height: 58px;
+		place-items: center;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		color: white;
+		transition:
+			background-color 150ms ease,
+			border-color 150ms ease,
+			color 150ms ease;
+	}
+
+	.catalog-select::before {
+		content: '';
+		width: 10px;
+		height: 10px;
+		border-radius: 3px;
+		border: 1px solid var(--black-alpha-24);
+	}
+
+	.catalog-select.active {
+		border-color: var(--heat-100);
+		background: var(--heat-100);
+		color: white;
+	}
+
+	.catalog-select.active::before {
+		display: none;
+	}
+
 	.catalog-item {
 		display: flex;
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		align-items: flex-start;
 		gap: 10px;
 		border-radius: 6px;
@@ -3044,6 +3580,12 @@
 		border-radius: 8px;
 		border: 1px solid var(--border-faint);
 		background: white;
+	}
+
+	.bulk-editor {
+		border-bottom: 1px solid var(--border-faint);
+		background: linear-gradient(180deg, var(--heat-4), white 72%);
+		padding: 18px 20px;
 	}
 
 	.editor-save-bar {
