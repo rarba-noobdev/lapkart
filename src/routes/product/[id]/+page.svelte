@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import {
@@ -6,22 +7,29 @@
 		Check,
 		ChevronRight,
 		Lock,
+		LoaderCircle,
 		Minus,
 		PackageCheck,
+		Pencil,
 		Plus,
 		RotateCcw,
+		Save,
 		ShieldCheck,
 		ShoppingCart,
 		Star,
-		Truck
+		Truck,
+		X
 	} from '@lucide/svelte';
 	import { flip } from 'svelte/animate';
 	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
+	import { requestAdmin, roundMoney } from '$lib/admin';
+	import { getAuthContext } from '$lib/auth-context';
 	import { addToCart } from '$lib/cart';
 	import { discountPct, formatINR, type Product } from '$lib/catalog';
+	import { isStaffRole } from '$lib/roles';
 	import { MANUAL_DELIVERY_FREE_SUBTOTAL, MANUAL_DELIVERY_MIN_CHARGE } from '$lib/shipping';
 	import {
 		absoluteUrl,
@@ -44,11 +52,168 @@
 		};
 	} = $props();
 
-	let product = $derived(data.product);
+	const auth = getAuthContext();
+	const isAdmin = $derived(isStaffRole(auth.role));
+	let productOverride = $state<{ id: string; product: Product } | null>(null);
+	const product = $derived(
+		productOverride?.id === data.product.id ? productOverride.product : data.product
+	);
 	let related = $derived(data.related);
 	let qty = $state(1);
 	let added = $state(false);
 	let selectedImage = $state<string | null>(null);
+	let adminEditorOpen = $state(false);
+	let adminSaving = $state(false);
+	let adminMessage = $state('');
+	let adminMessageProductId = $state('');
+	let adminError = $state('');
+	let adminForm = $state({
+		productId: '',
+		title: '',
+		price: '',
+		mrp: '',
+		stock: '',
+		warranty: '',
+		compatibility: ''
+	});
+	const adminEditorVisible = $derived(
+		isAdmin && adminEditorOpen && adminForm.productId === product.id
+	);
+	const adminVisibleMessage = $derived(adminMessageProductId === product.id ? adminMessage : '');
+
+	type AdminProductResponse = {
+		product: Record<string, unknown>;
+	};
+
+	function resetAdminForm(value: Product) {
+		adminForm = {
+			productId: value.id,
+			title: value.title,
+			price: String(value.price),
+			mrp: String(value.mrp),
+			stock: String(value.stock),
+			warranty: value.warranty,
+			compatibility: value.compatibility
+		};
+	}
+
+	function openAdminEditor() {
+		resetAdminForm(product);
+		adminEditorOpen = true;
+		adminMessage = '';
+		adminError = '';
+	}
+
+	function closeAdminEditor() {
+		resetAdminForm(product);
+		adminEditorOpen = false;
+		adminError = '';
+	}
+
+	function parseAdminMoney(value: string, label: string) {
+		const parsed = Number(value.replace(/,/g, '').trim());
+		if (!Number.isFinite(parsed) || parsed < 0) {
+			throw new Error(`${label} must be a valid amount.`);
+		}
+		return roundMoney(parsed);
+	}
+
+	function parseAdminStock(value: string) {
+		const parsed = Number(value.trim());
+		if (!Number.isInteger(parsed) || parsed < 0) {
+			throw new Error('Stock must be a whole number.');
+		}
+		return parsed;
+	}
+
+	function adminNumberField(record: Record<string, unknown>, key: string, fallback: number) {
+		const value = record[key];
+		const parsed =
+			typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+		return Number.isFinite(parsed) ? parsed : fallback;
+	}
+
+	function adminStringField(record: Record<string, unknown>, key: string, fallback: string) {
+		const value = record[key];
+		return typeof value === 'string' ? value : fallback;
+	}
+
+	function mergeAdminProduct(
+		current: Product,
+		updated: Record<string, unknown>,
+		fallback: {
+			title: string;
+			price: number;
+			mrp: number;
+			stock: number;
+			warranty: string;
+			compatibility: string;
+		}
+	): Product {
+		return {
+			...current,
+			title: adminStringField(updated, 'title', fallback.title),
+			price: adminNumberField(
+				updated,
+				'selling_price',
+				adminNumberField(updated, 'price', fallback.price)
+			),
+			mrp: adminNumberField(updated, 'mrp', fallback.mrp),
+			stock: adminNumberField(updated, 'stock', fallback.stock),
+			warranty: adminStringField(updated, 'warranty', fallback.warranty),
+			compatibility: adminStringField(updated, 'compatibility', fallback.compatibility),
+			updated_at: adminStringField(updated, 'updated_at', current.updated_at ?? '')
+		};
+	}
+
+	async function clearCatalogCaches() {
+		await fetch('/api/admin/catalog-cache', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' }
+		}).catch(() => null);
+		await invalidateAll();
+	}
+
+	async function saveAdminProduct() {
+		if (adminSaving) return;
+		adminSaving = true;
+		adminMessage = '';
+		adminError = '';
+
+		try {
+			const title = adminForm.title.trim();
+			if (title.length < 4) throw new Error('Title must be at least 4 characters.');
+
+			const price = parseAdminMoney(adminForm.price, 'Selling price');
+			const mrp = parseAdminMoney(adminForm.mrp, 'MRP');
+			const stock = parseAdminStock(adminForm.stock);
+			const payload = {
+				title,
+				price,
+				sellingPrice: price,
+				mrp,
+				stock,
+				warranty: adminForm.warranty.trim(),
+				compatibility: adminForm.compatibility.trim()
+			};
+
+			const response = await requestAdmin<AdminProductResponse>(`/admin/products/${product.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify(payload)
+			});
+			const updatedProduct = mergeAdminProduct(product, response.product, payload);
+			productOverride = { id: updatedProduct.id, product: updatedProduct };
+			resetAdminForm(updatedProduct);
+			adminMessage = 'Product updated.';
+			adminMessageProductId = updatedProduct.id;
+			adminEditorOpen = false;
+			void clearCatalogCaches();
+		} catch (saveError) {
+			adminError = saveError instanceof Error ? saveError.message : 'Could not update product.';
+		} finally {
+			adminSaving = false;
+		}
+	}
 
 	// Sticky add-to-cart bar visibility: shown only when the in-page primary CTA
 	// has scrolled out of view, observed below.
@@ -400,11 +565,29 @@
 				<!-- Price -->
 				<div class="mt-4 border-t border-b border-[var(--border-faint)] py-4">
 					<div class="flex flex-wrap items-baseline gap-2.5">
-						<span
-							class="font-display text-[clamp(1.625rem,3.8vw,2.25rem)] tracking-[-0.02em] text-foreground"
-						>
-							{formatINR(product.price)}
-						</span>
+						{#if isAdmin}
+							<button
+								type="button"
+								class="group -ml-1 inline-flex items-center gap-2 rounded-md border border-transparent px-1 py-0.5 text-left transition-colors hover:border-[var(--heat-20)] hover:bg-[var(--heat-4)]"
+								aria-label="Edit product price"
+								onclick={openAdminEditor}
+							>
+								<span
+									class="font-display text-[clamp(1.625rem,3.8vw,2.25rem)] tracking-[-0.02em] text-foreground"
+								>
+									{formatINR(product.price)}
+								</span>
+								<Pencil
+									class="size-4 text-[var(--black-alpha-32)] transition-colors group-hover:text-[var(--heat-100)]"
+								/>
+							</button>
+						{:else}
+							<span
+								class="font-display text-[clamp(1.625rem,3.8vw,2.25rem)] tracking-[-0.02em] text-foreground"
+							>
+								{formatINR(product.price)}
+							</span>
+						{/if}
 						<span class="text-body-medium text-[var(--black-alpha-32)] line-through">
 							{formatINR(product.mrp)}
 						</span>
@@ -423,6 +606,116 @@
 						Inclusive of taxes / Tamil Nadu delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
 						/ free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}
 					</p>
+					{#if isAdmin && adminVisibleMessage && !adminEditorVisible}
+						<p
+							class="text-body-small mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700"
+						>
+							{adminVisibleMessage}
+						</p>
+					{/if}
+					{#if adminEditorVisible}
+						<form
+							class="mt-4 rounded-lg border border-[var(--heat-20)] bg-[var(--heat-4)] p-3 sm:p-4"
+							onsubmit={(event) => {
+								event.preventDefault();
+								void saveAdminProduct();
+							}}
+						>
+							<div class="flex flex-wrap items-center justify-between gap-3">
+								<div>
+									<p class="text-mono-x-small tracking-[0.16em] text-[var(--heat-100)] uppercase">
+										Admin quick edit
+									</p>
+									<p class="text-body-small mt-1 text-[var(--black-alpha-56)]">
+										Updates the live product record.
+									</p>
+								</div>
+								<button
+									type="button"
+									class="grid size-8 place-items-center rounded-md border border-[var(--border-muted)] bg-white text-[var(--black-alpha-56)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
+									aria-label="Close product editor"
+									disabled={adminSaving}
+									onclick={closeAdminEditor}
+								>
+									<X class="size-4" />
+								</button>
+							</div>
+
+							<div class="mt-3 grid gap-2.5 sm:grid-cols-3">
+								<label class="sm:col-span-3">
+									<span class="field-label">Title</span>
+									<input bind:value={adminForm.title} class="input-field bg-white" />
+								</label>
+								<label>
+									<span class="field-label">Selling price</span>
+									<input
+										bind:value={adminForm.price}
+										class="input-field bg-white"
+										inputmode="decimal"
+									/>
+								</label>
+								<label>
+									<span class="field-label">MRP</span>
+									<input
+										bind:value={adminForm.mrp}
+										class="input-field bg-white"
+										inputmode="decimal"
+									/>
+								</label>
+								<label>
+									<span class="field-label">Stock</span>
+									<input
+										bind:value={adminForm.stock}
+										class="input-field bg-white"
+										inputmode="numeric"
+									/>
+								</label>
+								<label class="sm:col-span-3">
+									<span class="field-label">Warranty</span>
+									<input bind:value={adminForm.warranty} class="input-field bg-white" />
+								</label>
+								<label class="sm:col-span-3">
+									<span class="field-label">Compatibility</span>
+									<textarea
+										bind:value={adminForm.compatibility}
+										class="input-field min-h-[72px] bg-white py-2"
+									></textarea>
+								</label>
+							</div>
+
+							{#if adminError}
+								<p
+									class="text-body-small mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700"
+								>
+									{adminError}
+								</p>
+							{/if}
+
+							<div class="mt-4 flex flex-wrap gap-2">
+								<button
+									type="submit"
+									class="button button-primary text-label-small inline-flex h-9 items-center gap-2 rounded-md px-4 text-white disabled:opacity-50"
+									disabled={adminSaving}
+								>
+									{#if adminSaving}
+										<LoaderCircle class="size-4 animate-spin" />
+										Saving
+									{:else}
+										<Save class="size-4" />
+										Save product
+									{/if}
+								</button>
+								<button
+									type="button"
+									class="text-label-small inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-4 text-[var(--black-alpha-64)] transition-colors hover:border-[var(--black-alpha-32)] hover:text-foreground disabled:opacity-50"
+									disabled={adminSaving}
+									onclick={closeAdminEditor}
+								>
+									Cancel
+								</button>
+							</div>
+						</form>
+					{/if}
 					{#if product.stock > 0}
 						<div class="mt-3">
 							<DispatchCountdown />

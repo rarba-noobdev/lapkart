@@ -15,6 +15,10 @@ const CATALOG_CACHE_TTL_MS = 60_000;
 const CATALOG_CACHE_MAX_ENTRIES = 200;
 const catalogCache = new Map<string, CacheEntry<unknown>>();
 
+export function clearCatalogCache() {
+	catalogCache.clear();
+}
+
 function trimCatalogCache() {
 	while (catalogCache.size > CATALOG_CACHE_MAX_ENTRIES) {
 		const oldest = catalogCache.keys().next().value;
@@ -23,11 +27,7 @@ function trimCatalogCache() {
 	}
 }
 
-async function readThrough<T>(
-	key: string,
-	ttlMs: number,
-	load: () => Promise<T>
-): Promise<T> {
+async function readThrough<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
 	const now = Date.now();
 	const cached = catalogCache.get(key) as CacheEntry<T> | undefined;
 

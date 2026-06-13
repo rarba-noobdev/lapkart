@@ -54,9 +54,27 @@
 						title: 'Shop',
 						items: [
 							{ label: 'All components', to: '/products' },
+							{ label: 'Laptop screens', to: '/products?category=displays' },
 							{ label: 'Cart', to: '/cart' },
-							{ label: 'Orders', to: '/orders' },
 							{ label: 'Account', to: '/profile' }
+						]
+					},
+					{
+						title: 'Guides',
+						items: [
+							{
+								label: 'Find screen part number',
+								to: '/guides/how-to-find-laptop-screen-part-number'
+							},
+							{ label: '30-pin vs 40-pin', to: '/guides/30-pin-vs-40-pin-laptop-screen' },
+							{
+								label: 'Resolution guide',
+								to: '/guides/laptop-screen-resolution-guide'
+							},
+							{
+								label: 'Tamil Nadu screens',
+								to: '/guides/laptop-screen-replacement-tamil-nadu'
+							}
 						]
 					},
 					{
@@ -75,13 +93,6 @@
 							{ label: 'Contact', to: '/contact' },
 							{ label: 'Support & complaints', to: '/grievances' },
 							{ label: 'Cancellation & refunds', to: '/cancellation-refunds' }
-						]
-					},
-					{
-						title: 'Account',
-						items: [
-							{ label: 'Sign in', to: '/login' },
-							{ label: 'Checkout', to: '/checkout' }
 						]
 					}
 				]

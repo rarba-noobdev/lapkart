@@ -668,6 +668,10 @@
 	}
 
 	async function refreshCatalogSearch() {
+		await fetch('/api/admin/catalog-cache', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' }
+		}).catch(() => null);
 		await invalidate('app:products');
 	}
 
@@ -2021,8 +2025,7 @@
 															bind:checked={productEditor.codAllowed}
 															class="size-3.5 accent-[var(--heat-100)]"
 														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]"
-															>COD allowed</span
+														<span class="text-[11px] text-[var(--black-alpha-56)]">COD allowed</span
 														>
 													</label>
 													<label class="checkbox-field">
@@ -2031,9 +2034,7 @@
 															bind:checked={productEditor.returnable}
 															class="size-3.5 accent-[var(--heat-100)]"
 														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]"
-															>Returnable</span
-														>
+														<span class="text-[11px] text-[var(--black-alpha-56)]">Returnable</span>
 													</label>
 													<label class="checkbox-field">
 														<input

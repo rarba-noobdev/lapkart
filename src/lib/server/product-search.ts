@@ -66,6 +66,10 @@ const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 200;
 const searchCache = new Map<string, ProductSearchCacheEntry>();
 
+export function clearProductSearchCache() {
+	searchCache.clear();
+}
+
 function asNullableNumber(value: number | undefined) {
 	return Number.isFinite(value) ? value : undefined;
 }
@@ -201,7 +205,10 @@ async function loadSearchProducts(
 			source: 'postgres'
 		};
 	} catch (searchError) {
-		console.warn('Postgres product search RPC failed, falling back to basic catalog query.', searchError);
+		console.warn(
+			'Postgres product search RPC failed, falling back to basic catalog query.',
+			searchError
+		);
 	}
 
 	const fallback = await listCatalogProductPage(
