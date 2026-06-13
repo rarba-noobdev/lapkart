@@ -156,6 +156,12 @@
 	let paymentMode = $state<'razorpay' | 'cod'>('razorpay');
 	let couponCode = $state('');
 	let appliedSummary = $state<CheckoutSummary | null>(null);
+	let suggestedCoupon = $state<{
+		code: string;
+		description: string | null;
+		discount: number;
+	} | null>(null);
+	let suggestedSubtotalKey = '';
 	let saveAddress = $state(true);
 	let savedAddresses = $state<Tables<'addresses'>[]>([]);
 	let selectedSavedAddressId = $state<string | null>(null);
@@ -545,6 +551,52 @@
 			clearEstimateRequest();
 		};
 	});
+
+	// Auto-suggest the best valid coupon for the current cart so the customer
+	// does not have to hunt for a code. Only fetches once per subtotal value.
+	async function loadSuggestedCoupon() {
+		if (subtotal <= 0) {
+			suggestedCoupon = null;
+			return;
+		}
+		const key = String(subtotal);
+		if (key === suggestedSubtotalKey) return;
+		suggestedSubtotalKey = key;
+		try {
+			const response = await fetch(
+				`${apiBase}/checkout/suggested-coupon?subtotal=${encodeURIComponent(subtotal)}`,
+				{ headers: { ...(await getAuthorizationHeaders()) } }
+			);
+			if (!response.ok) {
+				suggestedCoupon = null;
+				return;
+			}
+			const body = (await response.json().catch(() => null)) as {
+				coupon: { code: string; description: string | null; discount: number } | null;
+			} | null;
+			suggestedCoupon = body?.coupon ?? null;
+		} catch {
+			suggestedCoupon = null;
+		}
+	}
+
+	$effect(() => {
+		if (subtotal > 0) void loadSuggestedCoupon();
+	});
+
+	const showCouponSuggestion = $derived(
+		Boolean(
+			suggestedCoupon &&
+			!appliedSummary?.coupon &&
+			suggestedCoupon.code !== couponCode.trim().toUpperCase()
+		)
+	);
+
+	async function applySuggestedCoupon() {
+		if (!suggestedCoupon) return;
+		couponCode = suggestedCoupon.code;
+		await applyCoupon();
+	}
 
 	async function applyCoupon() {
 		const code = couponCode.trim().toUpperCase();
@@ -1431,6 +1483,27 @@
 							{couponBusy ? 'Applying' : 'Apply'}
 						</button>
 					</div>
+
+					{#if showCouponSuggestion && suggestedCoupon}
+						<button
+							type="button"
+							class="mt-2 flex w-full items-center justify-between gap-2 rounded-md border border-dashed border-[var(--heat-100)]/40 bg-[var(--heat-4)] px-3 py-2 text-left transition-colors hover:bg-[var(--heat-8)] disabled:opacity-50"
+							disabled={couponBusy || !hasValidAddress || !hasDeliveryPin || !selectedCourier}
+							onclick={applySuggestedCoupon}
+						>
+							<span class="min-w-0">
+								<span class="block text-[12px] font-semibold text-[var(--heat-100)]">
+									Apply {suggestedCoupon.code} — save {formatINR(suggestedCoupon.discount)}
+								</span>
+								{#if suggestedCoupon.description}
+									<span class="block truncate text-[11px] text-[var(--black-alpha-48)]">
+										{suggestedCoupon.description}
+									</span>
+								{/if}
+							</span>
+							<span class="shrink-0 text-[11px] font-medium text-[var(--heat-100)]">Apply</span>
+						</button>
+					{/if}
 
 					{#if appliedSummary?.coupon}
 						<div class="mt-2 flex items-center justify-between text-[11px]">

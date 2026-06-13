@@ -2988,6 +2988,68 @@ async function handle(req: Request) {
 		});
 	}
 
+	// Suggests the single active coupon that gives this cart the largest real
+	// discount and that the signed-in user is still eligible to use. Lets the
+	// cart auto-apply the best code instead of making the customer hunt for one.
+	if (req.method === 'GET' && path === '/checkout/suggested-coupon') {
+		const adminDb = getSupabaseAdmin();
+		const user = await requireUser(req);
+		if (!(await isFeatureEnabled('coupons'))) {
+			return json(req, 200, { coupon: null });
+		}
+		const subtotal = roundMoney(Number(url.searchParams.get('subtotal') ?? 0));
+		if (!Number.isFinite(subtotal) || subtotal <= 0) {
+			return json(req, 200, { coupon: null });
+		}
+		const nowIso = new Date().toISOString();
+		const { data: candidates } = await adminDb
+			.from('coupons')
+			.select(
+				'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit'
+			)
+			.eq('active', true)
+			.lte('minimum_subtotal', subtotal)
+			.or(`starts_at.is.null,starts_at.lte.${nowIso}`)
+			.or(`ends_at.is.null,ends_at.gte.${nowIso}`);
+
+		let best: { code: string; description: string | null; discount: number } | null = null;
+		for (const coupon of candidates ?? []) {
+			const discountType = coupon.discount_type === 'percent' ? 'percent' : 'fixed';
+			const discountValue = Number(coupon.discount_value);
+			if (!Number.isFinite(discountValue) || discountValue <= 0) continue;
+			let discount =
+				discountType === 'percent' ? (subtotal * discountValue) / 100 : discountValue;
+			if (coupon.max_discount !== null) discount = Math.min(discount, Number(coupon.max_discount));
+			discount = roundMoney(Math.min(discount, subtotal));
+			if (discount <= 0) continue;
+
+			// Respect global and per-user usage limits before suggesting.
+			if (coupon.usage_limit) {
+				const { count } = await adminDb
+					.from('coupon_redemptions')
+					.select('id', { count: 'exact', head: true })
+					.eq('coupon_id', coupon.id);
+				if ((count ?? 0) >= Number(coupon.usage_limit)) continue;
+			}
+			const { count: userUsage } = await adminDb
+				.from('coupon_redemptions')
+				.select('id', { count: 'exact', head: true })
+				.eq('coupon_id', coupon.id)
+				.eq('user_id', user.id);
+			if ((userUsage ?? 0) >= Number(coupon.per_user_limit ?? 1)) continue;
+
+			if (!best || discount > best.discount) {
+				best = {
+					code: String(coupon.code).toUpperCase(),
+					description: coupon.description ? String(coupon.description) : null,
+					discount
+				};
+			}
+		}
+
+		return json(req, 200, { coupon: best });
+	}
+
 	if (req.method === 'POST' && path === '/checkout/preview') {
 		await requireFeatureFlag('new_checkout', 'Checkout is temporarily unavailable');
 		const user = await requireUser(req);

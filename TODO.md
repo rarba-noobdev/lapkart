@@ -95,9 +95,14 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
 - [ ] Schema: `promotions`, `customer_rewards`, extend `coupons`
       (first_order_only, free_delivery / store_credit types, applicable_categories),
       `store_credits.source_promotion_id`, `products.clearance`
-- [ ] `validate_coupon(code, cart, customer_id)` RPC → ok | reason
-- [ ] Coupon engine in cart: apply field, inline validation, **auto-suggest best
-      valid coupon**; seed WELCOME50 + CHENNAI
+- [x] Coupon apply + server validation (already existed in checkout via edge fn
+      `validateCouponForCheckout`) + **auto-suggest best valid coupon**
+      (`GET /checkout/suggested-coupon`, one-tap chip in checkout)
+- [ ] **[YOU]** Create launch coupons in the admin (Promos tab) — e.g. a ₹50-off
+      min ₹999 "WELCOME50". Not auto-seeded because a live coupon is real money.
+- [ ] Extend coupons: `first_order_only`, `free_delivery` / `store_credit`
+      discount types, `applicable_categories`, pincode gating (needed for a
+      "CHENNAI free delivery" style coupon; current schema is percent/fixed only)
 - [ ] Scratch card after delivered + prepaid: locked reward, weighted server-side
       draw, canvas scratch-off (reveal at 60%), 30-day credit expiry, budget cap
 - [ ] Streak / repeat-purchase ladder (`order_streak`, app_settings ladder,
