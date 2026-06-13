@@ -155,6 +155,8 @@ type CheckoutSummary = {
 	subtotal: number;
 	shipping: number;
 	discountTotal: number;
+	storeCreditApplied: number;
+	storeCreditAvailable: number;
 	total: number;
 	amountPaise: number;
 	coupon: AppliedCoupon | null;
@@ -507,7 +509,8 @@ const checkoutCreatePaymentOrderSchema = z.object({
 	selectedQuoteId: z.string().trim().min(1).max(120).nullable().optional(),
 	saveAddress: z.boolean().optional().default(true),
 	couponCode: z.string().trim().max(40).optional().default(''),
-	paymentMode: z.enum(['razorpay', 'cod']).optional().default('razorpay')
+	paymentMode: z.enum(['razorpay', 'cod']).optional().default('razorpay'),
+	useStoreCredit: z.boolean().optional().default(true)
 });
 
 const checkoutCompletePaymentSchema = z.object({
@@ -2063,6 +2066,7 @@ async function storeCheckoutSession(razorpayOrderId: string, checkout: PendingCh
 		subtotal: checkout.subtotal,
 		shipping: checkout.shipping,
 		discount_total: checkout.discountTotal,
+		store_credit_applied: checkout.storeCreditApplied ?? 0,
 		total: checkout.total,
 		coupon_id: checkout.coupon?.id ?? null,
 		coupon_code: checkout.coupon?.code ?? null,
@@ -2110,6 +2114,8 @@ async function loadCheckoutSession(razorpayOrderId: string): Promise<LoadedCheck
 			subtotal: Number(data.subtotal),
 			shipping: Number(data.shipping),
 			discountTotal: Number(data.discount_total ?? 0),
+			storeCreditApplied: Number(data.store_credit_applied ?? 0),
+			storeCreditAvailable: 0,
 			total: Number(data.total),
 			amountPaise: Number(data.amount_paise),
 			coupon: data.coupon_snapshot as AppliedCoupon | null,
@@ -2686,7 +2692,29 @@ async function buildCheckoutSummary(
 	const shipping = roundMoney(selectedRate);
 	const codFee = paymentMode === 'cod' ? roundMoney(settings.codFee) : 0;
 	const totalBeforeCod = roundMoney(Math.max(0, subtotal + shipping - discountTotal));
-	const total = roundMoney(Math.max(0, totalBeforeCod + codFee));
+	const payableBeforeCredit = roundMoney(Math.max(0, totalBeforeCod + codFee));
+
+	// Store credit: redeem live, non-expired balance against the payable, up to
+	// the full amount. The credit is debited atomically at order creation.
+	const useStoreCredit = input.useStoreCredit !== false;
+	let storeCreditAvailable = 0;
+	if (useStoreCredit) {
+		const { data: creditRows } = await adminDb
+			.from('store_credits')
+			.select('balance, expires_at')
+			.eq('user_id', userId)
+			.gt('balance', 0);
+		const nowMs = Date.now();
+		storeCreditAvailable = roundMoney(
+			(creditRows ?? []).reduce((sum, row) => {
+				const expires = row.expires_at ? new Date(String(row.expires_at)).getTime() : null;
+				if (expires !== null && expires <= nowMs) return sum;
+				return sum + Number(row.balance ?? 0);
+			}, 0)
+		);
+	}
+	const storeCreditApplied = roundMoney(Math.min(storeCreditAvailable, payableBeforeCredit));
+	const total = roundMoney(Math.max(0, payableBeforeCredit - storeCreditApplied));
 	const amountPaise = Math.round(total * 100);
 	const rpcCodReason = await getDatabaseCodReason({
 		userId,
@@ -2724,6 +2752,8 @@ async function buildCheckoutSummary(
 		subtotal,
 		shipping,
 		discountTotal,
+		storeCreditApplied,
+		storeCreditAvailable,
 		total,
 		amountPaise,
 		coupon,
@@ -2747,6 +2777,8 @@ async function buildCheckoutSummary(
 				subtotal,
 				shipping,
 				discountTotal,
+				storeCreditApplied,
+				storeCreditAvailable,
 				total,
 				amountPaise,
 				coupon,
@@ -3124,6 +3156,7 @@ async function handle(req: Request) {
 					discount_total: summary.discountTotal,
 					total: summary.total,
 					cod_fee: summary.pricing.codFee,
+					store_credit_applied: summary.storeCreditApplied,
 					cod_confirmed: false,
 					rto_risk: rtoRisk,
 					hold_reason: holdForRisk ? 'High RTO risk score requires manual review' : null,
@@ -3193,7 +3226,8 @@ async function handle(req: Request) {
 					formatted_address: address.formattedAddress || null
 				},
 				p_save_address: input.saveAddress,
-				p_checkout_session_razorpay_order_id: codReference
+				p_checkout_session_razorpay_order_id: codReference,
+				p_store_credit_applied: summary.storeCreditApplied
 			}
 		);
 		if (completeError) throw completeError;
@@ -3360,6 +3394,7 @@ async function handle(req: Request) {
 					discount_total: checkout.discountTotal,
 					total: checkout.total,
 					cod_fee: 0,
+					store_credit_applied: checkout.storeCreditApplied ?? 0,
 					cod_confirmed: false,
 					rto_risk: rtoRisk,
 					hold_reason: null,
@@ -3430,7 +3465,8 @@ async function handle(req: Request) {
 					formatted_address: address.formattedAddress || null
 				},
 				p_save_address: checkout.saveAddress,
-				p_checkout_session_razorpay_order_id: input.razorpay_order_id
+				p_checkout_session_razorpay_order_id: input.razorpay_order_id,
+				p_store_credit_applied: checkout.storeCreditApplied ?? 0
 			}
 		);
 		if (completeError) {

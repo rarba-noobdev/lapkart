@@ -101,11 +101,20 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
       weighted server-side draw, GPay-style canvas scratch-off (reveals at 60%),
       30-day store-credit payout, per-promotion budget cap auto-pause. `/rewards`
       page shows balance + cards. Seeded one promotion (budget Rs 5000).
-- [ ] **[CRITICAL] Store-credit redemption at checkout** — store_credits is issued
-      but NOT yet consumed in the money path. Scratch-card credit is unspendable
-      until checkout applies it (reduce payable, mark balance consumed atomically
-      inside `complete_checkout_payment` + COD order RPC, margin-floor gated).
-      Highest-risk change (touches order total + payment amount) — do carefully.
+- [x] **Store-credit redemption at checkout** — live, non-expired balance is now
+      auto-applied against the payable; debited atomically (FIFO by expiry) inside
+      `complete_checkout_payment` via `consume_store_credit()`; persisted through
+      the prepaid session (`checkout_sessions.store_credit_applied`) and shown in
+      the checkout summary. Covers prepaid + COD.
+      - [ ] **[YOU] TEST a real low-value prepaid + COD order** end to end before
+            trusting it — I cannot run payments in this environment.
+      - [ ] Restore consumed store credit when an order is **cancelled/refunded**
+            (admin_cancel_order + refund flow do not yet credit it back).
+      - [ ] Note: redemption is intentionally NOT margin-floor gated (the credit
+            was already a booked marketing cost at issuance); revisit if needed.
+      - [ ] Concurrency: two simultaneous checkouts by the same user could each
+            reserve the same balance (clamped at consume time, rare). Add a hold
+            if it ever matters.
 - [ ] **[YOU]** Set the scratch-card promotion `budget_cap` in the DB/admin to a
       real number, and create launch coupons (e.g. WELCOME50). Not auto-seeded
       large because live rewards/coupons are real money.

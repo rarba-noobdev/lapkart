@@ -81,6 +81,8 @@
 		subtotal: number;
 		shipping: number;
 		discountTotal: number;
+		storeCreditApplied?: number;
+		storeCreditAvailable?: number;
 		total: number;
 		amountPaise: number;
 		coupon: {
@@ -207,6 +209,7 @@
 	);
 
 	const discountTotal = $derived(appliedSummary?.discountTotal ?? 0);
+	const storeCreditApplied = $derived(appliedSummary?.storeCreditApplied ?? 0);
 	const totalBeforeCod = $derived(Math.max(0, subtotal + shipping - discountTotal));
 	const codFee = $derived(
 		paymentMode === 'cod'
@@ -1452,6 +1455,12 @@
 						<div class="flex justify-between">
 							<span>COD handling</span>
 							<span class="text-foreground">{formatINR(codFee)}</span>
+						</div>
+					{/if}
+					{#if storeCreditApplied > 0}
+						<div class="flex justify-between text-[var(--accent-forest)]">
+							<span>Store credit</span>
+							<span>-{formatINR(storeCreditApplied)}</span>
 						</div>
 					{/if}
 					<div
