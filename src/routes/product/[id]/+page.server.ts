@@ -16,8 +16,20 @@ export const load: PageServerLoad = async ({ depends, locals, params, setHeaders
 		error(404, 'Product not found');
 	}
 
+	// Honest "ordered N times this week" signal from the real materialized view.
+	// Non-fatal: if the view/RPC is unavailable the badge simply doesn't render.
+	const [related, weeklyCountResult] = await Promise.all([
+		getCachedRelatedProducts(product.category, product.id, 4, locals.supabase),
+		locals.supabase
+			.from('product_weekly_order_counts')
+			.select('orders_count')
+			.eq('product_id', product.id)
+			.maybeSingle()
+	]);
+
 	return {
 		product,
-		related: await getCachedRelatedProducts(product.category, product.id, 4, locals.supabase)
+		related,
+		weeklyOrders: weeklyCountResult.data?.orders_count ?? 0
 	};
 };

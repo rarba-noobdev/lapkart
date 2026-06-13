@@ -2036,7 +2036,14 @@ export type Database = {
 			};
 		};
 		Views: {
-			[_ in never]: never;
+			product_weekly_order_counts: {
+				Row: {
+					product_id: string;
+					units: number;
+					orders_count: number;
+				};
+				Relationships: [];
+			};
 		};
 		Functions: {
 			active_category_counts: {
@@ -2082,6 +2089,19 @@ export type Database = {
 					p_user_agent?: string | null;
 				};
 				Returns: Database['public']['Tables']['user_consents']['Row'];
+			};
+			recent_purchases: {
+				Args: { p_limit?: number };
+				Returns: {
+					product_id: string;
+					product_title: string;
+					area: string | null;
+					purchased_at: string;
+				}[];
+			};
+			refresh_product_weekly_order_counts: {
+				Args: Record<string, never>;
+				Returns: undefined;
 			};
 			search_active_products: {
 				Args: {

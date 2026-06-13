@@ -25,6 +25,7 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
+	import RecentlyBought from '$lib/components/RecentlyBought.svelte';
 	import { requestAdmin, roundMoney } from '$lib/admin';
 	import { getAuthContext } from '$lib/auth-context';
 	import { addToCart } from '$lib/cart';
@@ -49,8 +50,11 @@
 		data: {
 			product: Product;
 			related: Product[];
+			weeklyOrders?: number;
 		};
 	} = $props();
+
+	const weeklyOrders = $derived(data.weeklyOrders ?? 0);
 
 	const auth = getAuthContext();
 	const isAdmin = $derived(isStaffRole(auth.role));
@@ -560,6 +564,13 @@
 							&middot; only {product.stock} left
 						</span>
 					{/if}
+					{#if weeklyOrders >= 3}
+						<span
+							class="text-mono-x-small font-medium tracking-wider text-[var(--accent-forest)] uppercase"
+						>
+							&middot; ordered {weeklyOrders} times this week
+						</span>
+					{/if}
 				</div>
 
 				<!-- Price -->
@@ -873,6 +884,11 @@
 				</div>
 			{/each}
 		</div>
+	</div>
+
+	<!-- Recently bought ticker (real, anonymized orders) -->
+	<div class="mt-4 px-4 md:px-0">
+		<RecentlyBought />
 	</div>
 
 	<!-- Related products -->
