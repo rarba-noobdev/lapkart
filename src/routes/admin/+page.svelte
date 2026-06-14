@@ -22,6 +22,8 @@
 		Flame,
 		LayoutDashboard,
 		LifeBuoy,
+		Maximize2,
+		Minimize2,
 		Package,
 		Plus,
 		RotateCcw,
@@ -236,6 +238,12 @@
 		productId: string;
 		key: SheetColumnKey;
 	};
+	type SheetMode = 'visible' | 'all';
+	type SheetSortDirection = 'asc' | 'desc';
+	type SheetProgress = {
+		loaded: number;
+		total: number;
+	};
 
 	type AdminUserRecord = {
 		id: string;
@@ -425,6 +433,7 @@
 	let productTotalPages = $state(1);
 	let productSearchTimer: number | null = null;
 	const PRODUCT_PAGE_SIZE = 60;
+	const SHEET_ALL_PAGE_SIZE = 100;
 	let selectedProductId = $state<string | 'new' | null>(null);
 	let productEditor = $state<ProductEditorState>(emptyProductEditor());
 	let productSaving = $state(false);
@@ -435,26 +444,39 @@
 	let bulkSaving = $state(false);
 	let bulkNotice = $state<Notice | null>(null);
 	let spreadsheetOpen = $state(true);
+	let sheetFullscreen = $state(false);
+	let sheetMode = $state<SheetMode>('visible');
+	let sheetProducts = $state.raw<AdminProduct[]>([]);
+	let sheetAllProductsLoading = $state(false);
+	let sheetAllProgress = $state<SheetProgress>({ loaded: 0, total: 0 });
+	let sheetSortKey = $state<SheetColumnKey | null>(null);
+	let sheetSortDirection = $state<SheetSortDirection>('asc');
 	let sheetDrafts = $state<Record<string, Partial<Record<SheetColumnKey, string>>>>({});
 	let activeSheetCell = $state<SheetCell | null>(null);
 	let sheetSaving = $state(false);
 	let sheetNotice = $state<Notice | null>(null);
 	let timelineNow = $state(Date.now());
+	const sheetSourceProducts = $derived(sheetMode === 'all' ? sheetProducts : products);
+	const sheetRows = $derived.by(() => {
+		const rows = sheetSourceProducts;
+		if (!sheetSortKey) return rows;
+		return [...rows].sort((left, right) => compareSheetProducts(left, right));
+	});
 	const selectedProducts = $derived(
-		products.filter((product) => selectedProductIds.includes(product.id))
+		sheetRows.filter((product) => selectedProductIds.includes(product.id))
 	);
 	const allVisibleProductsSelected = $derived(
 		products.length > 0 && products.every((product) => selectedProductIds.includes(product.id))
 	);
-	const dirtySheetProducts = $derived(products.filter((product) => sheetRowDirty(product)));
+	const dirtySheetProducts = $derived(sheetRows.filter((product) => sheetRowDirty(product)));
 	const dirtySheetCellCount = $derived(
-		products.reduce((count, product) => {
+		sheetRows.reduce((count, product) => {
 			return count + sheetColumns.filter((column) => sheetCellDirty(product, column.key)).length;
 		}, 0)
 	);
 	const activeSheetProduct = $derived.by(() => {
 		const cell = activeSheetCell;
-		return cell ? (products.find((product) => product.id === cell.productId) ?? null) : null;
+		return cell ? (sheetRows.find((product) => product.id === cell.productId) ?? null) : null;
 	});
 	const activeSheetColumnIndex = $derived.by(() => {
 		const cell = activeSheetCell;
@@ -464,7 +486,7 @@
 		activeSheetColumnIndex >= 0 ? sheetColumns[activeSheetColumnIndex] : null
 	);
 	const activeSheetRowIndex = $derived(
-		activeSheetProduct ? products.findIndex((product) => product.id === activeSheetProduct.id) : -1
+		activeSheetProduct ? sheetRows.findIndex((product) => product.id === activeSheetProduct.id) : -1
 	);
 	const activeSheetAddress = $derived(
 		activeSheetRowIndex >= 0 && activeSheetColumnIndex >= 0
@@ -862,6 +884,67 @@
 		return label;
 	}
 
+	function sheetColumnName(key: SheetColumnKey | null) {
+		return key ? (sheetColumns.find((column) => column.key === key)?.label ?? key) : 'Manual';
+	}
+
+	function sheetSortGlyph(key: SheetColumnKey) {
+		if (sheetSortKey !== key) return '↕';
+		return sheetSortDirection === 'asc' ? '↑' : '↓';
+	}
+
+	function sheetSortValue(product: AdminProduct, key: SheetColumnKey) {
+		const value = sheetCellValue(product, key);
+		if (key === 'price' || key === 'mrp' || key === 'stock') {
+			const parsed = Number(normalizeAdminNumberText(value));
+			return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+		}
+		if (key === 'category') return categoryNameBySlug.get(value) ?? value;
+		if (key === 'status') return productStatusOptions.find((option) => option.value === value)?.label ?? value;
+		return value.toLocaleLowerCase('en-IN');
+	}
+
+	function compareSheetProducts(left: AdminProduct, right: AdminProduct) {
+		if (!sheetSortKey) return 0;
+		const leftValue = sheetSortValue(left, sheetSortKey);
+		const rightValue = sheetSortValue(right, sheetSortKey);
+		let result =
+			typeof leftValue === 'number' && typeof rightValue === 'number'
+				? leftValue - rightValue
+				: String(leftValue).localeCompare(String(rightValue), 'en-IN', {
+						numeric: true,
+						sensitivity: 'base'
+					});
+		if (result === 0) result = left.title.localeCompare(right.title, 'en-IN', { sensitivity: 'base' });
+		return sheetSortDirection === 'asc' ? result : -result;
+	}
+
+	function toggleSheetSort(key: SheetColumnKey) {
+		if (sheetSortKey === key) {
+			sheetSortDirection = sheetSortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sheetSortKey = key;
+			sheetSortDirection = 'asc';
+		}
+	}
+
+	function clearSheetSort() {
+		sheetSortKey = null;
+		sheetSortDirection = 'asc';
+	}
+
+	function applyUpdatedProducts(updatedProducts: AdminProduct[]) {
+		if (updatedProducts.length === 0) return;
+		const updatedById = new Map(updatedProducts.map((product) => [product.id, product]));
+		products = products.map((product) => updatedById.get(product.id) ?? product);
+		if (sheetProducts.length > 0) {
+			sheetProducts = sheetProducts.map((product) => updatedById.get(product.id) ?? product);
+		}
+		if (productEditor.id && updatedById.has(productEditor.id)) {
+			productEditor = mapProductToEditor(updatedById.get(productEditor.id)!);
+		}
+	}
+
 	function setActiveSheetCell(product: AdminProduct, key: SheetColumnKey) {
 		activeSheetCell = { productId: product.id, key };
 		sheetNotice = null;
@@ -976,7 +1059,7 @@
 		event.preventDefault();
 		const rows = text.replace(/\r/g, '').split('\n').filter(Boolean);
 		for (const [rowOffset, rowText] of rows.entries()) {
-			const product = products[rowIndex + rowOffset];
+			const product = sheetRows[rowIndex + rowOffset];
 			if (!product) break;
 			const cells = rowText.split('\t');
 			for (const [cellOffset, cellText] of cells.entries()) {
@@ -988,7 +1071,8 @@
 	}
 
 	function focusSheetCell(rowIndex: number, columnIndex: number) {
-		const nextRow = Math.min(Math.max(rowIndex, 0), products.length - 1);
+		if (sheetRows.length === 0) return;
+		const nextRow = Math.min(Math.max(rowIndex, 0), sheetRows.length - 1);
 		const nextColumn = Math.min(Math.max(columnIndex, 0), sheetColumns.length - 1);
 		requestAnimationFrame(() => {
 			const target = document.querySelector<HTMLElement>(
@@ -1210,24 +1294,28 @@
 		}
 	}
 
+	function productListParams(page: number, pageSize: number) {
+		const params = new URLSearchParams({
+			page: String(page),
+			pageSize: String(pageSize)
+		});
+		const q = productSearch.trim();
+		if (q) params.set('q', q);
+		if (productCategoryFilter) params.set('category', productCategoryFilter);
+		if (productStatusFilter) params.set('status', productStatusFilter);
+		params.set('sort', productSort);
+		return params;
+	}
+
 	async function loadProducts(force = false) {
 		if (productsLoading || (!force && productsLoaded)) return;
 		try {
 			productsLoading = true;
 			productsError = null;
-			const params = new URLSearchParams({
-				page: String(productPage),
-				pageSize: String(PRODUCT_PAGE_SIZE)
-			});
-			const q = productSearch.trim();
-			if (q) params.set('q', q);
-			if (productCategoryFilter) params.set('category', productCategoryFilter);
-			if (productStatusFilter) params.set('status', productStatusFilter);
-			params.set('sort', productSort);
 			const response = await requestAdmin<{
 				products: AdminProduct[];
 				pagination?: { page: number; total: number; totalPages: number };
-			}>(`/admin/products?${params}`);
+			}>(`/admin/products?${productListParams(productPage, PRODUCT_PAGE_SIZE)}`);
 			products = response.products ?? [];
 			productTotal = response.pagination?.total ?? products.length;
 			productTotalPages = response.pagination?.totalPages ?? 1;
@@ -1241,8 +1329,66 @@
 		}
 	}
 
+	async function loadAllSheetProducts() {
+		if (sheetAllProductsLoading) return;
+		sheetAllProductsLoading = true;
+		sheetNotice = null;
+		spreadsheetOpen = true;
+		try {
+			const firstResponse = await requestAdmin<{
+				products: AdminProduct[];
+				pagination?: { page: number; total: number; totalPages: number };
+			}>(`/admin/products?${productListParams(1, SHEET_ALL_PAGE_SIZE)}`);
+			let rows = firstResponse.products ?? [];
+			const total = firstResponse.pagination?.total ?? rows.length;
+			const totalPages =
+				firstResponse.pagination?.totalPages ?? Math.max(1, Math.ceil(total / SHEET_ALL_PAGE_SIZE));
+			sheetAllProgress = { loaded: rows.length, total };
+
+			for (let page = 2; page <= totalPages; page += 1) {
+				const response = await requestAdmin<{
+					products: AdminProduct[];
+					pagination?: { page: number; total: number; totalPages: number };
+				}>(`/admin/products?${productListParams(page, SHEET_ALL_PAGE_SIZE)}`);
+				rows = [...rows, ...(response.products ?? [])];
+				sheetAllProgress = {
+					loaded: rows.length,
+					total: response.pagination?.total ?? total
+				};
+			}
+
+			sheetProducts = rows;
+			sheetMode = 'all';
+			activeSheetCell = null;
+			sheetNotice = {
+				tone: 'success',
+				text: `Loaded ${rows.length.toLocaleString('en-IN')} product${
+					rows.length === 1 ? '' : 's'
+				} into the sheet.`
+			};
+		} catch (loadError) {
+			sheetNotice = {
+				tone: 'error',
+				text:
+					loadError instanceof Error
+						? loadError.message
+						: 'Could not load all products into the sheet'
+			};
+		} finally {
+			sheetAllProductsLoading = false;
+		}
+	}
+
+	function resetSheetDataset() {
+		sheetMode = 'visible';
+		sheetProducts = [];
+		sheetAllProgress = { loaded: 0, total: 0 };
+		activeSheetCell = null;
+	}
+
 	function reloadProductsFromFirstPage() {
 		productPage = 1;
+		resetSheetDataset();
 		void loadProducts(true);
 	}
 
@@ -1461,6 +1607,11 @@
 	}
 
 	function handleGlobalKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && sheetFullscreen) {
+			event.preventDefault();
+			sheetFullscreen = false;
+			return;
+		}
 		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
 			event.preventDefault();
 			paletteOpen = !paletteOpen;
@@ -1589,7 +1740,7 @@
 						body: JSON.stringify(payload)
 					}
 				);
-				productEditor = mapProductToEditor(response.product);
+				applyUpdatedProducts([response.product]);
 				productNotice = { tone: 'success', text: 'Product updated.' };
 			}
 
@@ -1622,14 +1773,7 @@
 					})
 				}
 			);
-			const updatedProducts = new Map(
-				(response.products ?? []).map((product) => [product.id, product])
-			);
-			products = products.map((product) => updatedProducts.get(product.id) ?? product);
-
-			if (productEditor.id && updatedProducts.has(productEditor.id)) {
-				productEditor = mapProductToEditor(updatedProducts.get(productEditor.id)!);
-			}
+			applyUpdatedProducts(response.products ?? []);
 
 			const updatedCount = response.updated ?? response.products?.length ?? 0;
 			bulkNotice = {
@@ -1687,13 +1831,7 @@
 			}
 
 			if (updatedProducts.length > 0) {
-				const updatedById = new Map(updatedProducts.map((product) => [product.id, product]));
-				products = products.map((product) => updatedById.get(product.id) ?? product);
-
-				if (productEditor.id && updatedById.has(productEditor.id)) {
-					productEditor = mapProductToEditor(updatedById.get(productEditor.id)!);
-				}
-
+				applyUpdatedProducts(updatedProducts);
 				const nextDrafts = { ...sheetDrafts };
 				for (const product of updatedProducts) delete nextDrafts[product.id];
 				sheetDrafts = nextDrafts;
@@ -2675,7 +2813,11 @@
 
 									<!-- Product workspace -->
 									<div class="catalog-workspace">
-										<section class="spreadsheet-panel" aria-label="Visible products spreadsheet editor">
+										<section
+											class="spreadsheet-panel"
+											class:sheet-fullscreen={sheetFullscreen}
+											aria-label="Product spreadsheet editor"
+										>
 											<div class="spreadsheet-toolbar">
 												<div class="min-w-0">
 													<div class="flex items-center gap-2">
@@ -2684,7 +2826,12 @@
 														<span
 															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
 														>
-															{products.length} rows
+															{sheetRows.length.toLocaleString('en-IN')} rows
+														</span>
+														<span
+															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
+															{sheetMode === 'all' ? 'Full catalog' : 'Current page'}
 														</span>
 														{#if dirtySheetCellCount > 0}
 															<span
@@ -2700,9 +2847,52 @@
 																{selectedProductIds.length} selected
 															</span>
 														{/if}
+														{#if sheetAllProductsLoading}
+															<span
+																class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
+															>
+																Loading {sheetAllProgress.loaded.toLocaleString('en-IN')} / {Math.max(
+																	sheetAllProgress.total,
+																	productTotal
+																).toLocaleString('en-IN')}
+															</span>
+														{:else if sheetSortKey}
+															<span
+																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+															>
+																Sorted by {sheetColumnName(sheetSortKey)} {sheetSortDirection}
+															</span>
+														{/if}
 													</div>
 												</div>
 												<div class="flex flex-wrap items-center gap-2">
+													<button
+														type="button"
+														class="catalog-mini-action"
+														disabled={sheetAllProductsLoading || sheetSaving}
+														onclick={loadAllSheetProducts}
+													>
+														{sheetAllProductsLoading
+															? 'Loading...'
+															: sheetMode === 'all'
+																? 'Refresh all'
+																: 'Load all products'}
+													</button>
+													{#if sheetMode === 'all'}
+														<button
+															type="button"
+															class="catalog-mini-action"
+															disabled={sheetSaving}
+															onclick={() => (sheetMode = 'visible')}
+														>
+															Use page rows
+														</button>
+													{/if}
+													{#if sheetSortKey}
+														<button type="button" class="catalog-mini-action" onclick={clearSheetSort}>
+															Clear sort
+														</button>
+													{/if}
 													<button
 														type="button"
 														class="catalog-mini-action"
@@ -2717,6 +2907,19 @@
 														onclick={() => (spreadsheetOpen = !spreadsheetOpen)}
 													>
 														{spreadsheetOpen ? 'Hide grid' : 'Show grid'}
+													</button>
+													<button
+														type="button"
+														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+														onclick={() => (sheetFullscreen = !sheetFullscreen)}
+													>
+														{#if sheetFullscreen}
+															<Minimize2 class="size-3.5" strokeWidth={2} />
+															Exit full screen
+														{:else}
+															<Maximize2 class="size-3.5" strokeWidth={2} />
+															Full screen
+														{/if}
 													</button>
 													<button
 														type="button"
@@ -2824,13 +3027,22 @@
 																		scope="col"
 																		class:sheet-column-active={activeSheetCell?.key === column.key}
 																	>
-																		<span>{column.label}</span>
+																		<button
+																			type="button"
+																			class="sheet-column-sort"
+																			class:active={sheetSortKey === column.key}
+																			aria-label={`Sort sheet by ${column.label}`}
+																			onclick={() => toggleSheetSort(column.key)}
+																		>
+																			<span>{column.label}</span>
+																			<span aria-hidden="true">{sheetSortGlyph(column.key)}</span>
+																		</button>
 																	</th>
 																{/each}
 															</tr>
 														</thead>
 														<tbody>
-															{#each products as product, rowIndex (product.id)}
+															{#each sheetRows as product, rowIndex (product.id)}
 																<tr
 																	class:sheet-row-active={activeSheetCell?.productId === product.id}
 																	class:sheet-row-dirty={sheetRowDirty(product)}
@@ -2915,6 +3127,11 @@
 														</span>
 													{/if}
 													<span>{dirtySheetProducts.length} dirty rows</span>
+													<span>
+														{sheetMode === 'all'
+															? `${sheetRows.length.toLocaleString('en-IN')} loaded products`
+															: `Page ${productPage} of ${productTotalPages}`}
+													</span>
 												</div>
 											{/if}
 										</section>
@@ -4494,11 +4711,39 @@
 	}
 
 	.spreadsheet-panel {
+		position: relative;
 		overflow: hidden;
 		border-radius: 8px;
 		border: 1px solid var(--border-faint);
 		background: white;
 		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+	}
+
+	.spreadsheet-panel.sheet-fullscreen {
+		position: fixed;
+		inset: 0;
+		z-index: 80;
+		display: flex;
+		flex-direction: column;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.sheet-fullscreen .spreadsheet-toolbar {
+		flex: 0 0 auto;
+		padding: 12px 16px;
+	}
+
+	.sheet-fullscreen .sheet-formula-bar,
+	.sheet-fullscreen .sheet-status-bar {
+		flex: 0 0 auto;
+	}
+
+	.sheet-fullscreen .sheet-frame {
+		flex: 1 1 auto;
+		max-height: none;
+		min-height: 0;
 	}
 
 	.spreadsheet-toolbar {
@@ -4645,7 +4890,7 @@
 		top: 26px;
 	}
 
-	.sheet-table thead th span {
+	.sheet-table thead th > span {
 		display: block;
 		overflow: hidden;
 		padding: 0 9px;
@@ -4680,6 +4925,44 @@
 		background: var(--heat-8);
 		color: var(--heat-100);
 		box-shadow: inset 0 -1px 0 var(--heat-20);
+	}
+
+	.sheet-column-sort {
+		display: flex;
+		width: 100%;
+		height: 100%;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		border: 0;
+		background: transparent;
+		padding: 0 9px;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		text-transform: inherit;
+	}
+
+	.sheet-column-sort span:first-child {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sheet-column-sort span:last-child {
+		color: var(--black-alpha-32);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 10px;
+	}
+
+	.sheet-column-sort:hover,
+	.sheet-column-sort.active {
+		color: var(--heat-100);
+	}
+
+	.sheet-column-sort.active span:last-child {
+		color: var(--heat-100);
 	}
 
 	.sheet-row-button {
