@@ -4,7 +4,9 @@ export type Category = {
 	image?: string;
 };
 
-export const categories: Category[] = [
+const hiddenCategorySlugs = new Set(['ics']);
+
+export const allCategories: Category[] = [
 	{ slug: 'ram', name: 'RAM' },
 	{ slug: 'ssd', name: 'SSD' },
 	{ slug: 'motherboards', name: 'Motherboards' },
@@ -25,6 +27,12 @@ export const categories: Category[] = [
 	{ slug: 'power_buttons', name: 'Power Buttons' },
 	{ slug: 'flex_cables', name: 'Flex Cables' }
 ];
+
+export const categories: Category[] = allCategories.filter(
+	(category) => !hiddenCategorySlugs.has(category.slug)
+);
+
+export const hiddenCategories = Array.from(hiddenCategorySlugs);
 
 export type Product = {
 	id: string;

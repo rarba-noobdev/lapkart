@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Product } from '$lib/catalog';
+import { hiddenCategories, type Product } from '$lib/catalog';
 import { supabase } from '$lib/supabase/client';
 import type { Database } from '$lib/supabase/types';
 
@@ -68,6 +68,10 @@ function getClient(client?: ProductClient) {
 	return client ?? supabase;
 }
 
+function excludeHiddenCategories<T extends { neq: (column: string, value: string) => T }>(query: T) {
+	return hiddenCategories.reduce((nextQuery, category) => nextQuery.neq('category', category), query);
+}
+
 export function normalizeProductRow(row: ProductRow): Product {
 	const weightKg = Number(row.weight_kg);
 	const lengthCm = Number(row.length_cm);
@@ -125,6 +129,7 @@ export async function getProduct(id: string, client?: ProductClient) {
 		.select(productSelectFields)
 		.eq('id', id)
 		.eq('status', 'active')
+		.neq('category', 'ics')
 		.maybeSingle();
 
 	if (error) throw error;
@@ -153,10 +158,16 @@ export async function listCatalogProductPage(
 	options: ListProductsOptions = {},
 	client?: ProductClient
 ): Promise<CatalogProductsPage> {
+	if (options.category && hiddenCategories.includes(options.category)) {
+		return { products: [], total: 0 };
+	}
+
 	let query = getClient(client)
 		.from('products')
 		.select(productCardSelectFields, { count: 'exact' })
 		.eq('status', 'active');
+
+	query = excludeHiddenCategories(query);
 
 	if (options.category) {
 		query = query.eq('category', options.category);
@@ -223,6 +234,8 @@ export async function listRelatedProducts(
 	limit = 4,
 	client?: ProductClient
 ) {
+	if (hiddenCategories.includes(category)) return [];
+
 	const { data, error } = await getClient(client)
 		.from('products')
 		.select(productCardSelectFields)

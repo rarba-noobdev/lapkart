@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Product } from '$lib/catalog';
+import { hiddenCategories, type Product } from '$lib/catalog';
 import { listCatalogProductPage } from '$lib/products';
 import type { Database } from '$lib/supabase/types';
 
@@ -182,6 +182,10 @@ async function loadSearchProducts(
 	limit: number,
 	page: number
 ): Promise<ProductSearchResult> {
+	if (options.category && hiddenCategories.includes(options.category)) {
+		return { products: [], total: 0, source: 'postgres' };
+	}
+
 	try {
 		const { data, error } = await client.rpc('search_active_products', {
 			p_brand: options.brand || null,
@@ -198,7 +202,9 @@ async function loadSearchProducts(
 
 		if (error) throw error;
 
-		const rows = (data ?? []) as ProductSearchRow[];
+		const rows = ((data ?? []) as ProductSearchRow[]).filter(
+			(row) => !hiddenCategories.includes(row.category)
+		);
 		return {
 			products: rows.map(fromSearchRow),
 			total: rows[0]?.total_count ?? 0,

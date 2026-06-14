@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Product } from '$lib/catalog';
+import { hiddenCategories, type Product } from '$lib/catalog';
 import { getProduct, listCatalogProducts, listRelatedProducts } from '$lib/products';
 import type { Database } from '$lib/supabase/types';
 
@@ -88,6 +88,7 @@ export function getCachedActiveCategoryCounts(client: ProductClient) {
 
 		const counts: Record<string, number> = {};
 		for (const row of data ?? []) {
+			if (hiddenCategories.includes(row.category)) continue;
 			counts[row.category] = Number(row.count);
 		}
 		return counts;

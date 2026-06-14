@@ -235,9 +235,11 @@
 		id: string;
 		code: string;
 		description: string | null;
-		discountType: 'percent' | 'fixed';
+		discountType: 'percent' | 'fixed' | 'free_delivery';
 		discountValue: number;
 		minimumSubtotal: number;
+		firstOrderOnly?: boolean;
+		allowedPincodePrefix?: string | null;
 		maxDiscount: number | null;
 		startsAt: string | null;
 		endsAt: string | null;
@@ -254,7 +256,7 @@
 		id: string | null;
 		code: string;
 		description: string;
-		discountType: 'percent' | 'fixed';
+		discountType: 'percent' | 'fixed' | 'free_delivery';
 		discountValue: string;
 		minimumSubtotal: string;
 		maxDiscount: string;
@@ -262,6 +264,8 @@
 		endsAt: string;
 		usageLimit: string;
 		perUserLimit: string;
+		firstOrderOnly: boolean;
+		allowedPincodePrefix: string;
 		active: boolean;
 	};
 
@@ -614,6 +618,8 @@
 			endsAt: '',
 			usageLimit: '',
 			perUserLimit: '1',
+			firstOrderOnly: false,
+			allowedPincodePrefix: '',
 			active: true
 		};
 	}
@@ -631,6 +637,8 @@
 			endsAt: toDateTimeInput(coupon.endsAt),
 			usageLimit: coupon.usageLimit === null ? '' : String(coupon.usageLimit),
 			perUserLimit: String(coupon.perUserLimit),
+			firstOrderOnly: coupon.firstOrderOnly ?? false,
+			allowedPincodePrefix: coupon.allowedPincodePrefix ?? '',
 			active: coupon.active
 		};
 	}
@@ -1245,13 +1253,18 @@
 				code: couponEditor.code.trim().toUpperCase(),
 				description: couponEditor.description.trim(),
 				discountType: couponEditor.discountType,
-				discountValue: Number(couponEditor.discountValue),
+				discountValue:
+					couponEditor.discountType === 'free_delivery'
+						? 1
+						: Number(couponEditor.discountValue),
 				minimumSubtotal: Number(couponEditor.minimumSubtotal || 0),
 				maxDiscount: couponEditor.maxDiscount ? Number(couponEditor.maxDiscount) : null,
 				startsAt: fromDateTimeInput(couponEditor.startsAt),
 				endsAt: fromDateTimeInput(couponEditor.endsAt),
 				usageLimit: couponEditor.usageLimit ? Number(couponEditor.usageLimit) : null,
 				perUserLimit: Number(couponEditor.perUserLimit || 1),
+				firstOrderOnly: couponEditor.firstOrderOnly,
+				allowedPincodePrefix: couponEditor.allowedPincodePrefix.trim() || null,
 				active: couponEditor.active
 			};
 

@@ -78,35 +78,15 @@ lapkart/
 - `/cart`
 - `/checkout`
 - `/login`
-- `/profile`
+- `/dashboard`
 - `/orders`
 - `/order/[id]`
 - `/admin`
 - `/admin/fulfillment`
-
-## Deployment
-
-- GitHub repo: `rarba-noobdev/lapkart`
-- Primary branch: `main`
-- Vercel project: `lapkart`
-- Production URL: `https://lapkart-rarba-noobdevs-projects.vercel.app`
-- GitHub deployments are created by `vercel[bot]` when `main` is pushed.
-
-## Public Runtime Configuration
-
-The SvelteKit app imports Supabase browser config through `$env/static/public`, so these values must exist at build time for Vercel/GitHub deployments:
-
-- `PUBLIC_SUPABASE_URL`
-- `PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_API_BASE_URL`
-
-These public values are also pinned in `vercel.json` so GitHub-triggered Vercel builds do not fail when the Vercel dashboard environment table is missing or stale.
 
 ## Operational Notes
 
 - The active frontend is the SvelteKit app at the repo root.
 - `api/` is still present for deployment/server compatibility, but the application logic is centered on the Supabase-backed API surface.
 - Use `npm run check` as the primary migration validation command.
-- Use `npm run build` before deployment when touching route, env, or adapter configuration.
-- If a GitHub deployment fails, inspect it with `npx vercel inspect <deployment-id-or-url> --logs`.
-- A missing export error from `virtual:env/static/public` means a required public build-time env var is not available to Vercel.
+- On this Windows machine, `npm run build` may still hit a Vercel adapter `EPERM` symlink error after successful client/server compilation.
