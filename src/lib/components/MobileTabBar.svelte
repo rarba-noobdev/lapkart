@@ -11,8 +11,8 @@
 		UserRound
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { fly, scale } from 'svelte/transition';
-	import { backOut, quintOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
+	import { quintOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
@@ -100,7 +100,7 @@
 						<span
 							class="badge"
 							aria-label={`${tab.badge} items in cart`}
-							transition:scale={{ duration: 220, start: 0.5, easing: backOut }}
+							in:fly={{ y: -2, duration: 160, easing: quintOut }}
 						>
 							{#key tab.badge}
 								<span class="badge-count tab-pop">{tab.badge > 9 ? '9+' : tab.badge}</span>

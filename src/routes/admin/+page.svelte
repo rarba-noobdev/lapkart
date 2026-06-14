@@ -19,10 +19,10 @@
 		ArrowUpRight,
 		Boxes,
 		Check,
+		Filter,
 		Flame,
 		LayoutDashboard,
 		LifeBuoy,
-		Maximize2,
 		Minimize2,
 		Package,
 		Plus,
@@ -194,6 +194,13 @@
 
 	type ProductStatus = ProductEditorState['status'];
 	type ProductStatusFilter = '' | ProductStatus;
+	type ProductStockFilter = '' | 'in-stock' | 'low-stock' | 'out-of-stock';
+	type ProductQualityFilter =
+		| ''
+		| 'missing-image'
+		| 'missing-sku'
+		| 'missing-warranty'
+		| 'missing-compatibility';
 	type ProductSort =
 		| 'updated-desc'
 		| 'price-asc'
@@ -365,6 +372,19 @@
 		{ value: 'stock-asc', label: 'Low stock first' },
 		{ value: 'stock-desc', label: 'High stock first' }
 	];
+	const productStockFilterOptions: Array<{ value: ProductStockFilter; label: string }> = [
+		{ value: '', label: 'Any stock' },
+		{ value: 'in-stock', label: 'In stock' },
+		{ value: 'low-stock', label: 'Low stock' },
+		{ value: 'out-of-stock', label: 'Out of stock' }
+	];
+	const productQualityFilterOptions: Array<{ value: ProductQualityFilter; label: string }> = [
+		{ value: '', label: 'All records' },
+		{ value: 'missing-image', label: 'Missing image' },
+		{ value: 'missing-sku', label: 'Missing SKU' },
+		{ value: 'missing-warranty', label: 'Missing warranty' },
+		{ value: 'missing-compatibility', label: 'Missing compatibility' }
+	];
 	const sheetColumns: SheetColumn[] = [
 		{ key: 'title', label: 'Title', kind: 'text', width: '360px' },
 		{ key: 'brand', label: 'Brand', kind: 'text', width: '140px' },
@@ -427,6 +447,8 @@
 	let productSearch = $state(initialProductSearch);
 	let productCategoryFilter = $state('');
 	let productStatusFilter = $state<ProductStatusFilter>('');
+	let productStockFilter = $state<ProductStockFilter>('');
+	let productQualityFilter = $state<ProductQualityFilter>('');
 	let productSort = $state<ProductSort>('updated-desc');
 	let productPage = $state(1);
 	let productTotal = $state(0);
@@ -449,6 +471,11 @@
 	let sheetProducts = $state.raw<AdminProduct[]>([]);
 	let sheetAllProductsLoading = $state(false);
 	let sheetAllProgress = $state<SheetProgress>({ loaded: 0, total: 0 });
+	let sheetNextPage = $state(1);
+	let sheetTotalPages = $state(1);
+	let sheetFilterSignature = $state('');
+	let sheetFrameElement = $state<HTMLDivElement | null>(null);
+	let sheetLoadMoreError = $state<string | null>(null);
 	let sheetSortKey = $state<SheetColumnKey | null>(null);
 	let sheetSortDirection = $state<SheetSortDirection>('asc');
 	let sheetDrafts = $state<Record<string, Partial<Record<SheetColumnKey, string>>>>({});
@@ -462,11 +489,23 @@
 		if (!sheetSortKey) return rows;
 		return [...rows].sort((left, right) => compareSheetProducts(left, right));
 	});
-	const selectedProducts = $derived(
+	const selectedSheetProducts = $derived(
 		sheetRows.filter((product) => selectedProductIds.includes(product.id))
+	);
+	const selectedProducts = $derived(
+		products.filter((product) => selectedProductIds.includes(product.id))
 	);
 	const allVisibleProductsSelected = $derived(
 		products.length > 0 && products.every((product) => selectedProductIds.includes(product.id))
+	);
+	const activeCatalogFilterCount = $derived(
+		[
+			productSearch.trim(),
+			productCategoryFilter,
+			productStatusFilter,
+			productStockFilter,
+			productQualityFilter
+		].filter(Boolean).length
 	);
 	const dirtySheetProducts = $derived(sheetRows.filter((product) => sheetRowDirty(product)));
 	const dirtySheetCellCount = $derived(
@@ -498,9 +537,27 @@
 	);
 	const sheetFillTargetCount = $derived(
 		activeSheetProduct
-			? selectedProducts.filter((product) => product.id !== activeSheetProduct.id).length
+			? selectedSheetProducts.filter((product) => product.id !== activeSheetProduct.id).length
 			: 0
 	);
+	const sheetCanLoadMore = $derived(
+		sheetMode === 'all' &&
+			sheetNextPage <= sheetTotalPages &&
+			sheetProducts.length < Math.max(sheetAllProgress.total, sheetProducts.length)
+	);
+	const productKeywordCount = $derived(parseSearchKeywords(productEditor.searchKeywordsText).length);
+	const productKeywordOverflowCount = $derived(
+		Math.max(0, parseLines(productEditor.searchKeywordsText).length - 24)
+	);
+
+	$effect(() => {
+		if (!sheetFullscreen) return;
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		return () => {
+			document.body.style.overflow = previousOverflow;
+		};
+	});
 
 	let userSearch = $state('');
 	let selectedUserId = $state<string | null>(null);
@@ -758,6 +815,20 @@
 			.filter(Boolean);
 	}
 
+	function parseSearchKeywords(input: string) {
+		const seen = new Set<string>();
+		const keywords: string[] = [];
+		for (const line of parseLines(input)) {
+			const keyword = line.slice(0, 80);
+			const key = keyword.toLocaleLowerCase('en-IN');
+			if (seen.has(key)) continue;
+			seen.add(key);
+			keywords.push(keyword);
+			if (keywords.length >= 24) break;
+		}
+		return keywords;
+	}
+
 	function normalizeAdminNumberText(input: string) {
 		return input.trim().replace(/[\u20b9,\s]/gi, '');
 	}
@@ -1011,7 +1082,7 @@
 
 	function fillActiveCellToSelectedRows() {
 		if (!activeSheetProduct || !activeSheetCell) return;
-		const targets = selectedProducts.filter((product) => product.id !== activeSheetProduct.id);
+		const targets = selectedSheetProducts.filter((product) => product.id !== activeSheetProduct.id);
 		if (targets.length === 0) {
 			sheetNotice = {
 				tone: 'error',
@@ -1303,6 +1374,8 @@
 		if (q) params.set('q', q);
 		if (productCategoryFilter) params.set('category', productCategoryFilter);
 		if (productStatusFilter) params.set('status', productStatusFilter);
+		if (productStockFilter) params.set('stock', productStockFilter);
+		if (productQualityFilter) params.set('quality', productQualityFilter);
 		params.set('sort', productSort);
 		return params;
 	}
@@ -1329,60 +1402,107 @@
 		}
 	}
 
-	async function loadAllSheetProducts() {
+	function currentSheetFilterSignature() {
+		return productListParams(1, SHEET_ALL_PAGE_SIZE).toString();
+	}
+
+	function mergeProductRows(currentRows: AdminProduct[], nextRows: AdminProduct[]) {
+		const productById = new Map(currentRows.map((product) => [product.id, product]));
+		for (const product of nextRows) productById.set(product.id, product);
+		return Array.from(productById.values());
+	}
+
+	async function loadSheetProductsPage(page: number, replace: boolean) {
 		if (sheetAllProductsLoading) return;
 		sheetAllProductsLoading = true;
 		sheetNotice = null;
+		sheetLoadMoreError = null;
 		spreadsheetOpen = true;
+		if (replace) {
+			sheetMode = 'all';
+			sheetProducts = [];
+			sheetAllProgress = { loaded: 0, total: productTotal };
+			sheetNextPage = 1;
+			sheetTotalPages = 1;
+			sheetFilterSignature = currentSheetFilterSignature();
+			activeSheetCell = null;
+		}
+
 		try {
-			const firstResponse = await requestAdmin<{
+			const response = await requestAdmin<{
 				products: AdminProduct[];
 				pagination?: { page: number; total: number; totalPages: number };
-			}>(`/admin/products?${productListParams(1, SHEET_ALL_PAGE_SIZE)}`);
-			let rows = firstResponse.products ?? [];
-			const total = firstResponse.pagination?.total ?? rows.length;
+			}>(`/admin/products?${productListParams(page, SHEET_ALL_PAGE_SIZE)}`);
+			const incomingRows = response.products ?? [];
+			const nextRows = replace ? incomingRows : mergeProductRows(sheetProducts, incomingRows);
+			const total = response.pagination?.total ?? nextRows.length;
 			const totalPages =
-				firstResponse.pagination?.totalPages ?? Math.max(1, Math.ceil(total / SHEET_ALL_PAGE_SIZE));
-			sheetAllProgress = { loaded: rows.length, total };
-
-			for (let page = 2; page <= totalPages; page += 1) {
-				const response = await requestAdmin<{
-					products: AdminProduct[];
-					pagination?: { page: number; total: number; totalPages: number };
-				}>(`/admin/products?${productListParams(page, SHEET_ALL_PAGE_SIZE)}`);
-				rows = [...rows, ...(response.products ?? [])];
-				sheetAllProgress = {
-					loaded: rows.length,
-					total: response.pagination?.total ?? total
+				response.pagination?.totalPages ?? Math.max(1, Math.ceil(total / SHEET_ALL_PAGE_SIZE));
+			sheetProducts = nextRows;
+			sheetMode = 'all';
+			sheetNextPage = page + 1;
+			sheetTotalPages = totalPages;
+			sheetAllProgress = { loaded: nextRows.length, total };
+			if (replace) {
+				sheetNotice = {
+					tone: 'success',
+					text: `Loaded ${nextRows.length.toLocaleString('en-IN')} of ${total.toLocaleString(
+						'en-IN'
+					)} matching product${total === 1 ? '' : 's'}.`
 				};
 			}
-
-			sheetProducts = rows;
-			sheetMode = 'all';
-			activeSheetCell = null;
-			sheetNotice = {
-				tone: 'success',
-				text: `Loaded ${rows.length.toLocaleString('en-IN')} product${
-					rows.length === 1 ? '' : 's'
-				} into the sheet.`
-			};
 		} catch (loadError) {
+			sheetLoadMoreError =
+				loadError instanceof Error ? loadError.message : 'Could not load products into the sheet';
 			sheetNotice = {
 				tone: 'error',
-				text:
-					loadError instanceof Error
-						? loadError.message
-						: 'Could not load all products into the sheet'
+				text: sheetLoadMoreError
 			};
 		} finally {
 			sheetAllProductsLoading = false;
 		}
 	}
 
+	async function loadAllSheetProducts() {
+		await loadSheetProductsPage(1, true);
+	}
+
+	async function loadMoreSheetProducts() {
+		if (!sheetCanLoadMore || sheetAllProductsLoading) return;
+		await loadSheetProductsPage(sheetNextPage, false);
+	}
+
+	function handleSheetScroll(event: Event) {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLDivElement)) return;
+		if (!sheetCanLoadMore || sheetAllProductsLoading) return;
+		const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+		if (distanceFromBottom < 560) void loadMoreSheetProducts();
+	}
+
+	async function openSpreadsheetView() {
+		spreadsheetOpen = true;
+		sheetFullscreen = true;
+		const signature = currentSheetFilterSignature();
+		if (sheetMode !== 'all' || sheetProducts.length === 0 || sheetFilterSignature !== signature) {
+			await loadAllSheetProducts();
+		}
+		requestAnimationFrame(() => sheetFrameElement?.focus());
+	}
+
+	function closeSpreadsheetView() {
+		sheetFullscreen = false;
+		activeSheetCell = null;
+	}
+
 	function resetSheetDataset() {
 		sheetMode = 'visible';
 		sheetProducts = [];
 		sheetAllProgress = { loaded: 0, total: 0 };
+		sheetNextPage = 1;
+		sheetTotalPages = 1;
+		sheetFilterSignature = '';
+		sheetLoadMoreError = null;
 		activeSheetCell = null;
 	}
 
@@ -1398,6 +1518,28 @@
 			productSearchTimer = null;
 			reloadProductsFromFirstPage();
 		}, 300);
+	}
+
+	function submitProductSearch() {
+		if (productSearchTimer) {
+			window.clearTimeout(productSearchTimer);
+			productSearchTimer = null;
+		}
+		reloadProductsFromFirstPage();
+	}
+
+	function clearCatalogFilters() {
+		if (productSearchTimer) {
+			window.clearTimeout(productSearchTimer);
+			productSearchTimer = null;
+		}
+		productSearch = '';
+		productCategoryFilter = '';
+		productStatusFilter = '';
+		productStockFilter = '';
+		productQualityFilter = '';
+		productSort = 'updated-desc';
+		reloadProductsFromFirstPage();
 	}
 
 	function setProductPage(next: number) {
@@ -1609,7 +1751,7 @@
 	function handleGlobalKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && sheetFullscreen) {
 			event.preventDefault();
-			sheetFullscreen = false;
+			closeSpreadsheetView();
 			return;
 		}
 		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
@@ -1700,7 +1842,7 @@
 				compatibility: productEditor.compatibility,
 				warranty: productEditor.warranty,
 				highlights: parseLines(productEditor.highlightsText),
-				searchKeywords: parseLines(productEditor.searchKeywordsText),
+				searchKeywords: parseSearchKeywords(productEditor.searchKeywordsText),
 				weightKg: optionalPositivePayloadNumber(productEditor.weightKg, 'Weight'),
 				lengthCm: optionalPositivePayloadNumber(productEditor.lengthCm, 'Length'),
 				breadthCm: optionalPositivePayloadNumber(productEditor.breadthCm, 'Breadth'),
@@ -2615,42 +2757,114 @@
 													New
 												</button>
 											</div>
-											<input
-												bind:value={productSearch}
-												oninput={queueProductSearch}
-												class="input-field h-8 text-[12px]"
-												placeholder="Search title, brand, SKU, category..."
-											/>
-											<div class="mt-2 grid grid-cols-2 gap-2">
-												<select
-													bind:value={productCategoryFilter}
-													class="input-field h-8 text-[12px]"
-													onchange={reloadProductsFromFirstPage}
+											<div class="catalog-search-row">
+												<label class="catalog-search-field">
+													<Search class="size-3.5 text-[var(--black-alpha-32)]" strokeWidth={2} />
+													<input
+														bind:value={productSearch}
+														oninput={queueProductSearch}
+														onkeydown={(event) => {
+															if (event.key === 'Enter') submitProductSearch();
+														}}
+														class="catalog-search-input"
+														placeholder="Search title, brand, SKU, category..."
+													/>
+												</label>
+												<button
+													type="button"
+													class="catalog-search-submit"
+													aria-label="Search products"
+													onclick={submitProductSearch}
 												>
-													<option value="">All categories</option>
-													{#each categoryOptions as option (option.value)}
-														<option value={option.value}>{option.label}</option>
-													{/each}
-												</select>
-												<select
-													bind:value={productStatusFilter}
-													class="input-field h-8 text-[12px]"
-													onchange={reloadProductsFromFirstPage}
+													<Search class="size-3.5" strokeWidth={2} />
+												</button>
+												<button
+													type="button"
+													class="catalog-excel-button"
+													disabled={productsLoading && products.length === 0}
+													onclick={openSpreadsheetView}
 												>
-													<option value="">All status</option>
-													{#each productStatusOptions as option (option.value)}
-														<option value={option.value}>{option.label}</option>
-													{/each}
-												</select>
-												<select
-													bind:value={productSort}
-													class="input-field col-span-2 h-8 text-[12px]"
-													onchange={reloadProductsFromFirstPage}
-												>
-													{#each productSortOptions as option (option.value)}
-														<option value={option.value}>{option.label}</option>
-													{/each}
-												</select>
+													<Table2 class="size-3.5" strokeWidth={2} />
+													Excel view
+												</button>
+											</div>
+											<div class="catalog-filter-card">
+												<div class="catalog-filter-head">
+													<div class="flex items-center gap-1.5">
+														<Filter class="size-3.5 text-[var(--black-alpha-40)]" strokeWidth={2} />
+														<span>Filters</span>
+														{#if activeCatalogFilterCount > 0}
+															<strong>{activeCatalogFilterCount}</strong>
+														{/if}
+													</div>
+													{#if activeCatalogFilterCount > 0 || productSort !== 'updated-desc'}
+														<button type="button" onclick={clearCatalogFilters}>Clear</button>
+													{/if}
+												</div>
+												<div class="catalog-filter-grid">
+													<label>
+														<span>Category</span>
+														<select
+															bind:value={productCategoryFilter}
+															class="input-field h-8 text-[12px]"
+															onchange={reloadProductsFromFirstPage}
+														>
+															<option value="">All categories</option>
+															{#each categoryOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span>Status</span>
+														<select
+															bind:value={productStatusFilter}
+															class="input-field h-8 text-[12px]"
+															onchange={reloadProductsFromFirstPage}
+														>
+															<option value="">All status</option>
+															{#each productStatusOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span>Stock</span>
+														<select
+															bind:value={productStockFilter}
+															class="input-field h-8 text-[12px]"
+															onchange={reloadProductsFromFirstPage}
+														>
+															{#each productStockFilterOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span>Quality</span>
+														<select
+															bind:value={productQualityFilter}
+															class="input-field h-8 text-[12px]"
+															onchange={reloadProductsFromFirstPage}
+														>
+															{#each productQualityFilterOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label class="catalog-filter-wide">
+														<span>Organize</span>
+														<select
+															bind:value={productSort}
+															class="input-field h-8 text-[12px]"
+															onchange={reloadProductsFromFirstPage}
+														>
+															{#each productSortOptions as option (option.value)}
+																<option value={option.value}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+												</div>
 											</div>
 											<div class="mt-2 flex flex-wrap gap-1.5">
 												<button
@@ -2813,6 +3027,7 @@
 
 									<!-- Product workspace -->
 									<div class="catalog-workspace">
+										{#if sheetFullscreen}
 										<section
 											class="spreadsheet-panel"
 											class:sheet-fullscreen={sheetFullscreen}
@@ -2831,8 +3046,21 @@
 														<span
 															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
 														>
-															{sheetMode === 'all' ? 'Full catalog' : 'Current page'}
+															{sheetMode === 'all'
+																? activeCatalogFilterCount > 0
+																	? 'Filtered catalog'
+																	: 'All products'
+																: 'Current page'}
 														</span>
+														{#if sheetMode === 'all' && activeCatalogFilterCount > 0}
+															<span
+																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+															>
+																{activeCatalogFilterCount} filter{activeCatalogFilterCount === 1
+																	? ''
+																	: 's'}
+															</span>
+														{/if}
 														{#if dirtySheetCellCount > 0}
 															<span
 																class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
@@ -2872,22 +3100,8 @@
 														disabled={sheetAllProductsLoading || sheetSaving}
 														onclick={loadAllSheetProducts}
 													>
-														{sheetAllProductsLoading
-															? 'Loading...'
-															: sheetMode === 'all'
-																? 'Refresh all'
-																: 'Load all products'}
+														{sheetAllProductsLoading ? 'Loading...' : 'Refresh'}
 													</button>
-													{#if sheetMode === 'all'}
-														<button
-															type="button"
-															class="catalog-mini-action"
-															disabled={sheetSaving}
-															onclick={() => (sheetMode = 'visible')}
-														>
-															Use page rows
-														</button>
-													{/if}
 													{#if sheetSortKey}
 														<button type="button" class="catalog-mini-action" onclick={clearSheetSort}>
 															Clear sort
@@ -2911,15 +3125,10 @@
 													<button
 														type="button"
 														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-														onclick={() => (sheetFullscreen = !sheetFullscreen)}
+														onclick={closeSpreadsheetView}
 													>
-														{#if sheetFullscreen}
-															<Minimize2 class="size-3.5" strokeWidth={2} />
-															Exit full screen
-														{:else}
-															<Maximize2 class="size-3.5" strokeWidth={2} />
-															Full screen
-														{/if}
+														<Minimize2 class="size-3.5" strokeWidth={2} />
+														Close
 													</button>
 													<button
 														type="button"
@@ -2999,8 +3208,13 @@
 												</div>
 											{/if}
 
-											{#if spreadsheetOpen}
-												<div class="sheet-frame">
+													{#if spreadsheetOpen}
+												<div
+													class="sheet-frame"
+													bind:this={sheetFrameElement}
+													tabindex="-1"
+													onscroll={handleSheetScroll}
+												>
 													<table class="sheet-table">
 														<colgroup>
 															<col style="width: 54px" />
@@ -3115,6 +3329,37 @@
 														</tbody>
 													</table>
 												</div>
+												{#if sheetMode === 'all'}
+													<div class="sheet-load-more">
+														<div>
+															<span>
+																{sheetProducts.length.toLocaleString('en-IN')} of {Math.max(
+																	sheetAllProgress.total,
+																	productTotal
+																).toLocaleString('en-IN')}
+															</span>
+															{#if sheetLoadMoreError}
+																<small>{sheetLoadMoreError}</small>
+															{:else}
+																<small>
+																	{sheetCanLoadMore
+																		? 'Scroll to keep loading matching products'
+																		: 'All matching products loaded'}
+																</small>
+															{/if}
+														</div>
+														{#if sheetCanLoadMore}
+															<button
+																type="button"
+																class="catalog-mini-action"
+																disabled={sheetAllProductsLoading}
+																onclick={loadMoreSheetProducts}
+															>
+																{sheetAllProductsLoading ? 'Loading...' : 'Load more'}
+															</button>
+														{/if}
+													</div>
+												{/if}
 												<div class="sheet-status-bar">
 													<span>{activeSheetAddress}</span>
 													<span>{activeSheetProduct?.title ?? 'No cell selected'}</span>
@@ -3135,6 +3380,7 @@
 												</div>
 											{/if}
 										</section>
+										{/if}
 
 										<div class="editor-panel">
 										{#if selectedProductIds.length > 0}
@@ -3654,6 +3900,15 @@
 															class="input-field min-h-[80px] py-2"
 															style="height:auto"
 														></textarea>
+														<span
+															class="mt-1 block text-[10px] {productKeywordOverflowCount > 0
+																? 'text-[var(--accent-crimson)]'
+																: 'text-[var(--black-alpha-40)]'}"
+														>
+															{productKeywordCount}/24 saved{productKeywordOverflowCount > 0
+																? `, ${productKeywordOverflowCount} extra ignored`
+																: ''}
+														</span>
 													</label>
 												</div>
 											</section>
@@ -4593,11 +4848,162 @@
 
 	.catalog-list {
 		max-height: calc(100vh - 220px);
+		min-height: 0;
 		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: 6px;
+		scrollbar-gutter: stable;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	.catalog-search-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 34px auto;
+		gap: 6px;
+	}
+
+	.catalog-search-field {
+		display: flex;
+		min-width: 0;
+		height: 34px;
+		align-items: center;
+		gap: 7px;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 0 9px;
+		transition:
+			border-color 150ms ease,
+			box-shadow 150ms ease;
+	}
+
+	.catalog-search-field:focus-within {
+		border-color: var(--heat-40);
+		box-shadow: 0 0 0 3px var(--heat-8);
+	}
+
+	.catalog-search-input {
+		min-width: 0;
+		flex: 1;
+		border: 0;
+		background: transparent;
+		color: var(--foreground);
+		font-size: 12px;
+		outline: none;
+	}
+
+	.catalog-search-input::placeholder {
+		color: var(--black-alpha-32);
+	}
+
+	.catalog-search-submit,
+	.catalog-excel-button {
+		display: inline-flex;
+		height: 34px;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		color: var(--black-alpha-64);
+		font-size: 11px;
+		font-weight: 600;
+		transition:
+			border-color 150ms ease,
+			background-color 150ms ease,
+			color 150ms ease,
+			transform 150ms ease;
+	}
+
+	.catalog-search-submit {
+		width: 34px;
+		padding: 0;
+	}
+
+	.catalog-excel-button {
+		gap: 6px;
+		padding: 0 10px;
+		white-space: nowrap;
+	}
+
+	.catalog-search-submit:hover:not(:disabled),
+	.catalog-excel-button:hover:not(:disabled) {
+		border-color: var(--heat-40);
+		background: var(--heat-4);
+		color: var(--heat-100);
+	}
+
+	.catalog-search-submit:active:not(:disabled),
+	.catalog-excel-button:active:not(:disabled) {
+		transform: translateY(1px);
+	}
+
+	.catalog-excel-button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.catalog-filter-card {
+		margin-top: 8px;
+		border-radius: 7px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 8px;
+	}
+
+	.catalog-filter-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 7px;
+		color: var(--black-alpha-56);
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.catalog-filter-head strong {
+		display: grid;
+		min-width: 18px;
+		height: 18px;
+		place-items: center;
+		border-radius: 5px;
+		background: var(--heat-8);
+		color: var(--heat-100);
+		font-size: 10px;
+		font-weight: 700;
+	}
+
+	.catalog-filter-head button {
+		border: 0;
+		background: transparent;
+		color: var(--heat-100);
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.catalog-filter-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 7px;
+	}
+
+	.catalog-filter-grid label {
+		min-width: 0;
+	}
+
+	.catalog-filter-grid span {
+		display: block;
+		margin-bottom: 3px;
+		color: var(--black-alpha-40);
+		font-size: 10px;
+		font-weight: 600;
+	}
+
+	.catalog-filter-wide {
+		grid-column: 1 / -1;
 	}
 
 	.catalog-mini-action {
@@ -4725,8 +5131,11 @@
 		z-index: 80;
 		display: flex;
 		flex-direction: column;
+		width: 100vw;
+		height: 100dvh;
 		border: 0;
 		border-radius: 0;
+		background: white;
 		box-shadow: none;
 	}
 
@@ -4844,10 +5253,16 @@
 	.sheet-frame {
 		max-height: min(62vh, 600px);
 		overflow: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable both-edges;
 		background:
 			linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
 			linear-gradient(180deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
 		background-size: 32px 32px;
+	}
+
+	.sheet-frame:focus {
+		outline: none;
 	}
 
 	.sheet-table {
@@ -5051,7 +5466,42 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	.sheet-load-more {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		border-top: 1px solid var(--border-faint);
+		background: white;
+		padding: 8px 12px;
+		color: var(--black-alpha-48);
+		font-size: 11px;
+	}
+
+	.sheet-load-more span {
+		display: block;
+		color: var(--foreground);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sheet-load-more small {
+		display: block;
+		margin-top: 2px;
+		color: var(--black-alpha-40);
+		font-size: 10px;
+	}
+
 	@media (max-width: 767px) {
+		.catalog-search-row {
+			grid-template-columns: minmax(0, 1fr) 34px;
+		}
+
+		.catalog-excel-button {
+			grid-column: 1 / -1;
+			width: 100%;
+		}
+
 		.sheet-formula-bar {
 			grid-template-columns: 58px 30px minmax(0, 1fr);
 		}

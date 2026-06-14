@@ -359,6 +359,28 @@ const productIdParamSchema = z.object({ productId: z.string().uuid() });
 const userIdParamSchema = z.object({ userId: z.string().uuid() });
 const orderIdParamSchema = z.object({ orderId: z.string().uuid() });
 
+function normalizeLimitedStringArray(value: unknown, maxItems: number, maxLength: number) {
+	if (!Array.isArray(value)) return value;
+	const seen = new Set<string>();
+	const items: string[] = [];
+	for (const item of value) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim().slice(0, maxLength);
+		if (!text) continue;
+		const key = text.toLocaleLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		items.push(text);
+		if (items.length >= maxItems) break;
+	}
+	return items;
+}
+
+const searchKeywordsSchema = z.preprocess(
+	(value) => normalizeLimitedStringArray(value, 24, 80),
+	z.array(z.string().trim().min(1).max(80)).max(24).optional().default([])
+);
+
 const productUpsertSchema = z.object({
 	title: z.string().trim().min(4).max(200),
 	brand: z.string().trim().min(2).max(80),
@@ -377,7 +399,7 @@ const productUpsertSchema = z.object({
 	compatibility: nullableTrimmedString(500),
 	warranty: nullableTrimmedString(120),
 	highlights: z.array(z.string().trim().min(1).max(160)).max(12).optional().default([]),
-	searchKeywords: z.array(z.string().trim().min(1).max(80)).max(24).optional().default([]),
+	searchKeywords: searchKeywordsSchema,
 	weightKg: z.coerce.number().positive().max(500).nullable().optional(),
 	lengthCm: z.coerce.number().positive().max(500).nullable().optional(),
 	breadthCm: z.coerce.number().positive().max(500).nullable().optional(),
@@ -5758,6 +5780,8 @@ async function handle(req: Request) {
 		const q = escapeIlike(rawQ);
 		const category = url.searchParams.get('category')?.trim();
 		const status = url.searchParams.get('status')?.trim();
+		const stock = url.searchParams.get('stock')?.trim();
+		const quality = url.searchParams.get('quality')?.trim();
 		const sort = url.searchParams.get('sort') ?? 'updated-desc';
 		let query = adminDb.from('products').select(adminProductSelect, { count: 'exact' });
 		if (q) {
@@ -5774,6 +5798,15 @@ async function handle(req: Request) {
 		}
 		if (category) query = query.eq('category', category);
 		if (status) query = query.eq('status', status);
+		if (stock === 'in-stock') query = query.gt('stock', 0);
+		else if (stock === 'low-stock') query = query.gt('stock', 0).lte('stock', 5);
+		else if (stock === 'out-of-stock') query = query.lte('stock', 0);
+		if (quality === 'missing-image') query = query.or('image.is.null,image.eq.');
+		else if (quality === 'missing-sku') query = query.or('sku.is.null,sku.eq.');
+		else if (quality === 'missing-warranty') query = query.or('warranty.is.null,warranty.eq.');
+		else if (quality === 'missing-compatibility') {
+			query = query.or('compatibility.is.null,compatibility.eq.');
+		}
 		if (sort === 'price-asc') query = query.order('price', { ascending: true });
 		else if (sort === 'price-desc') query = query.order('price', { ascending: false });
 		else if (sort === 'stock-asc') query = query.order('stock', { ascending: true });
