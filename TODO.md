@@ -124,8 +124,8 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
       `applicable_categories`, `allowed_pincode_prefix` gating — enforced in
       validateCouponForCheckout + honored/skipped in auto-suggest; settable via
       the admin coupon API (couponWriteSchema).
-      - [ ] Add inputs for these new fields to the admin coupon editor UI (today
-            settable via API/SQL only).
+      - [x] Add inputs for these new fields to the admin coupon editor UI (first-order,
+            free delivery, category targeting, and pincode prefix).
       - [ ] **[YOU]** Create WELCOME50 (first_order_only, min 999) + CHENNAI
             (free_delivery, allowed_pincode_prefix 600) in the admin/SQL.
 - [x] Streak / repeat-purchase ladder — `streak_ladder` app_setting, delivery

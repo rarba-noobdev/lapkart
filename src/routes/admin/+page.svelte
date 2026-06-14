@@ -10,7 +10,7 @@
 	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
 	import type { AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
-	import { categories, formatINR } from '$lib/catalog';
+	import { allCategories, formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
 	import { isStaffRole, roleLabel, staffRoles, type AppRole } from '$lib/roles';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
@@ -24,9 +24,12 @@
 		LifeBuoy,
 		Package,
 		Plus,
+		RotateCcw,
+		Save,
 		Search,
 		ShieldAlert,
 		Tag,
+		Table2,
 		Trash2,
 		TrendingUp,
 		Truck,
@@ -34,22 +37,8 @@
 		X
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { fade, fly, crossfade } from 'svelte/transition';
-	import { cubicOut, quintOut } from 'svelte/easing';
-
-	const [send, receive] = crossfade({
-		duration: 300,
-		easing: cubicOut,
-		fallback(node) {
-			const style = getComputedStyle(node);
-			const opacity = +style.opacity;
-			return {
-				duration: 250,
-				easing: cubicOut,
-				css: (t) => `opacity: ${t * opacity}`
-			};
-		}
-	});
+	import { fade, fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 
 	type AdminView = 'overview' | 'catalog' | 'operations' | 'users' | 'promos' | 'support';
 
@@ -58,6 +47,16 @@
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
 		text: string;
+	};
+
+	type AdminRequestIssue = {
+		path?: Array<string | number>;
+		message?: string;
+	};
+
+	type AdminErrorBody = {
+		error?: string;
+		issues?: AdminRequestIssue[];
 	};
 
 	type AdminAnalytics = {
@@ -149,7 +148,8 @@
 		cod_allowed: boolean | null;
 		returnable: boolean | null;
 		is_universal: boolean | null;
-		updated_at: string;
+		created_at: string | null;
+		updated_at: string | null;
 	};
 
 	type ProductEditorState = {
@@ -186,6 +186,8 @@
 		codAllowed: boolean;
 		returnable: boolean;
 		isUniversal: boolean;
+		createdAt: string | null;
+		updatedAt: string | null;
 	};
 
 	type ProductStatus = ProductEditorState['status'];
@@ -210,6 +212,29 @@
 		localDeliveryEligible: BulkBoolean;
 		codAllowed: BulkBoolean;
 		returnable: BulkBoolean;
+	};
+
+	type SheetColumnKey =
+		| 'title'
+		| 'brand'
+		| 'sku'
+		| 'category'
+		| 'price'
+		| 'mrp'
+		| 'stock'
+		| 'status'
+		| 'warranty'
+		| 'compatibility';
+	type SheetColumnKind = 'text' | 'number' | 'select';
+	type SheetColumn = {
+		key: SheetColumnKey;
+		label: string;
+		kind: SheetColumnKind;
+		width: string;
+	};
+	type SheetCell = {
+		productId: string;
+		key: SheetColumnKey;
 	};
 
 	type AdminUserRecord = {
@@ -239,6 +264,7 @@
 		discountValue: number;
 		minimumSubtotal: number;
 		firstOrderOnly?: boolean;
+		applicableCategories?: string[] | null;
 		allowedPincodePrefix?: string | null;
 		maxDiscount: number | null;
 		startsAt: string | null;
@@ -265,6 +291,7 @@
 		usageLimit: string;
 		perUserLimit: string;
 		firstOrderOnly: boolean;
+		applicableCategories: string[];
 		allowedPincodePrefix: string;
 		active: boolean;
 	};
@@ -313,7 +340,7 @@
 		margin: TrendingUp
 	};
 
-	const categoryOptions = categories.map((category) => ({
+	const categoryOptions = allCategories.map((category) => ({
 		value: category.slug,
 		label: category.name
 	}));
@@ -330,8 +357,22 @@
 		{ value: 'stock-asc', label: 'Low stock first' },
 		{ value: 'stock-desc', label: 'High stock first' }
 	];
+	const sheetColumns: SheetColumn[] = [
+		{ key: 'title', label: 'Title', kind: 'text', width: '360px' },
+		{ key: 'brand', label: 'Brand', kind: 'text', width: '140px' },
+		{ key: 'sku', label: 'SKU', kind: 'text', width: '160px' },
+		{ key: 'category', label: 'Category', kind: 'select', width: '160px' },
+		{ key: 'price', label: 'Selling price', kind: 'number', width: '120px' },
+		{ key: 'mrp', label: 'MRP', kind: 'number', width: '110px' },
+		{ key: 'stock', label: 'Stock', kind: 'number', width: '90px' },
+		{ key: 'status', label: 'Status', kind: 'select', width: '120px' },
+		{ key: 'warranty', label: 'Warranty', kind: 'text', width: '190px' },
+		{ key: 'compatibility', label: 'Compatibility', kind: 'text', width: '460px' }
+	];
 	const defaultCategory = categoryOptions[0]?.value ?? '';
-	const categoryNameBySlug = new Map(categories.map((category) => [category.slug, category.name]));
+	const categoryNameBySlug = new Map(
+		allCategories.map((category) => [category.slug, category.name])
+	);
 	const currentUser = $derived(page.data.user ?? null);
 	const currentRole = $derived(page.data.role ?? null);
 	const auth = getAuthContext();
@@ -393,11 +434,50 @@
 	let bulkEditor = $state<BulkProductEditorState>(emptyBulkProductEditor());
 	let bulkSaving = $state(false);
 	let bulkNotice = $state<Notice | null>(null);
+	let spreadsheetOpen = $state(true);
+	let sheetDrafts = $state<Record<string, Partial<Record<SheetColumnKey, string>>>>({});
+	let activeSheetCell = $state<SheetCell | null>(null);
+	let sheetSaving = $state(false);
+	let sheetNotice = $state<Notice | null>(null);
+	let timelineNow = $state(Date.now());
 	const selectedProducts = $derived(
 		products.filter((product) => selectedProductIds.includes(product.id))
 	);
 	const allVisibleProductsSelected = $derived(
 		products.length > 0 && products.every((product) => selectedProductIds.includes(product.id))
+	);
+	const dirtySheetProducts = $derived(products.filter((product) => sheetRowDirty(product)));
+	const dirtySheetCellCount = $derived(
+		products.reduce((count, product) => {
+			return count + sheetColumns.filter((column) => sheetCellDirty(product, column.key)).length;
+		}, 0)
+	);
+	const activeSheetProduct = $derived.by(() => {
+		const cell = activeSheetCell;
+		return cell ? (products.find((product) => product.id === cell.productId) ?? null) : null;
+	});
+	const activeSheetColumnIndex = $derived.by(() => {
+		const cell = activeSheetCell;
+		return cell ? sheetColumns.findIndex((column) => column.key === cell.key) : -1;
+	});
+	const activeSheetColumn = $derived(
+		activeSheetColumnIndex >= 0 ? sheetColumns[activeSheetColumnIndex] : null
+	);
+	const activeSheetRowIndex = $derived(
+		activeSheetProduct ? products.findIndex((product) => product.id === activeSheetProduct.id) : -1
+	);
+	const activeSheetAddress = $derived(
+		activeSheetRowIndex >= 0 && activeSheetColumnIndex >= 0
+			? `${sheetColumnLabel(activeSheetColumnIndex)}${activeSheetRowIndex + 1}`
+			: '-'
+	);
+	const activeSheetValue = $derived(
+		activeSheetProduct && activeSheetCell ? sheetCellValue(activeSheetProduct, activeSheetCell.key) : ''
+	);
+	const sheetFillTargetCount = $derived(
+		activeSheetProduct
+			? selectedProducts.filter((product) => product.id !== activeSheetProduct.id).length
+			: 0
 	);
 
 	let userSearch = $state('');
@@ -530,7 +610,9 @@
 			codEligible: true,
 			codAllowed: true,
 			returnable: true,
-			isUniversal: false
+			isUniversal: false,
+			createdAt: null,
+			updatedAt: null
 		};
 	}
 
@@ -588,7 +670,9 @@
 			codEligible: product.cod_eligible !== false,
 			codAllowed: product.cod_allowed !== false,
 			returnable: product.returnable !== false,
-			isUniversal: product.is_universal === true
+			isUniversal: product.is_universal === true,
+			createdAt: product.created_at ?? null,
+			updatedAt: product.updated_at ?? null
 		};
 	}
 
@@ -619,6 +703,7 @@
 			usageLimit: '',
 			perUserLimit: '1',
 			firstOrderOnly: false,
+			applicableCategories: [],
 			allowedPincodePrefix: '',
 			active: true
 		};
@@ -638,6 +723,7 @@
 			usageLimit: coupon.usageLimit === null ? '' : String(coupon.usageLimit),
 			perUserLimit: String(coupon.perUserLimit),
 			firstOrderOnly: coupon.firstOrderOnly ?? false,
+			applicableCategories: coupon.applicableCategories ?? [],
 			allowedPincodePrefix: coupon.allowedPincodePrefix ?? '',
 			active: coupon.active
 		};
@@ -650,17 +736,48 @@
 			.filter(Boolean);
 	}
 
-	function payloadNumber(input: string) {
-		const value = input.trim();
+	function normalizeAdminNumberText(input: string) {
+		return input.trim().replace(/[\u20b9,\s]/gi, '');
+	}
+
+	function payloadNumber(input: string, label = 'Value') {
+		const value = normalizeAdminNumberText(input);
 		if (!value) return null;
-		return Number(value);
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) throw new Error(`${label} must be a valid number.`);
+		return parsed;
+	}
+
+	function requiredPayloadNumber(input: string, label: string, integer = false) {
+		const parsed = payloadNumber(input, label);
+		if (parsed === null) throw new Error(`${label} cannot be empty.`);
+		if (parsed < 0 || (integer && !Number.isInteger(parsed))) {
+			throw new Error(`${label} must be a valid ${integer ? 'whole number' : 'amount'}.`);
+		}
+		return parsed;
+	}
+
+	function optionalNonnegativePayloadNumber(input: string, label: string, integer = false) {
+		const parsed = payloadNumber(input, label);
+		if (parsed === null) return null;
+		if (parsed < 0 || (integer && !Number.isInteger(parsed))) {
+			throw new Error(`${label} must be a valid ${integer ? 'whole number' : 'amount'}.`);
+		}
+		return parsed;
+	}
+
+	function optionalPositivePayloadNumber(input: string, label: string) {
+		const parsed = payloadNumber(input, label);
+		if (parsed === null || parsed === 0) return null;
+		if (parsed < 0) throw new Error(`${label} must be greater than 0.`);
+		return parsed;
 	}
 
 	function optionalBulkNumber(input: string, label: string, integer = false) {
 		const value = input.trim();
 		if (!value) return null;
 
-		const parsed = Number(value);
+		const parsed = Number(normalizeAdminNumberText(value));
 		if (!Number.isFinite(parsed) || parsed < 0 || (integer && !Number.isInteger(parsed))) {
 			throw new Error(`${label} must be a valid ${integer ? 'whole number' : 'amount'}.`);
 		}
@@ -703,6 +820,309 @@
 		return update;
 	}
 
+	function productSheetBaseValue(product: AdminProduct, key: SheetColumnKey) {
+		if (key === 'title') return product.title;
+		if (key === 'brand') return product.brand;
+		if (key === 'sku') return product.sku ?? '';
+		if (key === 'category') return product.category;
+		if (key === 'price') return String(Number(product.selling_price ?? product.price ?? 0));
+		if (key === 'mrp') return String(Number(product.mrp ?? 0));
+		if (key === 'stock') return String(Number(product.stock ?? 0));
+		if (key === 'status') return normalizeProductStatus(product.status);
+		if (key === 'warranty') return product.warranty ?? '';
+		return product.compatibility ?? '';
+	}
+
+	function sheetCellValue(product: AdminProduct, key: SheetColumnKey) {
+		return sheetDrafts[product.id]?.[key] ?? productSheetBaseValue(product, key);
+	}
+
+	function sheetCellDirty(product: AdminProduct, key: SheetColumnKey) {
+		return sheetCellValue(product, key) !== productSheetBaseValue(product, key);
+	}
+
+	function sheetRowDirty(product: AdminProduct) {
+		return sheetColumns.some((column) => sheetCellDirty(product, column.key));
+	}
+
+	function sheetColumnOptions(column: SheetColumn) {
+		if (column.key === 'category') return categoryOptions;
+		if (column.key === 'status') return productStatusOptions;
+		return [];
+	}
+
+	function sheetColumnLabel(index: number) {
+		let value = index + 1;
+		let label = '';
+		while (value > 0) {
+			const remainder = (value - 1) % 26;
+			label = String.fromCharCode(65 + remainder) + label;
+			value = Math.floor((value - 1) / 26);
+		}
+		return label;
+	}
+
+	function setActiveSheetCell(product: AdminProduct, key: SheetColumnKey) {
+		activeSheetCell = { productId: product.id, key };
+		sheetNotice = null;
+	}
+
+	function setSheetCell(product: AdminProduct, key: SheetColumnKey, value: string) {
+		const base = productSheetBaseValue(product, key);
+		const currentDraft = { ...(sheetDrafts[product.id] ?? {}) };
+		if (value === base) {
+			delete currentDraft[key];
+		} else {
+			currentDraft[key] = value;
+		}
+
+		const nextDrafts = { ...sheetDrafts };
+		if (Object.keys(currentDraft).length > 0) {
+			nextDrafts[product.id] = currentDraft;
+		} else {
+			delete nextDrafts[product.id];
+		}
+		sheetDrafts = nextDrafts;
+		sheetNotice = null;
+	}
+
+	function setActiveSheetValue(value: string) {
+		if (!activeSheetProduct || !activeSheetCell) return;
+		setSheetCell(
+			activeSheetProduct,
+			activeSheetCell.key,
+			normalizeSheetPasteValue(activeSheetCell.key, value)
+		);
+	}
+
+	function resetActiveSheetCell() {
+		if (!activeSheetProduct || !activeSheetCell) return;
+		setSheetCell(
+			activeSheetProduct,
+			activeSheetCell.key,
+			productSheetBaseValue(activeSheetProduct, activeSheetCell.key)
+		);
+	}
+
+	function clearActiveSheetCell() {
+		if (!activeSheetProduct || !activeSheetCell || !activeSheetColumn) return;
+		if (activeSheetColumn.kind === 'select') {
+			resetActiveSheetCell();
+			return;
+		}
+		setSheetCell(activeSheetProduct, activeSheetCell.key, '');
+	}
+
+	function resetSheetRow(productId: string) {
+		const nextDrafts = { ...sheetDrafts };
+		delete nextDrafts[productId];
+		sheetDrafts = nextDrafts;
+		sheetNotice = null;
+	}
+
+	function resetSheetDrafts() {
+		sheetDrafts = {};
+		activeSheetCell = null;
+		sheetNotice = null;
+	}
+
+	function fillActiveCellToSelectedRows() {
+		if (!activeSheetProduct || !activeSheetCell) return;
+		const targets = selectedProducts.filter((product) => product.id !== activeSheetProduct.id);
+		if (targets.length === 0) {
+			sheetNotice = {
+				tone: 'error',
+				text: 'Select at least one other product row before filling.'
+			};
+			return;
+		}
+
+		const value = sheetCellValue(activeSheetProduct, activeSheetCell.key);
+		for (const product of targets) {
+			setSheetCell(product, activeSheetCell.key, value);
+		}
+		sheetNotice = {
+			tone: 'success',
+			text: `Filled ${targets.length} selected row${targets.length === 1 ? '' : 's'}.`
+		};
+	}
+
+	function normalizeSheetPasteValue(key: SheetColumnKey, value: string) {
+		const text = value.replace(/\r/g, '').trim();
+		if (key === 'category') {
+			const match = categoryOptions.find(
+				(option) =>
+					option.value.toLowerCase() === text.toLowerCase() ||
+					option.label.toLowerCase() === text.toLowerCase()
+			);
+			return match?.value ?? text;
+		}
+		if (key === 'status') {
+			const match = productStatusOptions.find(
+				(option) =>
+					option.value.toLowerCase() === text.toLowerCase() ||
+					option.label.toLowerCase() === text.toLowerCase()
+			);
+			return match?.value ?? text.toLowerCase();
+		}
+		if (key === 'price' || key === 'mrp' || key === 'stock') return normalizeAdminNumberText(text);
+		return text;
+	}
+
+	function handleSheetPaste(event: ClipboardEvent, rowIndex: number, columnIndex: number) {
+		const text = event.clipboardData?.getData('text/plain') ?? '';
+		if (!text.includes('\t') && !text.includes('\n')) return;
+
+		event.preventDefault();
+		const rows = text.replace(/\r/g, '').split('\n').filter(Boolean);
+		for (const [rowOffset, rowText] of rows.entries()) {
+			const product = products[rowIndex + rowOffset];
+			if (!product) break;
+			const cells = rowText.split('\t');
+			for (const [cellOffset, cellText] of cells.entries()) {
+				const column = sheetColumns[columnIndex + cellOffset];
+				if (!column) break;
+				setSheetCell(product, column.key, normalizeSheetPasteValue(column.key, cellText));
+			}
+		}
+	}
+
+	function focusSheetCell(rowIndex: number, columnIndex: number) {
+		const nextRow = Math.min(Math.max(rowIndex, 0), products.length - 1);
+		const nextColumn = Math.min(Math.max(columnIndex, 0), sheetColumns.length - 1);
+		requestAnimationFrame(() => {
+			const target = document.querySelector<HTMLElement>(
+				`[data-sheet-row="${nextRow}"][data-sheet-col="${nextColumn}"]`
+			);
+			target?.focus();
+			if (target instanceof HTMLInputElement) target.select();
+		});
+	}
+
+	function shouldMoveHorizontal(event: KeyboardEvent, direction: -1 | 1) {
+		const target = event.target;
+		if (!(target instanceof HTMLInputElement)) return true;
+		const start = target.selectionStart ?? 0;
+		const end = target.selectionEnd ?? 0;
+		if (start !== end) return false;
+		return direction < 0 ? start === 0 : end === target.value.length;
+	}
+
+	function handleSheetCellKeydown(
+		event: KeyboardEvent,
+		rowIndex: number,
+		columnIndex: number
+	) {
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+			event.preventDefault();
+			fillActiveCellToSelectedRows();
+			return;
+		}
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			resetActiveSheetCell();
+			focusSheetCell(rowIndex, columnIndex);
+			return;
+		}
+
+		if (event.key === 'Tab') {
+			event.preventDefault();
+			focusSheetCell(rowIndex, columnIndex + (event.shiftKey ? -1 : 1));
+			return;
+		}
+
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			focusSheetCell(rowIndex + (event.shiftKey ? -1 : 1), columnIndex);
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			focusSheetCell(rowIndex - 1, columnIndex);
+			return;
+		}
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			focusSheetCell(rowIndex + 1, columnIndex);
+			return;
+		}
+
+		if (event.key === 'ArrowLeft' && shouldMoveHorizontal(event, -1)) {
+			event.preventDefault();
+			focusSheetCell(rowIndex, columnIndex - 1);
+			return;
+		}
+
+		if (event.key === 'ArrowRight' && shouldMoveHorizontal(event, 1)) {
+			event.preventDefault();
+			focusSheetCell(rowIndex, columnIndex + 1);
+		}
+	}
+
+	function sheetNumber(input: string, label: string, integer = false) {
+		const value = normalizeAdminNumberText(input);
+		if (!value) throw new Error(`${label} cannot be empty.`);
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed) || parsed < 0 || (integer && !Number.isInteger(parsed))) {
+			throw new Error(`${label} must be a valid ${integer ? 'whole number' : 'amount'}.`);
+		}
+		return parsed;
+	}
+
+	function sheetText(input: string, label: string, min: number, max: number) {
+		const value = input.trim();
+		if (value.length < min) throw new Error(`${label} must be at least ${min} characters.`);
+		if (value.length > max) throw new Error(`${label} must be ${max} characters or fewer.`);
+		return value;
+	}
+
+	function sheetOptionalText(input: string, label: string, max: number) {
+		const value = input.trim();
+		if (value.length > max) throw new Error(`${label} must be ${max} characters or fewer.`);
+		return value;
+	}
+
+	function sheetPayloadFromDraft(product: AdminProduct) {
+		const payload: Record<string, unknown> = {};
+
+		for (const column of sheetColumns) {
+			if (!sheetCellDirty(product, column.key)) continue;
+			const value = sheetCellValue(product, column.key);
+
+			if (column.key === 'title') payload.title = sheetText(value, 'Title', 4, 200);
+			if (column.key === 'brand') payload.brand = sheetText(value, 'Brand', 2, 80);
+			if (column.key === 'sku') payload.sku = sheetOptionalText(value, 'SKU', 120);
+			if (column.key === 'category') {
+				if (!categoryOptions.some((option) => option.value === value)) {
+					throw new Error(`Category is not valid for ${product.title}.`);
+				}
+				payload.category = value;
+			}
+			if (column.key === 'price') {
+				const price = sheetNumber(value, 'Selling price');
+				payload.price = price;
+				payload.sellingPrice = price;
+			}
+			if (column.key === 'mrp') payload.mrp = sheetNumber(value, 'MRP');
+			if (column.key === 'stock') payload.stock = sheetNumber(value, 'Stock', true);
+			if (column.key === 'status') {
+				if (!productStatusOptions.some((option) => option.value === value)) {
+					throw new Error(`Status is not valid for ${product.title}.`);
+				}
+				payload.status = value;
+			}
+			if (column.key === 'warranty') payload.warranty = sheetOptionalText(value, 'Warranty', 120);
+			if (column.key === 'compatibility') {
+				payload.compatibility = sheetOptionalText(value, 'Compatibility', 500);
+			}
+		}
+
+		return payload;
+	}
+
 	function toDateTimeInput(value: string | null) {
 		if (!value) return '';
 		const date = new Date(value);
@@ -724,6 +1144,49 @@
 		return 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-72)]';
 	}
 
+	function formatRelativeTime(value: string | null | undefined) {
+		if (!value) return 'not recorded';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return 'not recorded';
+
+		const diffMs = date.getTime() - timelineNow;
+		const absMs = Math.abs(diffMs);
+		const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+			['year', 365 * 24 * 60 * 60 * 1000],
+			['month', 30 * 24 * 60 * 60 * 1000],
+			['week', 7 * 24 * 60 * 60 * 1000],
+			['day', 24 * 60 * 60 * 1000],
+			['hour', 60 * 60 * 1000],
+			['minute', 60 * 1000],
+			['second', 1000]
+		];
+		const formatter = new Intl.RelativeTimeFormat('en-IN', { numeric: 'auto' });
+		const fallbackUnit = units[units.length - 1]!;
+		const [unit, unitMs] = units.find(([, size]) => absMs >= size) ?? fallbackUnit;
+		return formatter.format(Math.round(diffMs / unitMs), unit);
+	}
+
+	function formatAdminDateTime(value: string | null | undefined) {
+		if (!value) return 'Not recorded';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return 'Not recorded';
+		return date.toLocaleString('en-IN', {
+			dateStyle: 'medium',
+			timeStyle: 'short'
+		});
+	}
+
+	function adminIssueMessage(issue: AdminRequestIssue) {
+		const path = issue.path && issue.path.length > 0 ? issue.path.join('.') : 'request';
+		return issue.message ? `${path}: ${issue.message}` : path;
+	}
+
+	function adminErrorMessage(body: AdminErrorBody | null) {
+		const base = body?.error ?? 'Admin request failed';
+		if (!body?.issues?.length) return base;
+		return `${base}: ${body.issues.slice(0, 3).map(adminIssueMessage).join('; ')}`;
+	}
+
 	async function requestAdmin<T>(path: string, init?: RequestInit): Promise<T> {
 		const response = await fetch(`${apiBase}${path}`, {
 			...init,
@@ -733,8 +1196,8 @@
 				...init?.headers
 			}
 		});
-		const body = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
-		if (!response.ok) throw new Error(body?.error ?? 'Admin request failed');
+		const body = (await response.json().catch(() => null)) as (T & AdminErrorBody) | null;
+		if (!response.ok) throw new Error(adminErrorMessage(body));
 		return (body ?? {}) as T;
 	}
 
@@ -1003,6 +1466,13 @@
 			paletteOpen = !paletteOpen;
 			return;
 		}
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+			if (view === 'catalog' && spreadsheetOpen && dirtySheetProducts.length > 0) {
+				event.preventDefault();
+				void saveSheetEdits();
+			}
+			return;
+		}
 		if (paletteOpen || event.ctrlKey || event.metaKey || event.altKey) return;
 		const target = event.target as HTMLElement | null;
 		if (
@@ -1059,18 +1529,20 @@
 		productNotice = null;
 
 		try {
-			const payload = {
-				title: productEditor.title,
-				brand: productEditor.brand,
+			const isNewProduct = selectedProductId === 'new' || !productEditor.id;
+			const image = productEditor.image.trim();
+			const price = requiredPayloadNumber(productEditor.price, 'Selling price');
+			const payload: Record<string, unknown> = {
+				title: productEditor.title.trim(),
+				brand: productEditor.brand.trim(),
 				category: productEditor.category,
 				description: productEditor.description,
-				image: productEditor.image,
 				images: parseLines(productEditor.imagesText),
-				price: Number(productEditor.price),
-				sellingPrice: Number(productEditor.price),
-				costPrice: payloadNumber(productEditor.costPrice) ?? 0,
-				mrp: Number(productEditor.mrp),
-				stock: Number(productEditor.stock),
+				price,
+				sellingPrice: price,
+				costPrice: optionalNonnegativePayloadNumber(productEditor.costPrice, 'Cost price') ?? 0,
+				mrp: requiredPayloadNumber(productEditor.mrp, 'MRP'),
+				stock: requiredPayloadNumber(productEditor.stock, 'Stock', true),
 				status: productEditor.status,
 				sku: productEditor.sku,
 				sourceUrl: productEditor.sourceUrl,
@@ -1078,15 +1550,16 @@
 				warranty: productEditor.warranty,
 				highlights: parseLines(productEditor.highlightsText),
 				searchKeywords: parseLines(productEditor.searchKeywordsText),
-				weightKg: payloadNumber(productEditor.weightKg),
-				lengthCm: payloadNumber(productEditor.lengthCm),
-				breadthCm: payloadNumber(productEditor.breadthCm),
-				heightCm: payloadNumber(productEditor.heightCm),
+				weightKg: optionalPositivePayloadNumber(productEditor.weightKg, 'Weight'),
+				lengthCm: optionalPositivePayloadNumber(productEditor.lengthCm, 'Length'),
+				breadthCm: optionalPositivePayloadNumber(productEditor.breadthCm, 'Breadth'),
+				heightCm: optionalPositivePayloadNumber(productEditor.heightCm, 'Height'),
 				authenticityGrade: productEditor.authenticityGrade,
 				conditionGrade: productEditor.conditionGrade,
 				hsnCode: productEditor.hsnCode,
-				gstRate: payloadNumber(productEditor.gstRate) ?? 18,
-				doaPolicyDays: payloadNumber(productEditor.doaPolicyDays) ?? 7,
+				gstRate: optionalNonnegativePayloadNumber(productEditor.gstRate, 'GST rate') ?? 18,
+				doaPolicyDays:
+					optionalNonnegativePayloadNumber(productEditor.doaPolicyDays, 'DOA policy days', true) ?? 7,
 				localDeliveryEligible: productEditor.localDeliveryEligible,
 				codEligible: productEditor.codAllowed,
 				codAllowed: productEditor.codAllowed,
@@ -1094,7 +1567,13 @@
 				isUniversal: productEditor.isUniversal
 			};
 
-			if (selectedProductId === 'new' || !productEditor.id) {
+			if (image) {
+				payload.image = image;
+			} else if (isNewProduct) {
+				throw new Error('Image URL is required before creating a product.');
+			}
+
+			if (isNewProduct) {
 				const response = await requestAdmin<{ product: AdminProduct }>('/admin/products', {
 					method: 'POST',
 					body: JSON.stringify(payload)
@@ -1165,6 +1644,85 @@
 			};
 		} finally {
 			bulkSaving = false;
+		}
+	}
+
+	async function saveSheetEdits() {
+		if (sheetSaving || dirtySheetProducts.length === 0) return;
+		sheetSaving = true;
+		sheetNotice = null;
+		productNotice = null;
+
+		try {
+			const jobs = dirtySheetProducts.map((product) => ({
+				product,
+				payload: sheetPayloadFromDraft(product)
+			}));
+			const updatedProducts: AdminProduct[] = [];
+			const errors: string[] = [];
+			const batchSize = 6;
+
+			for (let i = 0; i < jobs.length; i += batchSize) {
+				const batch = jobs.slice(i, i + batchSize);
+				const results = await Promise.allSettled(
+					batch.map((job) =>
+						requestAdmin<{ product: AdminProduct }>(`/admin/products/${job.product.id}`, {
+							method: 'PATCH',
+							body: JSON.stringify(job.payload)
+						})
+					)
+				);
+
+				for (const [index, result] of results.entries()) {
+					if (result.status === 'fulfilled') {
+						updatedProducts.push(result.value.product);
+					} else {
+						errors.push(
+							`${batch[index].product.title}: ${
+								result.reason instanceof Error ? result.reason.message : 'Save failed'
+							}`
+						);
+					}
+				}
+			}
+
+			if (updatedProducts.length > 0) {
+				const updatedById = new Map(updatedProducts.map((product) => [product.id, product]));
+				products = products.map((product) => updatedById.get(product.id) ?? product);
+
+				if (productEditor.id && updatedById.has(productEditor.id)) {
+					productEditor = mapProductToEditor(updatedById.get(productEditor.id)!);
+				}
+
+				const nextDrafts = { ...sheetDrafts };
+				for (const product of updatedProducts) delete nextDrafts[product.id];
+				sheetDrafts = nextDrafts;
+
+				await Promise.all([loadAnalytics(), refreshCatalogSearch()]);
+			}
+
+			if (errors.length > 0) {
+				sheetNotice = {
+					tone: 'error',
+					text: `Saved ${updatedProducts.length} product${
+						updatedProducts.length === 1 ? '' : 's'
+					}. ${errors[0]}`
+				};
+			} else {
+				sheetNotice = {
+					tone: 'success',
+					text: `Saved ${updatedProducts.length} product${
+						updatedProducts.length === 1 ? '' : 's'
+					}.`
+				};
+			}
+		} catch (saveError) {
+			sheetNotice = {
+				tone: 'error',
+				text: saveError instanceof Error ? saveError.message : 'Could not save sheet edits'
+			};
+		} finally {
+			sheetSaving = false;
 		}
 	}
 
@@ -1239,6 +1797,12 @@
 		couponNotice = null;
 	}
 
+	function toggleCouponCategory(category: string) {
+		couponEditor.applicableCategories = couponEditor.applicableCategories.includes(category)
+			? couponEditor.applicableCategories.filter((value) => value !== category)
+			: [...couponEditor.applicableCategories, category];
+	}
+
 	async function saveCoupon() {
 		if (!couponEditor.code.trim()) {
 			couponNotice = { tone: 'error', text: 'Coupon code is required.' };
@@ -1264,6 +1828,9 @@
 				usageLimit: couponEditor.usageLimit ? Number(couponEditor.usageLimit) : null,
 				perUserLimit: Number(couponEditor.perUserLimit || 1),
 				firstOrderOnly: couponEditor.firstOrderOnly,
+				applicableCategories: couponEditor.applicableCategories.length
+					? couponEditor.applicableCategories
+					: null,
 				allowedPincodePrefix: couponEditor.allowedPincodePrefix.trim() || null,
 				active: couponEditor.active
 			};
@@ -1320,6 +1887,9 @@
 
 		initializedForUserId = currentUser.id;
 		void loadAdmin().then(() => loadSectionData(view));
+		const timelineTimer = window.setInterval(() => {
+			timelineNow = Date.now();
+		}, 60_000);
 
 		const channel = auth.supabase
 			.channel(`admin-shell:${currentUser.id}`)
@@ -1350,6 +1920,7 @@
 			.subscribe();
 
 		return () => {
+			window.clearInterval(timelineTimer);
 			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 			if (productSearchTimer) window.clearTimeout(productSearchTimer);
 			pendingRealtimeRefresh = {
@@ -1416,8 +1987,7 @@
 						{#if view === tab.id}
 							<span
 								class="sidebar-indicator"
-								in:receive={{ key: 'sidebar-active' }}
-								out:send={{ key: 'sidebar-active' }}
+								transition:fade={{ duration: 120 }}
 							></span>
 						{/if}
 						<tab.icon class="size-[18px]" strokeWidth={1.8} />
@@ -1466,8 +2036,7 @@
 				{#if view === tab.id}
 					<span
 						class="absolute inset-x-1 -bottom-px h-[2px] rounded-full bg-[var(--heat-100)]"
-						in:receive={{ key: 'mobile-tab' }}
-						out:send={{ key: 'mobile-tab' }}
+						transition:fade={{ duration: 120 }}
 					></span>
 				{/if}
 			</button>
@@ -2030,6 +2599,17 @@
 																{product.brand} · {categoryNameBySlug.get(product.category) ??
 																	product.category}
 															</p>
+															<p
+																class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] text-[var(--black-alpha-32)]"
+															>
+																<span title={formatAdminDateTime(product.updated_at)}>
+																	Edited {formatRelativeTime(product.updated_at)}
+																</span>
+																<span aria-hidden="true">/</span>
+																<span title={formatAdminDateTime(product.created_at)}>
+																	Created {formatRelativeTime(product.created_at)}
+																</span>
+															</p>
 															<div class="mt-1 flex items-center gap-1">
 																<span
 																	class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
@@ -2093,8 +2673,253 @@
 										{/if}
 									</aside>
 
-									<!-- Product editor -->
-									<div class="editor-panel">
+									<!-- Product workspace -->
+									<div class="catalog-workspace">
+										<section class="spreadsheet-panel" aria-label="Visible products spreadsheet editor">
+											<div class="spreadsheet-toolbar">
+												<div class="min-w-0">
+													<div class="flex items-center gap-2">
+														<Table2 class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+														<h2 class="text-[14px] font-medium text-foreground">Sheet edit</h2>
+														<span
+															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
+															{products.length} rows
+														</span>
+														{#if dirtySheetCellCount > 0}
+															<span
+																class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
+															>
+																{dirtySheetCellCount} changed
+															</span>
+														{/if}
+														{#if selectedProductIds.length > 0}
+															<span
+																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+															>
+																{selectedProductIds.length} selected
+															</span>
+														{/if}
+													</div>
+												</div>
+												<div class="flex flex-wrap items-center gap-2">
+													<button
+														type="button"
+														class="catalog-mini-action"
+														disabled={sheetFillTargetCount === 0 || sheetSaving}
+														onclick={fillActiveCellToSelectedRows}
+													>
+														Fill selected
+													</button>
+													<button
+														type="button"
+														class="catalog-mini-action"
+														onclick={() => (spreadsheetOpen = !spreadsheetOpen)}
+													>
+														{spreadsheetOpen ? 'Hide grid' : 'Show grid'}
+													</button>
+													<button
+														type="button"
+														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+														disabled={dirtySheetCellCount === 0 || sheetSaving}
+														onclick={resetSheetDrafts}
+													>
+														<RotateCcw class="size-3.5" strokeWidth={2} />
+														Reset
+													</button>
+													<button
+														type="button"
+														class="button button-primary inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium text-white disabled:opacity-50"
+														disabled={dirtySheetProducts.length === 0 || sheetSaving}
+														onclick={saveSheetEdits}
+													>
+														<Save class="size-3.5" strokeWidth={2} />
+														{sheetSaving ? 'Saving...' : `Save ${dirtySheetProducts.length || ''}`}
+													</button>
+												</div>
+											</div>
+
+											<div class="sheet-formula-bar">
+												<div class="sheet-name-box" aria-label="Active cell">
+													{activeSheetAddress}
+												</div>
+												<div class="sheet-formula-mark" aria-hidden="true">fx</div>
+												{#if activeSheetProduct && activeSheetCell && activeSheetColumn?.kind === 'select'}
+													<select
+														class="sheet-formula-input"
+														value={activeSheetValue}
+														aria-label={`Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`}
+														onchange={(event) => setActiveSheetValue(event.currentTarget.value)}
+													>
+														{#each sheetColumnOptions(activeSheetColumn) as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												{:else}
+													<input
+														class="sheet-formula-input"
+														value={activeSheetValue}
+														disabled={!activeSheetProduct || !activeSheetCell}
+														aria-label={activeSheetProduct && activeSheetColumn
+															? `Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`
+															: 'Active cell value'}
+														oninput={(event) => setActiveSheetValue(event.currentTarget.value)}
+													/>
+												{/if}
+												<button
+													type="button"
+													class="sheet-formula-action"
+													disabled={!activeSheetProduct || !activeSheetCell}
+													onclick={resetActiveSheetCell}
+												>
+													Reset cell
+												</button>
+												<button
+													type="button"
+													class="sheet-formula-action"
+													disabled={!activeSheetProduct || !activeSheetCell || activeSheetColumn?.kind === 'select'}
+													onclick={clearActiveSheetCell}
+												>
+													Clear
+												</button>
+											</div>
+
+											{#if sheetNotice}
+												<div
+													class="mx-3 mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+														sheetNotice.tone
+													)}"
+													in:fly={{ y: -4, duration: 180 }}
+												>
+													<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
+													<span>{sheetNotice.text}</span>
+												</div>
+											{/if}
+
+											{#if spreadsheetOpen}
+												<div class="sheet-frame">
+													<table class="sheet-table">
+														<colgroup>
+															<col style="width: 54px" />
+															{#each sheetColumns as column (column.key)}
+																<col style="width: {column.width}" />
+															{/each}
+														</colgroup>
+														<thead>
+															<tr>
+																<th class="sheet-corner sheet-letter-corner"></th>
+																{#each sheetColumns as column, columnIndex (column.key)}
+																	<th
+																		scope="col"
+																		class:sheet-column-active={activeSheetCell?.key === column.key}
+																	>
+																		<span>{sheetColumnLabel(columnIndex)}</span>
+																	</th>
+																{/each}
+															</tr>
+															<tr>
+																<th class="sheet-corner">#</th>
+																{#each sheetColumns as column (column.key)}
+																	<th
+																		scope="col"
+																		class:sheet-column-active={activeSheetCell?.key === column.key}
+																	>
+																		<span>{column.label}</span>
+																	</th>
+																{/each}
+															</tr>
+														</thead>
+														<tbody>
+															{#each products as product, rowIndex (product.id)}
+																<tr
+																	class:sheet-row-active={activeSheetCell?.productId === product.id}
+																	class:sheet-row-dirty={sheetRowDirty(product)}
+																>
+																	<th scope="row">
+																		<button
+																			type="button"
+																			class="sheet-row-button {selectedProductIds.includes(product.id)
+																				? 'selected'
+																				: ''}"
+																			aria-label={selectedProductIds.includes(product.id)
+																				? `Deselect row ${rowIndex + 1}`
+																				: `Select row ${rowIndex + 1}`}
+																			aria-pressed={selectedProductIds.includes(product.id)}
+																			onclick={() => toggleProductSelection(product.id)}
+																		>
+																			{rowIndex + 1}
+																		</button>
+																	</th>
+																	{#each sheetColumns as column, columnIndex (column.key)}
+																		{@const active =
+																			activeSheetCell?.productId === product.id &&
+																			activeSheetCell?.key === column.key}
+																		{@const dirty = sheetCellDirty(product, column.key)}
+																		<td
+																			class:sheet-cell-active={active}
+																			class:sheet-cell-dirty={dirty}
+																			class:sheet-column-active={activeSheetCell?.key === column.key}
+																		>
+																			{#if column.kind === 'select'}
+																				<select
+																					value={sheetCellValue(product, column.key)}
+																					data-sheet-row={rowIndex}
+																					data-sheet-col={columnIndex}
+																					class="sheet-input"
+																					aria-label={`${column.label} for ${product.title}`}
+																					onfocus={() =>
+																						setActiveSheetCell(product, column.key)}
+																					onchange={(event) =>
+																						setSheetCell(product, column.key, event.currentTarget.value)}
+																					onkeydown={(event) =>
+																						handleSheetCellKeydown(event, rowIndex, columnIndex)}
+																				>
+																					{#each sheetColumnOptions(column) as option (option.value)}
+																						<option value={option.value}>{option.label}</option>
+																					{/each}
+																				</select>
+																			{:else}
+																				<input
+																					value={sheetCellValue(product, column.key)}
+																					data-sheet-row={rowIndex}
+																					data-sheet-col={columnIndex}
+																					class="sheet-input"
+																					inputmode={column.kind === 'number' ? 'decimal' : undefined}
+																					aria-label={`${column.label} for ${product.title}`}
+																					onfocus={() =>
+																						setActiveSheetCell(product, column.key)}
+																					oninput={(event) =>
+																						setSheetCell(product, column.key, event.currentTarget.value)}
+																					onkeydown={(event) =>
+																						handleSheetCellKeydown(event, rowIndex, columnIndex)}
+																					onpaste={(event) =>
+																						handleSheetPaste(event, rowIndex, columnIndex)}
+																				/>
+																			{/if}
+																		</td>
+																	{/each}
+																</tr>
+															{/each}
+														</tbody>
+													</table>
+												</div>
+												<div class="sheet-status-bar">
+													<span>{activeSheetAddress}</span>
+													<span>{activeSheetProduct?.title ?? 'No cell selected'}</span>
+													{#if activeSheetProduct}
+														<span title={formatAdminDateTime(activeSheetProduct.updated_at)}>
+															Edited {formatRelativeTime(activeSheetProduct.updated_at)}
+														</span>
+														<span title={formatAdminDateTime(activeSheetProduct.created_at)}>
+															Created {formatRelativeTime(activeSheetProduct.created_at)}
+														</span>
+													{/if}
+													<span>{dirtySheetProducts.length} dirty rows</span>
+												</div>
+											{/if}
+										</section>
+
+										<div class="editor-panel">
 										{#if selectedProductIds.length > 0}
 											<section class="bulk-editor" in:fly={{ y: -6, duration: 180 }}>
 												<div class="flex flex-wrap items-start justify-between gap-3">
@@ -2294,6 +3119,18 @@
 														{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku ||
 															'—'}
 													</p>
+													{#if selectedProductId !== 'new'}
+														<p
+															class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--black-alpha-32)]"
+														>
+															<span title={formatAdminDateTime(productEditor.updatedAt)}>
+																Edited {formatRelativeTime(productEditor.updatedAt)}
+															</span>
+															<span title={formatAdminDateTime(productEditor.createdAt)}>
+																Created {formatRelativeTime(productEditor.createdAt)}
+															</span>
+														</p>
+													{/if}
 												</div>
 												<div class="flex shrink-0 gap-5">
 													<div>
@@ -2628,6 +3465,7 @@
 											{/if}
 										</div>
 									</div>
+									</div>
 								</div>
 							{/if}
 						{:else if view === 'operations'}
@@ -2945,7 +3783,9 @@
 														<span class="mt-0.5 block text-[10px] text-[var(--black-alpha-32)]">
 															{coupon.discountType === 'percent'
 																? `${coupon.discountValue}% off`
-																: `${formatINR(coupon.discountValue)} off`}
+																: coupon.discountType === 'free_delivery'
+																	? 'Free delivery'
+																	: `${formatINR(coupon.discountValue)} off`}
 														</span>
 													</span>
 													<span class="text-right">
@@ -3042,20 +3882,23 @@
 												<select bind:value={couponEditor.discountType} class="input-field">
 													<option value="percent">Percent</option>
 													<option value="fixed">Fixed amount</option>
+													<option value="free_delivery">Free delivery</option>
 												</select>
 											</label>
-											<label>
-												<span class="field-label">
-													{couponEditor.discountType === 'percent'
-														? 'Discount percent'
-														: 'Discount amount'}
-												</span>
-												<input
-													bind:value={couponEditor.discountValue}
-													class="input-field"
-													inputmode="decimal"
-												/>
-											</label>
+											{#if couponEditor.discountType !== 'free_delivery'}
+												<label>
+													<span class="field-label">
+														{couponEditor.discountType === 'percent'
+															? 'Discount percent'
+															: 'Discount amount'}
+													</span>
+													<input
+														bind:value={couponEditor.discountValue}
+														class="input-field"
+														inputmode="decimal"
+													/>
+												</label>
+											{/if}
 											<label>
 												<span class="field-label">Minimum subtotal</span>
 												<input
@@ -3064,14 +3907,16 @@
 													inputmode="decimal"
 												/>
 											</label>
-											<label>
-												<span class="field-label">Max discount</span>
-												<input
-													bind:value={couponEditor.maxDiscount}
-													class="input-field"
-													inputmode="decimal"
-												/>
-											</label>
+											{#if couponEditor.discountType !== 'free_delivery'}
+												<label>
+													<span class="field-label">Max discount</span>
+													<input
+														bind:value={couponEditor.maxDiscount}
+														class="input-field"
+														inputmode="decimal"
+													/>
+												</label>
+											{/if}
 											<label>
 												<span class="field-label">Total usage limit</span>
 												<input
@@ -3101,6 +3946,24 @@
 													<option value="inactive">Inactive</option>
 												</select>
 											</label>
+											<label class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2">
+												<input
+													type="checkbox"
+													class="size-4 rounded border-[var(--border-muted)] accent-[var(--heat-100)]"
+													bind:checked={couponEditor.firstOrderOnly}
+												/>
+												<span class="text-[12px] font-medium text-foreground">First order only</span>
+											</label>
+											<label>
+												<span class="field-label">Pincode prefix</span>
+												<input
+													bind:value={couponEditor.allowedPincodePrefix}
+													class="input-field"
+													inputmode="numeric"
+													maxlength="6"
+													placeholder="600"
+												/>
+											</label>
 											<label>
 												<span class="field-label">Starts at</span>
 												<input
@@ -3118,6 +3981,39 @@
 												/>
 											</label>
 										</div>
+
+										<fieldset class="mt-3 rounded-md border border-[var(--border-faint)] bg-white p-3">
+											<legend class="field-label">Applicable categories</legend>
+											<div class="mt-1 flex flex-wrap items-center justify-between gap-2">
+												<span class="text-[11px] text-[var(--black-alpha-40)]">
+													Leave empty to apply to every category.
+												</span>
+												{#if couponEditor.applicableCategories.length > 0}
+													<button
+														type="button"
+														class="text-[11px] font-medium text-[var(--heat-100)]"
+														onclick={() => (couponEditor.applicableCategories = [])}
+													>
+														Clear
+													</button>
+												{/if}
+											</div>
+											<div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+												{#each categoryOptions as category (category.value)}
+													<label
+														class="flex items-center gap-2 rounded border border-[var(--border-faint)] px-2.5 py-2 text-[12px] text-[var(--black-alpha-64)]"
+													>
+														<input
+															type="checkbox"
+															class="size-3.5 rounded border-[var(--border-muted)] accent-[var(--heat-100)]"
+															checked={couponEditor.applicableCategories.includes(category.value)}
+															onchange={() => toggleCouponCategory(category.value)}
+														/>
+														<span>{category.label}</span>
+													</label>
+												{/each}
+											</div>
+										</fieldset>
 
 										<label class="mt-3 block">
 											<span class="field-label">Description</span>
@@ -3590,6 +4486,298 @@
 	}
 
 	/* ── Editor ── */
+	.catalog-workspace {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.spreadsheet-panel {
+		overflow: hidden;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+	}
+
+	.spreadsheet-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		border-bottom: 1px solid var(--border-faint);
+		background: linear-gradient(180deg, white, var(--background-lighter));
+		padding: 10px 12px;
+	}
+
+	.sheet-formula-bar {
+		display: grid;
+		grid-template-columns: 72px 34px minmax(0, 1fr) auto auto;
+		align-items: center;
+		gap: 0;
+		border-bottom: 1px solid var(--border-faint);
+		background: white;
+		padding: 6px;
+	}
+
+	.sheet-name-box,
+	.sheet-formula-mark,
+	.sheet-formula-input,
+	.sheet-formula-action {
+		height: 30px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+	}
+
+	.sheet-name-box {
+		display: grid;
+		place-items: center;
+		border-radius: 5px 0 0 5px;
+		color: var(--black-alpha-64);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 12px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sheet-formula-mark {
+		display: grid;
+		place-items: center;
+		border-left: 0;
+		color: var(--heat-100);
+		font-family: ui-serif, Georgia, Cambria, serif;
+		font-size: 13px;
+		font-style: italic;
+		font-weight: 700;
+	}
+
+	.sheet-formula-input {
+		min-width: 0;
+		border-left: 0;
+		background: white;
+		padding: 0 10px;
+		color: var(--foreground);
+		font-size: 12px;
+		outline: none;
+	}
+
+	.sheet-formula-input:focus {
+		border-color: var(--heat-40);
+		box-shadow: inset 0 0 0 1px var(--heat-20);
+	}
+
+	.sheet-formula-input:disabled {
+		color: var(--black-alpha-32);
+	}
+
+	.sheet-formula-action {
+		border-left: 0;
+		padding: 0 10px;
+		color: var(--black-alpha-56);
+		font-size: 11px;
+		font-weight: 600;
+		transition:
+			background-color 150ms ease,
+			color 150ms ease;
+	}
+
+	.sheet-formula-action:last-child {
+		border-radius: 0 5px 5px 0;
+	}
+
+	.sheet-formula-action:hover:not(:disabled) {
+		background: white;
+		color: var(--foreground);
+	}
+
+	.sheet-formula-action:disabled {
+		opacity: 0.45;
+	}
+
+	.sheet-frame {
+		max-height: min(62vh, 600px);
+		overflow: auto;
+		background:
+			linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+			linear-gradient(180deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+		background-size: 32px 32px;
+	}
+
+	.sheet-table {
+		min-width: 1900px;
+		border-collapse: separate;
+		border-spacing: 0;
+		table-layout: fixed;
+		background: white;
+	}
+
+	.sheet-table th,
+	.sheet-table td {
+		height: 34px;
+		border-right: 1px solid var(--border-faint);
+		border-bottom: 1px solid var(--border-faint);
+		padding: 0;
+	}
+
+	.sheet-table thead th {
+		position: sticky;
+		z-index: 2;
+		background: var(--background-lighter);
+		color: var(--black-alpha-56);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-align: left;
+		text-transform: uppercase;
+	}
+
+	.sheet-table thead tr:first-child th {
+		top: 0;
+		height: 26px;
+		background: #f4f2ef;
+		color: var(--black-alpha-40);
+		text-align: center;
+	}
+
+	.sheet-table thead tr:nth-child(2) th {
+		top: 26px;
+	}
+
+	.sheet-table thead th span {
+		display: block;
+		overflow: hidden;
+		padding: 0 9px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sheet-table th:first-child {
+		position: sticky;
+		left: 0;
+		z-index: 3;
+		background: var(--background-lighter);
+	}
+
+	.sheet-table thead th:first-child {
+		z-index: 4;
+	}
+
+	.sheet-corner {
+		text-align: center !important;
+	}
+
+	.sheet-letter-corner {
+		background: #efede9 !important;
+	}
+
+	.sheet-column-active {
+		background: rgba(250, 93, 25, 0.035);
+	}
+
+	.sheet-table thead th.sheet-column-active {
+		background: var(--heat-8);
+		color: var(--heat-100);
+		box-shadow: inset 0 -1px 0 var(--heat-20);
+	}
+
+	.sheet-row-button {
+		display: grid;
+		width: 100%;
+		height: 100%;
+		place-items: center;
+		border: 0;
+		background: transparent;
+		color: var(--black-alpha-40);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 11px;
+		font-weight: 600;
+		transition:
+			background-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.sheet-row-button:hover,
+	.sheet-row-button.selected {
+		background: var(--heat-8);
+		color: var(--heat-100);
+	}
+
+	.sheet-row-active th:first-child {
+		background: var(--heat-8);
+	}
+
+	.sheet-row-active .sheet-row-button {
+		color: var(--heat-100);
+	}
+
+	.sheet-row-dirty th:first-child {
+		background: var(--heat-4);
+	}
+
+	.sheet-input {
+		width: 100%;
+		height: 100%;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		padding: 0 9px;
+		color: var(--foreground);
+		font-size: 12px;
+		outline: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sheet-input:focus {
+		background: white;
+	}
+
+	.sheet-cell-active {
+		position: relative;
+		z-index: 1;
+		box-shadow: inset 0 0 0 2px var(--heat-100);
+	}
+
+	.sheet-cell-dirty {
+		background: var(--heat-4);
+	}
+
+	.sheet-cell-dirty .sheet-input {
+		color: var(--heat-120);
+		font-weight: 500;
+	}
+
+	.sheet-status-bar {
+		display: flex;
+		min-height: 28px;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+		border-top: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 5px 10px;
+		color: var(--black-alpha-48);
+		font-size: 11px;
+	}
+
+	.sheet-status-bar span:first-child {
+		color: var(--foreground);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+
+	@media (max-width: 767px) {
+		.sheet-formula-bar {
+			grid-template-columns: 58px 30px minmax(0, 1fr);
+		}
+
+		.sheet-formula-action {
+			display: none;
+		}
+	}
+
 	.editor-panel {
 		display: flex;
 		flex-direction: column;

@@ -262,9 +262,9 @@ const commerceSettingsCache: { expiresAt: number; value: CommerceSettings | null
 	value: null
 };
 const adminProductSelect =
-	'id,title,brand,category,description,image,images,price,mrp,stock,status,sku,source_url,compatibility,warranty,highlights,search_keywords,weight_kg,length_cm,breadth_cm,height_cm,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible,cost_price,selling_price,max_discount_pct,cod_allowed,returnable,is_universal,updated_at';
+	'id,title,brand,category,description,image,images,price,mrp,stock,status,sku,source_url,compatibility,warranty,highlights,search_keywords,weight_kg,length_cm,breadth_cm,height_cm,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible,cost_price,selling_price,max_discount_pct,cod_allowed,returnable,is_universal,created_at,updated_at';
 const adminCouponSelect =
-	'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active,created_at,updated_at';
+	'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,first_order_only,applicable_categories,allowed_pincode_prefix,active,created_at,updated_at';
 
 const nullableTrimmedString = (max: number) =>
 	z
@@ -293,7 +293,10 @@ const productCategorySlugs = [
 	'palmrests',
 	'hinges',
 	'speakers',
-	'hdd_boards'
+	'hdd_boards',
+	'ics',
+	'power_buttons',
+	'flex_cables'
 ] as const;
 
 const fraudScoreSchema = z.object({
@@ -2957,6 +2960,7 @@ function productsToCsv(rows: Array<Record<string, unknown>>) {
 		'cod_allowed',
 		'returnable',
 		'is_universal',
+		'created_at',
 		'image',
 		'images',
 		'updated_at'
@@ -5898,6 +5902,11 @@ async function handle(req: Request) {
 				endsAt: coupon.ends_at,
 				usageLimit: coupon.usage_limit,
 				perUserLimit: coupon.per_user_limit,
+				firstOrderOnly: coupon.first_order_only === true,
+				applicableCategories: Array.isArray(coupon.applicable_categories)
+					? coupon.applicable_categories
+					: null,
+				allowedPincodePrefix: coupon.allowed_pincode_prefix,
 				active: coupon.active,
 				createdAt: coupon.created_at,
 				updatedAt: coupon.updated_at,
