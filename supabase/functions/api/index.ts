@@ -100,6 +100,7 @@ type CheckoutProductRow = {
 	id: string;
 	title: string;
 	brand: string;
+	category?: string | null;
 	image: string;
 	images: string[] | null;
 	price: number | string;
@@ -128,7 +129,7 @@ type AppliedCoupon = {
 	id: string;
 	code: string;
 	description: string | null;
-	discountType: 'percent' | 'fixed';
+	discountType: 'percent' | 'fixed' | 'free_delivery';
 	discountValue: number;
 	discountAmount: number;
 };
@@ -627,7 +628,7 @@ const couponWriteSchema = z.object({
 		.max(40)
 		.transform((value) => value.toUpperCase()),
 	description: z.string().trim().max(300).optional().default(''),
-	discountType: z.enum(['percent', 'fixed']),
+	discountType: z.enum(['percent', 'fixed', 'free_delivery']),
 	discountValue: z.coerce.number().positive().max(100_000),
 	minimumSubtotal: z.coerce.number().min(0).max(10_000_000).optional().default(0),
 	maxDiscount: z.coerce.number().positive().max(10_000_000).nullable().optional(),
@@ -635,6 +636,9 @@ const couponWriteSchema = z.object({
 	endsAt: z.string().datetime().nullable().optional(),
 	usageLimit: z.coerce.number().int().positive().max(1_000_000).nullable().optional(),
 	perUserLimit: z.coerce.number().int().positive().max(100).optional().default(1),
+	firstOrderOnly: z.boolean().optional().default(false),
+	applicableCategories: z.array(z.string().trim().min(1).max(60)).max(40).nullable().optional(),
+	allowedPincodePrefix: z.string().trim().max(6).nullable().optional(),
 	active: z.boolean().optional().default(true)
 });
 
@@ -2505,11 +2509,17 @@ async function getRtoRiskScore({
 async function validateCouponForCheckout({
 	userId,
 	code,
-	subtotal
+	subtotal,
+	shipping = 0,
+	pincode,
+	categories = []
 }: {
 	userId: string;
 	code: string;
 	subtotal: number;
+	shipping?: number;
+	pincode?: string;
+	categories?: string[];
 }): Promise<AppliedCoupon | null> {
 	const normalizedCode = code.trim().toUpperCase();
 	if (!normalizedCode) return null;
@@ -2521,13 +2531,44 @@ async function validateCouponForCheckout({
 	const { data: coupon, error } = await adminDb
 		.from('coupons')
 		.select(
-			'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active'
+			'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,active,first_order_only,applicable_categories,allowed_pincode_prefix'
 		)
 		.ilike('code', normalizedCode)
 		.maybeSingle();
 	if (error) throw error;
 	if (!coupon || coupon.active !== true) {
 		throw new HttpError(400, 'Coupon is not active');
+	}
+
+	// First-order-only: reject if the customer already has any order.
+	if (coupon.first_order_only) {
+		const { count: priorOrders } = await adminDb
+			.from('orders')
+			.select('id', { count: 'exact', head: true })
+			.eq('user_id', userId);
+		if ((priorOrders ?? 0) > 0) {
+			throw new HttpError(400, 'This coupon is for your first order only');
+		}
+	}
+
+	// Pincode gating (e.g. CHENNAI -> 600xxx).
+	const pinPrefix = coupon.allowed_pincode_prefix
+		? String(coupon.allowed_pincode_prefix).trim()
+		: '';
+	if (pinPrefix && !(pincode ?? '').trim().startsWith(pinPrefix)) {
+		throw new HttpError(400, 'This coupon is not valid for your delivery pincode');
+	}
+
+	// Category gating: cart must contain at least one item in an allowed category.
+	const allowedCategories = Array.isArray(coupon.applicable_categories)
+		? (coupon.applicable_categories as string[])
+		: [];
+	if (allowedCategories.length > 0) {
+		const set = new Set(allowedCategories.map((value) => value.toLowerCase()));
+		const hasMatch = categories.some((category) => set.has(String(category).toLowerCase()));
+		if (!hasMatch) {
+			throw new HttpError(400, 'This coupon does not apply to the items in your cart');
+		}
 	}
 
 	const now = Date.now();
@@ -2566,15 +2607,30 @@ async function validateCouponForCheckout({
 		throw new HttpError(400, 'You have already used this coupon');
 	}
 
-	const discountType = coupon.discount_type === 'percent' ? 'percent' : 'fixed';
+	const discountType: 'percent' | 'fixed' | 'free_delivery' =
+		coupon.discount_type === 'percent'
+			? 'percent'
+			: coupon.discount_type === 'free_delivery'
+				? 'free_delivery'
+				: 'fixed';
 	const discountValue = Number(coupon.discount_value);
-	const rawDiscount = discountType === 'percent' ? (subtotal * discountValue) / 100 : discountValue;
 	const maxDiscount = coupon.max_discount === null ? null : Number(coupon.max_discount);
-	const discountAmount = roundMoney(
-		Math.min(subtotal, maxDiscount ? Math.min(rawDiscount, maxDiscount) : rawDiscount)
-	);
-	if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-		throw new HttpError(400, 'Coupon does not apply to this cart');
+	let discountAmount: number;
+	if (discountType === 'free_delivery') {
+		// Free delivery waives the shipping charge — no shipping, no benefit.
+		discountAmount = roundMoney(Math.max(0, shipping));
+		if (discountAmount <= 0) {
+			throw new HttpError(400, 'This order already has free delivery');
+		}
+	} else {
+		const rawDiscount =
+			discountType === 'percent' ? (subtotal * discountValue) / 100 : discountValue;
+		discountAmount = roundMoney(
+			Math.min(subtotal, maxDiscount ? Math.min(rawDiscount, maxDiscount) : rawDiscount)
+		);
+		if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+			throw new HttpError(400, 'Coupon does not apply to this cart');
+		}
 	}
 
 	return {
@@ -2607,7 +2663,7 @@ async function buildCheckoutSummary(
 	const { data: products, error } = await adminDb
 		.from('products')
 		.select(
-			'id,title,brand,image,images,price,selling_price,stock,status,weight_kg,local_delivery_eligible,cod_eligible,cod_allowed,returnable,is_universal,max_discount_pct'
+			'id,title,brand,category,image,images,price,selling_price,stock,status,weight_kg,local_delivery_eligible,cod_eligible,cod_allowed,returnable,is_universal,max_discount_pct'
 		)
 		.in('id', productIds);
 	if (error) throw error;
@@ -2686,7 +2742,10 @@ async function buildCheckoutSummary(
 	const coupon = await validateCouponForCheckout({
 		userId,
 		code: input.couponCode,
-		subtotal
+		subtotal,
+		shipping: roundMoney(selectedRate),
+		pincode: input.address.pincode,
+		categories: productRows.map((product) => String(product.category ?? '')).filter(Boolean)
 	});
 	const discountTotal = coupon?.discountAmount ?? 0;
 	const shipping = roundMoney(selectedRate);
@@ -2927,6 +2986,17 @@ function couponPayloadFromInput(
 	if ('usageLimit' in input) payload.usage_limit = input.usageLimit ?? null;
 	if ('perUserLimit' in input && input.perUserLimit !== undefined)
 		payload.per_user_limit = input.perUserLimit;
+	if ('firstOrderOnly' in input && input.firstOrderOnly !== undefined)
+		payload.first_order_only = input.firstOrderOnly;
+	if ('applicableCategories' in input)
+		payload.applicable_categories =
+			input.applicableCategories && input.applicableCategories.length
+				? input.applicableCategories
+				: null;
+	if ('allowedPincodePrefix' in input)
+		payload.allowed_pincode_prefix = input.allowedPincodePrefix
+			? input.allowedPincodePrefix.trim()
+			: null;
 	if ('active' in input && input.active !== undefined) payload.active = input.active;
 	return payload;
 }
@@ -3037,15 +3107,30 @@ async function handle(req: Request) {
 		const { data: candidates } = await adminDb
 			.from('coupons')
 			.select(
-				'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit'
+				'id,code,description,discount_type,discount_value,minimum_subtotal,max_discount,starts_at,ends_at,usage_limit,per_user_limit,first_order_only,applicable_categories,allowed_pincode_prefix'
 			)
 			.eq('active', true)
 			.lte('minimum_subtotal', subtotal)
 			.or(`starts_at.is.null,starts_at.lte.${nowIso}`)
 			.or(`ends_at.is.null,ends_at.gte.${nowIso}`);
 
+		// The suggest endpoint only knows subtotal + user, so it skips coupons
+		// whose eligibility depends on cart/address context (pincode, category,
+		// free delivery). Those still work when typed in — the apply step has the
+		// full context. first-order-only is checkable here via the order count.
+		const { count: priorOrderCount } = await adminDb
+			.from('orders')
+			.select('id', { count: 'exact', head: true })
+			.eq('user_id', user.id);
+		const hasPriorOrders = (priorOrderCount ?? 0) > 0;
+
 		let best: { code: string; description: string | null; discount: number } | null = null;
 		for (const coupon of candidates ?? []) {
+			if (coupon.discount_type === 'free_delivery') continue;
+			if (coupon.allowed_pincode_prefix) continue;
+			if (Array.isArray(coupon.applicable_categories) && coupon.applicable_categories.length > 0)
+				continue;
+			if (coupon.first_order_only && hasPriorOrders) continue;
 			const discountType = coupon.discount_type === 'percent' ? 'percent' : 'fixed';
 			const discountValue = Number(coupon.discount_value);
 			if (!Number.isFinite(discountValue) || discountValue <= 0) continue;

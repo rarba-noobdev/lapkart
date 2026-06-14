@@ -120,9 +120,14 @@ Guardrails: every reward passes the `min_margin_floor_pct` gate; rewards pay
       real number, and create launch coupons (e.g. WELCOME50). Not auto-seeded
       large because live rewards/coupons are real money.
 - [x] "Pay online to earn a scratch card" nudge on the COD option at checkout.
-- [ ] Extend coupons: `first_order_only`, `free_delivery` / `store_credit`
-      discount types, `applicable_categories`, pincode gating (for a
-      "CHENNAI free delivery" coupon; current schema is percent/fixed only)
+- [x] Extend coupons: `first_order_only`, `free_delivery` discount type,
+      `applicable_categories`, `allowed_pincode_prefix` gating — enforced in
+      validateCouponForCheckout + honored/skipped in auto-suggest; settable via
+      the admin coupon API (couponWriteSchema).
+      - [ ] Add inputs for these new fields to the admin coupon editor UI (today
+            settable via API/SQL only).
+      - [ ] **[YOU]** Create WELCOME50 (first_order_only, min 999) + CHENNAI
+            (free_delivery, allowed_pincode_prefix 600) in the admin/SQL.
 - [x] Streak / repeat-purchase ladder — `streak_ladder` app_setting, delivery
       trigger issues store credit at milestones, `my_streak_progress()` RPC +
       progress bar on /rewards.
