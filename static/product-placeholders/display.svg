@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" role="img" aria-label="Laptop display placeholder">
+  <rect width="900" height="640" fill="#f4f3ef"/>
+  <rect x="116" y="86" width="668" height="414" rx="18" fill="#111111"/>
+  <rect x="140" y="110" width="620" height="350" rx="8" fill="#e7edf3"/>
+  <path d="M140 380h620v80a8 8 0 0 1-8 8H148a8 8 0 0 1-8-8z" fill="#d8e2ea"/>
+  <path d="M190 165h520" stroke="#b7c5cf" stroke-width="12" stroke-linecap="round"/>
+  <path d="M190 214h390" stroke="#c7d2da" stroke-width="12" stroke-linecap="round"/>
+  <path d="M190 263h460" stroke="#c7d2da" stroke-width="12" stroke-linecap="round"/>
+  <path d="M190 312h315" stroke="#c7d2da" stroke-width="12" stroke-linecap="round"/>
+  <rect x="374" y="500" width="152" height="36" fill="#111111"/>
+  <rect x="300" y="536" width="300" height="28" rx="14" fill="#111111"/>
+  <text x="450" y="598" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#4b5563">DISPLAY PANEL</text>
+</svg>

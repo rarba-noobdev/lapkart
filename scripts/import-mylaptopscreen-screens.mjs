@@ -24,6 +24,8 @@ const DEFAULT_WEIGHT_KG = 1;
 const DEFAULT_LENGTH_CM = 45;
 const DEFAULT_BREADTH_CM = 25;
 const DEFAULT_HEIGHT_CM = 10;
+const DISPLAY_IMAGE =
+	'https://www.power-x.in/cdn/shop/files/laptop-screen-156-40-pin-full-hdpowerx-the-technology-people-104400.png?v=1739959776&width=800';
 const sourceBrandPattern = /\b(my\s*laptop\s*screen|mylaptopscreen)\b/gi;
 
 const applePattern = /\b(apple|macbook|imac|ipad|macbook\s+pro|macbook\s+air)\b/i;
@@ -381,8 +383,8 @@ function normalizeProduct(product) {
 		title,
 		brand,
 		category: 'displays',
-		image: images[0],
-		images,
+		image: DISPLAY_IMAGE,
+		images: [DISPLAY_IMAGE],
 		source_url: product.permalink || `https://mylaptopscreen.com/product/${product.slug}/`,
 		description: truncateAttribute(
 			[

@@ -72,6 +72,36 @@ function excludeHiddenCategories<T extends { neq: (column: string, value: string
 	return hiddenCategories.reduce((nextQuery, category) => nextQuery.neq('category', category), query);
 }
 
+function escapeSearchTerm(value: string) {
+	return value.replace(/[%_,]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function fallbackSearchTerms(value: string) {
+	const base = escapeSearchTerm(value);
+	if (!base) return [];
+
+	const terms = new Set([base]);
+	const words = base.split(/\s+/);
+
+	for (let index = 0; index < words.length - 1; index += 1) {
+		const current = words[index];
+		const next = words[index + 1];
+		if (!current || !next) continue;
+
+		terms.add([...words.slice(0, index), `${current}-${next}`, ...words.slice(index + 2)].join(' '));
+	}
+
+	if (words.length > 1) {
+		terms.add(words.join('-'));
+	}
+
+	return Array.from(terms).filter(Boolean).slice(0, 8);
+}
+
+function normalizedFallbackTerm(value: string) {
+	return value.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+}
+
 export function normalizeProductRow(row: ProductRow): Product {
 	const weightKg = Number(row.weight_kg);
 	const lengthCm = Number(row.length_cm);
@@ -178,8 +208,29 @@ export async function listCatalogProductPage(
 	}
 
 	if (options.query) {
-		const escaped = options.query.replace(/[%_]/g, '\\$&');
-		query = query.or(`title.ilike.%${escaped}%,brand.ilike.%${escaped}%,sku.ilike.%${escaped}%`);
+		const searchTerms = fallbackSearchTerms(options.query);
+		const searchFilters = searchTerms.flatMap((term) => [
+			`title.ilike.%${term}%`,
+			`brand.ilike.%${term}%`,
+			`sku.ilike.%${term}%`,
+			`compatibility.ilike.%${term}%`,
+			`warranty.ilike.%${term}%`,
+			`description.ilike.%${term}%`,
+			`source_url.ilike.%${term}%`
+		]);
+		const normalizedTerm = normalizedFallbackTerm(options.query);
+		if (normalizedTerm && normalizedTerm !== options.query.trim().toLowerCase()) {
+			searchFilters.push(
+				`title.ilike.%${normalizedTerm}%`,
+				`sku.ilike.%${normalizedTerm}%`,
+				`compatibility.ilike.%${normalizedTerm}%`
+			);
+		}
+		query = query.or(
+			searchFilters.length > 0
+				? searchFilters.join(',')
+				: 'title.ilike.%__lapkart_no_search_term__%'
+		);
 	}
 
 	if (options.inStock) {

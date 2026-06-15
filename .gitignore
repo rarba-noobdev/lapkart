@@ -74,4 +74,7 @@ www/robots.txt
 rzp-key.csv
 
 # One-time scripts
-scripts/
+scripts/*
+!scripts/import-display-sources.mjs
+!scripts/import-dell-parts-people-displays.mjs
+!scripts/import-ipc-advanced-search-displays.mjs
