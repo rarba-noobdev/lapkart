@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hiddenCategories, type Product } from '$lib/catalog';
+import { isPrivateSupplierQuery, sanitizePublicProduct } from '$lib/public-product';
 import { listCatalogProductPage } from '$lib/products';
 import type { Database } from '$lib/supabase/types';
 
@@ -130,7 +131,7 @@ function writePendingSearch(key: string, pending: Promise<ProductSearchResult>) 
 }
 
 function fromSearchRow(row: ProductSearchRow): Product {
-	return {
+	return sanitizePublicProduct({
 		id: row.id,
 		title: row.title,
 		brand: row.brand,
@@ -150,7 +151,7 @@ function fromSearchRow(row: ProductSearchRow): Product {
 		condition_grade: row.condition_grade ?? 'new',
 		local_delivery_eligible: row.local_delivery_eligible ?? undefined,
 		cod_eligible: row.cod_eligible ?? undefined
-	};
+	});
 }
 
 export async function searchProducts(
@@ -183,6 +184,9 @@ async function loadSearchProducts(
 	page: number
 ): Promise<ProductSearchResult> {
 	if (options.category && hiddenCategories.includes(options.category)) {
+		return { products: [], total: 0, source: 'postgres' };
+	}
+	if (isPrivateSupplierQuery(options.query)) {
 		return { products: [], total: 0, source: 'postgres' };
 	}
 

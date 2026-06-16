@@ -8,10 +8,11 @@
 	import AdminGrievanceManager from '$lib/components/admin/AdminGrievanceManager.svelte';
 	import AdminPromotionsManager from '$lib/components/admin/AdminPromotionsManager.svelte';
 	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
-	import type { AdminOrderRecord } from '$lib/admin';
+	import { uploadAdminImage, type AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
 	import { allCategories, formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
+	import { nativeImpact, pickImageFile } from '$lib/native/capacitor';
 	import { isStaffRole, roleLabel, staffRoles, type AppRole } from '$lib/roles';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 	import {
@@ -25,6 +26,8 @@
 		LifeBuoy,
 		Minimize2,
 		Package,
+		ImagePlus,
+		Pencil,
 		Plus,
 		RotateCcw,
 		Save,
@@ -459,8 +462,12 @@
 	let selectedProductId = $state<string | 'new' | null>(null);
 	let productEditor = $state<ProductEditorState>(emptyProductEditor());
 	let productSaving = $state(false);
+	let productImageUploading = $state(false);
+	let productImageUploadError = $state('');
 	let productDeleting = $state(false);
 	let productNotice = $state<Notice | null>(null);
+	let drawerOpen = $state(false);
+	let rowDeletingId = $state<string | null>(null);
 	let selectedProductIds = $state<string[]>([]);
 	let bulkEditor = $state<BulkProductEditorState>(emptyBulkProductEditor());
 	let bulkSaving = $state(false);
@@ -533,7 +540,9 @@
 			: '-'
 	);
 	const activeSheetValue = $derived(
-		activeSheetProduct && activeSheetCell ? sheetCellValue(activeSheetProduct, activeSheetCell.key) : ''
+		activeSheetProduct && activeSheetCell
+			? sheetCellValue(activeSheetProduct, activeSheetCell.key)
+			: ''
 	);
 	const sheetFillTargetCount = $derived(
 		activeSheetProduct
@@ -545,7 +554,9 @@
 			sheetNextPage <= sheetTotalPages &&
 			sheetProducts.length < Math.max(sheetAllProgress.total, sheetProducts.length)
 	);
-	const productKeywordCount = $derived(parseSearchKeywords(productEditor.searchKeywordsText).length);
+	const productKeywordCount = $derived(
+		parseSearchKeywords(productEditor.searchKeywordsText).length
+	);
 	const productKeywordOverflowCount = $derived(
 		Math.max(0, parseLines(productEditor.searchKeywordsText).length - 24)
 	);
@@ -971,7 +982,8 @@
 			return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 		}
 		if (key === 'category') return categoryNameBySlug.get(value) ?? value;
-		if (key === 'status') return productStatusOptions.find((option) => option.value === value)?.label ?? value;
+		if (key === 'status')
+			return productStatusOptions.find((option) => option.value === value)?.label ?? value;
 		return value.toLocaleLowerCase('en-IN');
 	}
 
@@ -986,7 +998,8 @@
 						numeric: true,
 						sensitivity: 'base'
 					});
-		if (result === 0) result = left.title.localeCompare(right.title, 'en-IN', { sensitivity: 'base' });
+		if (result === 0)
+			result = left.title.localeCompare(right.title, 'en-IN', { sensitivity: 'base' });
 		return sheetSortDirection === 'asc' ? result : -result;
 	}
 
@@ -1163,11 +1176,7 @@
 		return direction < 0 ? start === 0 : end === target.value.length;
 	}
 
-	function handleSheetCellKeydown(
-		event: KeyboardEvent,
-		rowIndex: number,
-		columnIndex: number
-	) {
+	function handleSheetCellKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number) {
 		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
 			event.preventDefault();
 			fillActiveCellToSelectedRows();
@@ -1553,6 +1562,14 @@
 		selectedProductId = product.id;
 		productEditor = mapProductToEditor(product);
 		productNotice = null;
+		drawerOpen = true;
+	}
+
+	function closeProductEditor() {
+		drawerOpen = false;
+		selectedProductId = null;
+		productNotice = null;
+		productImageUploadError = '';
 	}
 
 	function handleProductRowKeydown(event: KeyboardEvent, product: AdminProduct) {
@@ -1643,17 +1660,11 @@
 	}
 
 	function syncProductEditor() {
-		if (selectedProductId === 'new') return;
-
-		if (!products.length) {
-			selectedProductId = null;
-			productEditor = emptyProductEditor();
-			return;
-		}
-
-		const nextProduct = products.find((product) => product.id === selectedProductId) ?? products[0];
-		selectedProductId = nextProduct.id;
-		productEditor = mapProductToEditor(nextProduct);
+		// Drawer model: never auto-open an editor. Only refresh the open product's
+		// fields if it is still present in the current page after a reload.
+		if (selectedProductId === 'new' || !selectedProductId) return;
+		const nextProduct = products.find((product) => product.id === selectedProductId);
+		if (nextProduct) productEditor = mapProductToEditor(nextProduct);
 	}
 
 	function syncCouponEditor() {
@@ -1754,6 +1765,11 @@
 			closeSpreadsheetView();
 			return;
 		}
+		if (event.key === 'Escape' && drawerOpen) {
+			event.preventDefault();
+			closeProductEditor();
+			return;
+		}
 		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
 			event.preventDefault();
 			paletteOpen = !paletteOpen;
@@ -1815,6 +1831,7 @@
 		selectedProductId = 'new';
 		productEditor = emptyProductEditor();
 		productNotice = null;
+		drawerOpen = true;
 	}
 
 	async function saveProduct() {
@@ -1852,7 +1869,8 @@
 				hsnCode: productEditor.hsnCode,
 				gstRate: optionalNonnegativePayloadNumber(productEditor.gstRate, 'GST rate') ?? 18,
 				doaPolicyDays:
-					optionalNonnegativePayloadNumber(productEditor.doaPolicyDays, 'DOA policy days', true) ?? 7,
+					optionalNonnegativePayloadNumber(productEditor.doaPolicyDays, 'DOA policy days', true) ??
+					7,
 				localDeliveryEligible: productEditor.localDeliveryEligible,
 				codEligible: productEditor.codAllowed,
 				codAllowed: productEditor.codAllowed,
@@ -1894,6 +1912,38 @@
 			};
 		} finally {
 			productSaving = false;
+		}
+	}
+
+	async function uploadProductEditorImage() {
+		if (productImageUploading) return;
+		productImageUploading = true;
+		productImageUploadError = '';
+
+		try {
+			const file = await pickImageFile({
+				title: 'Product image',
+				fileNamePrefix: productEditor.sku || productEditor.id || 'lapkart-product'
+			});
+			if (!file) return;
+
+			const upload = await uploadAdminImage('products', file);
+			productEditor.image = upload.image_url;
+
+			const existingImages = parseLines(productEditor.imagesText);
+			if (!existingImages.includes(upload.image_url)) {
+				productEditor.imagesText = [upload.image_url, ...existingImages].join('\n');
+			}
+
+			productNotice = { tone: 'success', text: 'Product image uploaded.' };
+			void nativeImpact();
+		} catch (uploadError) {
+			const message =
+				uploadError instanceof Error ? uploadError.message : 'Could not upload product image.';
+			productImageUploadError = message;
+			productNotice = { tone: 'error', text: message };
+		} finally {
+			productImageUploading = false;
 		}
 	}
 
@@ -1991,9 +2041,7 @@
 			} else {
 				sheetNotice = {
 					tone: 'success',
-					text: `Saved ${updatedProducts.length} product${
-						updatedProducts.length === 1 ? '' : 's'
-					}.`
+					text: `Saved ${updatedProducts.length} product${updatedProducts.length === 1 ? '' : 's'}.`
 				};
 			}
 		} catch (saveError) {
@@ -2020,6 +2068,7 @@
 
 			selectedProductId = null;
 			productEditor = emptyProductEditor();
+			drawerOpen = false;
 			productNotice = {
 				tone: 'success',
 				text:
@@ -2037,6 +2086,43 @@
 			};
 		} finally {
 			productDeleting = false;
+		}
+	}
+
+	async function deleteProductRow(product: AdminProduct) {
+		if (rowDeletingId) return;
+		const confirmed = window.confirm(
+			`Delete "${product.title}"? Products with order history are archived instead.`
+		);
+		if (!confirmed) return;
+
+		rowDeletingId = product.id;
+		try {
+			const response = await requestAdmin<{
+				archived?: boolean;
+				deleted?: boolean;
+				message?: string;
+			}>(`/admin/products/${product.id}`, { method: 'DELETE' });
+
+			if (selectedProductId === product.id) closeProductEditor();
+			selectedProductIds = selectedProductIds.filter((id) => id !== product.id);
+			productNotice = {
+				tone: 'success',
+				text:
+					response.message ??
+					(response.archived
+						? `"${product.title}" archived because it has order history.`
+						: `"${product.title}" deleted.`)
+			};
+			void nativeImpact();
+			await Promise.all([loadProducts(true), loadAnalytics(), refreshCatalogSearch()]);
+		} catch (deleteError) {
+			productNotice = {
+				tone: 'error',
+				text: deleteError instanceof Error ? deleteError.message : 'Could not remove product'
+			};
+		} finally {
+			rowDeletingId = null;
 		}
 	}
 
@@ -2098,9 +2184,7 @@
 				description: couponEditor.description.trim(),
 				discountType: couponEditor.discountType,
 				discountValue:
-					couponEditor.discountType === 'free_delivery'
-						? 1
-						: Number(couponEditor.discountValue),
+					couponEditor.discountType === 'free_delivery' ? 1 : Number(couponEditor.discountValue),
 				minimumSubtotal: Number(couponEditor.minimumSubtotal || 0),
 				maxDiscount: couponEditor.maxDiscount ? Number(couponEditor.maxDiscount) : null,
 				startsAt: fromDateTimeInput(couponEditor.startsAt),
@@ -2265,10 +2349,7 @@
 						onclick={() => setView(tab.id)}
 					>
 						{#if view === tab.id}
-							<span
-								class="sidebar-indicator"
-								transition:fade={{ duration: 120 }}
-							></span>
+							<span class="sidebar-indicator" transition:fade={{ duration: 120 }}></span>
 						{/if}
 						<tab.icon class="size-[18px]" strokeWidth={1.8} />
 						<span class="sidebar-label">{tab.label}</span>
@@ -2734,1211 +2815,1296 @@
 									</div>
 								</div>
 							{:else}
-								<div class="grid items-start gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-									<!-- Product list sidebar -->
-									<aside class="catalog-sidebar xl:sticky xl:top-4 xl:self-start">
-										<div
-											class="border-b border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+								<div class="catalog-board">
+									<!-- Toolbar -->
+									<div class="catalog-toolbar">
+										<div class="flex min-w-0 items-center gap-2.5">
+											<div class="catalog-toolbar-icon">
+												<Boxes class="size-[18px]" strokeWidth={2} />
+											</div>
+											<div class="min-w-0">
+												<h2 class="text-[15px] font-semibold tracking-tight text-foreground">
+													Catalog
+												</h2>
+												<p class="text-[11px] text-[var(--black-alpha-40)]">
+													Showing {products.length.toLocaleString('en-IN')} of {productTotal.toLocaleString(
+														'en-IN'
+													)} products
+												</p>
+											</div>
+										</div>
+										<button
+											type="button"
+											class="button button-primary inline-flex h-9 items-center gap-1.5 rounded-md px-3.5 text-[13px] font-medium text-white"
+											onclick={beginCreateProduct}
 										>
-											<div class="mb-2 flex items-center justify-between gap-2">
-												<div class="flex items-center gap-2">
-													<Boxes class="size-4 text-[var(--black-alpha-40)]" strokeWidth={2} />
-													<span class="text-[13px] font-medium text-foreground">Catalog</span>
-													<span class="text-[11px] text-[var(--black-alpha-32)]"
-														>{products.length} of {productTotal}</span
-													>
-												</div>
-												<button
-													type="button"
-													class="button button-primary inline-flex h-7 items-center gap-1 rounded px-2.5 text-[12px] text-white"
-													onclick={beginCreateProduct}
-												>
-													<Plus class="size-3.5" strokeWidth={2} />
-													New
-												</button>
-											</div>
-											<div class="catalog-search-row">
-												<label class="catalog-search-field">
-													<Search class="size-3.5 text-[var(--black-alpha-32)]" strokeWidth={2} />
-													<input
-														bind:value={productSearch}
-														oninput={queueProductSearch}
-														onkeydown={(event) => {
-															if (event.key === 'Enter') submitProductSearch();
-														}}
-														class="catalog-search-input"
-														placeholder="Search title, brand, SKU, category..."
-													/>
-												</label>
-												<button
-													type="button"
-													class="catalog-search-submit"
-													aria-label="Search products"
-													onclick={submitProductSearch}
-												>
-													<Search class="size-3.5" strokeWidth={2} />
-												</button>
-												<button
-													type="button"
-													class="catalog-excel-button"
-													disabled={productsLoading && products.length === 0}
-													onclick={openSpreadsheetView}
-												>
-													<Table2 class="size-3.5" strokeWidth={2} />
-													Excel view
-												</button>
-											</div>
-											<div class="catalog-filter-card">
-												<div class="catalog-filter-head">
-													<div class="flex items-center gap-1.5">
-														<Filter class="size-3.5 text-[var(--black-alpha-40)]" strokeWidth={2} />
-														<span>Filters</span>
-														{#if activeCatalogFilterCount > 0}
-															<strong>{activeCatalogFilterCount}</strong>
-														{/if}
-													</div>
-													{#if activeCatalogFilterCount > 0 || productSort !== 'updated-desc'}
-														<button type="button" onclick={clearCatalogFilters}>Clear</button>
+											<Plus class="size-4" strokeWidth={2.2} />
+											New product
+										</button>
+									</div>
+
+									<!-- Search + filters -->
+									<div class="catalog-controls">
+										<div class="catalog-search-row">
+											<label class="catalog-search-field">
+												<Search class="size-3.5 text-[var(--black-alpha-32)]" strokeWidth={2} />
+												<input
+													bind:value={productSearch}
+													oninput={queueProductSearch}
+													onkeydown={(event) => {
+														if (event.key === 'Enter') submitProductSearch();
+													}}
+													class="catalog-search-input"
+													placeholder="Search title, brand, SKU, category..."
+												/>
+											</label>
+											<button
+												type="button"
+												class="catalog-search-submit"
+												aria-label="Search products"
+												onclick={submitProductSearch}
+											>
+												<Search class="size-3.5" strokeWidth={2} />
+											</button>
+											<button
+												type="button"
+												class="catalog-excel-button"
+												disabled={productsLoading && products.length === 0}
+												onclick={openSpreadsheetView}
+											>
+												<Table2 class="size-3.5" strokeWidth={2} />
+												Excel view
+											</button>
+										</div>
+										<div class="catalog-filter-card">
+											<div class="catalog-filter-head">
+												<div class="flex items-center gap-1.5">
+													<Filter class="size-3.5 text-[var(--black-alpha-40)]" strokeWidth={2} />
+													<span>Filters</span>
+													{#if activeCatalogFilterCount > 0}
+														<strong>{activeCatalogFilterCount}</strong>
 													{/if}
 												</div>
-												<div class="catalog-filter-grid">
-													<label>
-														<span>Category</span>
-														<select
-															bind:value={productCategoryFilter}
-															class="input-field h-8 text-[12px]"
-															onchange={reloadProductsFromFirstPage}
-														>
-															<option value="">All categories</option>
-															{#each categoryOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span>Status</span>
-														<select
-															bind:value={productStatusFilter}
-															class="input-field h-8 text-[12px]"
-															onchange={reloadProductsFromFirstPage}
-														>
-															<option value="">All status</option>
-															{#each productStatusOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span>Stock</span>
-														<select
-															bind:value={productStockFilter}
-															class="input-field h-8 text-[12px]"
-															onchange={reloadProductsFromFirstPage}
-														>
-															{#each productStockFilterOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span>Quality</span>
-														<select
-															bind:value={productQualityFilter}
-															class="input-field h-8 text-[12px]"
-															onchange={reloadProductsFromFirstPage}
-														>
-															{#each productQualityFilterOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label class="catalog-filter-wide">
-														<span>Organize</span>
-														<select
-															bind:value={productSort}
-															class="input-field h-8 text-[12px]"
-															onchange={reloadProductsFromFirstPage}
-														>
-															{#each productSortOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-												</div>
-											</div>
-											<div class="mt-2 flex flex-wrap gap-1.5">
-												<button
-													type="button"
-													class="catalog-mini-action"
-													disabled={!products.length}
-													onclick={allVisibleProductsSelected
-														? deselectVisibleProducts
-														: selectVisibleProducts}
-												>
-													{allVisibleProductsSelected ? 'Deselect page' : 'Select page'}
-												</button>
-												<button
-													type="button"
-													class="catalog-mini-action"
-													disabled={!products.some((product) => product.stock <= 5)}
-													onclick={selectLowStockProducts}
-												>
-													Low stock
-												</button>
-												{#if selectedProductIds.length > 0}
-													<button
-														type="button"
-														class="catalog-mini-action text-[var(--accent-crimson)]"
-														onclick={clearProductSelection}
-													>
-														Clear {selectedProductIds.length}
-													</button>
+												{#if activeCatalogFilterCount > 0 || productSort !== 'updated-desc'}
+													<button type="button" onclick={clearCatalogFilters}>Clear</button>
 												{/if}
 											</div>
-										</div>
-
-										<div class="catalog-list">
-											{#each products as product, idx (product.id)}
-												<div
-													class="catalog-row {selectedProductIds.includes(product.id)
-														? 'bulk-selected'
-														: ''}"
-													in:fly={{ x: -8, duration: 200, delay: Math.min(idx * 20, 300) }}
-												>
-													<button
-														type="button"
-														class="catalog-select {selectedProductIds.includes(product.id)
-															? 'active'
-															: ''}"
-														aria-label={selectedProductIds.includes(product.id)
-															? `Deselect ${product.title}`
-															: `Select ${product.title}`}
-														aria-pressed={selectedProductIds.includes(product.id)}
-														onclick={() => toggleProductSelection(product.id)}
-													>
-														{#if selectedProductIds.includes(product.id)}
-															<Check class="size-3.5" strokeWidth={2.4} />
-														{/if}
-													</button>
-													<div
-														role="button"
-														tabindex="0"
-														class="catalog-item {product.id === selectedProductId
-															? 'selected'
-															: ''}"
-														onclick={() => openProductEditor(product)}
-														onkeydown={(event) => handleProductRowKeydown(event, product)}
-													>
-														<div
-															class="flex size-10 shrink-0 items-center justify-center rounded border border-[var(--border-faint)] bg-white p-0.5"
-														>
-															<img
-																src={product.image || 'https://placehold.co/100x100?text=%20'}
-																alt={product.title}
-																class="max-h-full max-w-full object-contain"
-															/>
-														</div>
-														<div class="min-w-0 flex-1">
-															<div class="flex items-start justify-between gap-1">
-																<p class="line-clamp-1 text-[12px] font-medium text-foreground">
-																	{product.title}
-																</p>
-																<p class="shrink-0 text-[11px] font-medium text-foreground">
-																	{formatINR(product.price)}
-																</p>
-															</div>
-															<p class="mt-0.5 truncate text-[10px] text-[var(--black-alpha-40)]">
-																{product.brand} · {categoryNameBySlug.get(product.category) ??
-																	product.category}
-															</p>
-															<p
-																class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] text-[var(--black-alpha-32)]"
-															>
-																<span title={formatAdminDateTime(product.updated_at)}>
-																	Edited {formatRelativeTime(product.updated_at)}
-																</span>
-																<span aria-hidden="true">/</span>
-																<span title={formatAdminDateTime(product.created_at)}>
-																	Created {formatRelativeTime(product.created_at)}
-																</span>
-															</p>
-															<div class="mt-1 flex items-center gap-1">
-																<span
-																	class="rounded px-1 py-px text-[9px] font-medium tracking-wide uppercase
-																	{product.status === 'active'
-																		? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
-																		: product.status === 'archived'
-																			? 'bg-[var(--background-lighter)] text-[var(--black-alpha-32)]'
-																			: 'bg-[var(--accent-honey)]/10 text-[var(--accent-honey)]'}"
-																>
-																	{product.status}
-																</span>
-																<span
-																	class="flex items-center gap-1 text-[9px] text-[var(--black-alpha-32)]"
-																>
-																	<span
-																		class="size-1.5 rounded-full {product.stock <= 0
-																			? 'bg-[var(--accent-crimson)]'
-																			: product.stock <= 5
-																				? 'bg-[var(--accent-honey)]'
-																				: 'bg-[var(--accent-forest)]'}"
-																	></span>
-																	{product.stock} in stock
-																</span>
-															</div>
-														</div>
-													</div>
-												</div>
-											{/each}
-
-											{#if !products.length}
-												<div class="p-4 text-center text-[12px] text-[var(--black-alpha-32)]">
-													{productsError || 'No products match.'}
-												</div>
-											{/if}
-										</div>
-
-										{#if productTotalPages > 1}
-											<div
-												class="flex items-center justify-between gap-2 border-t border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
-											>
-												<button
-													type="button"
-													class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-													disabled={productPage <= 1 || productsLoading}
-													onclick={() => setProductPage(productPage - 1)}
-												>
-													Prev
-												</button>
-												<span class="text-[11px] text-[var(--black-alpha-48)]">
-													Page {productPage} of {productTotalPages}
-												</span>
-												<button
-													type="button"
-													class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-													disabled={productPage >= productTotalPages || productsLoading}
-													onclick={() => setProductPage(productPage + 1)}
-												>
-													Next
-												</button>
-											</div>
-										{/if}
-									</aside>
-
-									<!-- Product workspace -->
-									<div class="catalog-workspace">
-										{#if sheetFullscreen}
-										<section
-											class="spreadsheet-panel"
-											class:sheet-fullscreen={sheetFullscreen}
-											aria-label="Product spreadsheet editor"
-										>
-											<div class="spreadsheet-toolbar">
-												<div class="min-w-0">
-													<div class="flex items-center gap-2">
-														<Table2 class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
-														<h2 class="text-[14px] font-medium text-foreground">Sheet edit</h2>
-														<span
-															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
-														>
-															{sheetRows.length.toLocaleString('en-IN')} rows
-														</span>
-														<span
-															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
-														>
-															{sheetMode === 'all'
-																? activeCatalogFilterCount > 0
-																	? 'Filtered catalog'
-																	: 'All products'
-																: 'Current page'}
-														</span>
-														{#if sheetMode === 'all' && activeCatalogFilterCount > 0}
-															<span
-																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
-															>
-																{activeCatalogFilterCount} filter{activeCatalogFilterCount === 1
-																	? ''
-																	: 's'}
-															</span>
-														{/if}
-														{#if dirtySheetCellCount > 0}
-															<span
-																class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
-															>
-																{dirtySheetCellCount} changed
-															</span>
-														{/if}
-														{#if selectedProductIds.length > 0}
-															<span
-																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
-															>
-																{selectedProductIds.length} selected
-															</span>
-														{/if}
-														{#if sheetAllProductsLoading}
-															<span
-																class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
-															>
-																Loading {sheetAllProgress.loaded.toLocaleString('en-IN')} / {Math.max(
-																	sheetAllProgress.total,
-																	productTotal
-																).toLocaleString('en-IN')}
-															</span>
-														{:else if sheetSortKey}
-															<span
-																class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
-															>
-																Sorted by {sheetColumnName(sheetSortKey)} {sheetSortDirection}
-															</span>
-														{/if}
-													</div>
-												</div>
-												<div class="flex flex-wrap items-center gap-2">
-													<button
-														type="button"
-														class="catalog-mini-action"
-														disabled={sheetAllProductsLoading || sheetSaving}
-														onclick={loadAllSheetProducts}
-													>
-														{sheetAllProductsLoading ? 'Loading...' : 'Refresh'}
-													</button>
-													{#if sheetSortKey}
-														<button type="button" class="catalog-mini-action" onclick={clearSheetSort}>
-															Clear sort
-														</button>
-													{/if}
-													<button
-														type="button"
-														class="catalog-mini-action"
-														disabled={sheetFillTargetCount === 0 || sheetSaving}
-														onclick={fillActiveCellToSelectedRows}
-													>
-														Fill selected
-													</button>
-													<button
-														type="button"
-														class="catalog-mini-action"
-														onclick={() => (spreadsheetOpen = !spreadsheetOpen)}
-													>
-														{spreadsheetOpen ? 'Hide grid' : 'Show grid'}
-													</button>
-													<button
-														type="button"
-														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-														onclick={closeSpreadsheetView}
-													>
-														<Minimize2 class="size-3.5" strokeWidth={2} />
-														Close
-													</button>
-													<button
-														type="button"
-														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-														disabled={dirtySheetCellCount === 0 || sheetSaving}
-														onclick={resetSheetDrafts}
-													>
-														<RotateCcw class="size-3.5" strokeWidth={2} />
-														Reset
-													</button>
-													<button
-														type="button"
-														class="button button-primary inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium text-white disabled:opacity-50"
-														disabled={dirtySheetProducts.length === 0 || sheetSaving}
-														onclick={saveSheetEdits}
-													>
-														<Save class="size-3.5" strokeWidth={2} />
-														{sheetSaving ? 'Saving...' : `Save ${dirtySheetProducts.length || ''}`}
-													</button>
-												</div>
-											</div>
-
-											<div class="sheet-formula-bar">
-												<div class="sheet-name-box" aria-label="Active cell">
-													{activeSheetAddress}
-												</div>
-												<div class="sheet-formula-mark" aria-hidden="true">fx</div>
-												{#if activeSheetProduct && activeSheetCell && activeSheetColumn?.kind === 'select'}
+											<div class="catalog-filter-grid">
+												<label>
+													<span>Category</span>
 													<select
-														class="sheet-formula-input"
-														value={activeSheetValue}
-														aria-label={`Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`}
-														onchange={(event) => setActiveSheetValue(event.currentTarget.value)}
+														bind:value={productCategoryFilter}
+														class="input-field h-8 text-[12px]"
+														onchange={reloadProductsFromFirstPage}
 													>
-														{#each sheetColumnOptions(activeSheetColumn) as option (option.value)}
+														<option value="">All categories</option>
+														{#each categoryOptions as option (option.value)}
 															<option value={option.value}>{option.label}</option>
 														{/each}
 													</select>
-												{:else}
-													<input
-														class="sheet-formula-input"
-														value={activeSheetValue}
-														disabled={!activeSheetProduct || !activeSheetCell}
-														aria-label={activeSheetProduct && activeSheetColumn
-															? `Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`
-															: 'Active cell value'}
-														oninput={(event) => setActiveSheetValue(event.currentTarget.value)}
-													/>
-												{/if}
+												</label>
+												<label>
+													<span>Status</span>
+													<select
+														bind:value={productStatusFilter}
+														class="input-field h-8 text-[12px]"
+														onchange={reloadProductsFromFirstPage}
+													>
+														<option value="">All status</option>
+														{#each productStatusOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+												<label>
+													<span>Stock</span>
+													<select
+														bind:value={productStockFilter}
+														class="input-field h-8 text-[12px]"
+														onchange={reloadProductsFromFirstPage}
+													>
+														{#each productStockFilterOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+												<label>
+													<span>Quality</span>
+													<select
+														bind:value={productQualityFilter}
+														class="input-field h-8 text-[12px]"
+														onchange={reloadProductsFromFirstPage}
+													>
+														{#each productQualityFilterOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+												<label class="catalog-filter-wide">
+													<span>Organize</span>
+													<select
+														bind:value={productSort}
+														class="input-field h-8 text-[12px]"
+														onchange={reloadProductsFromFirstPage}
+													>
+														{#each productSortOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+											</div>
+										</div>
+										<div class="mt-2 flex flex-wrap gap-1.5">
+											<button
+												type="button"
+												class="catalog-mini-action"
+												disabled={!products.length}
+												onclick={allVisibleProductsSelected
+													? deselectVisibleProducts
+													: selectVisibleProducts}
+											>
+												{allVisibleProductsSelected ? 'Deselect page' : 'Select page'}
+											</button>
+											<button
+												type="button"
+												class="catalog-mini-action"
+												disabled={!products.some((product) => product.stock <= 5)}
+												onclick={selectLowStockProducts}
+											>
+												Low stock
+											</button>
+											{#if selectedProductIds.length > 0}
 												<button
 													type="button"
-													class="sheet-formula-action"
-													disabled={!activeSheetProduct || !activeSheetCell}
-													onclick={resetActiveSheetCell}
+													class="catalog-mini-action text-[var(--accent-crimson)]"
+													onclick={clearProductSelection}
 												>
-													Reset cell
+													Clear {selectedProductIds.length}
 												</button>
+											{/if}
+										</div>
+									</div>
+
+									{#if selectedProductIds.length > 0}
+										<section class="bulk-bar" in:fly={{ y: -6, duration: 180 }}>
+											<div class="bulk-bar-head">
+												<div>
+													<p class="bulk-bar-kicker">Bulk edit</p>
+													<h3 class="bulk-bar-title">
+														{selectedProductIds.length} selected product{selectedProductIds.length ===
+														1
+															? ''
+															: 's'}
+													</h3>
+													<p class="bulk-bar-note">
+														Only filled fields are applied.
+														{#if selectedProductIds.length !== selectedProducts.length}
+															{selectedProducts.length} visible on this page.
+														{/if}
+													</p>
+												</div>
 												<button
 													type="button"
-													class="sheet-formula-action"
-													disabled={!activeSheetProduct || !activeSheetCell || activeSheetColumn?.kind === 'select'}
-													onclick={clearActiveSheetCell}
+													class="catalog-mini-action"
+													onclick={clearProductSelection}
 												>
+													<X class="size-3.5" strokeWidth={2} />
 													Clear
 												</button>
 											</div>
-
-											{#if sheetNotice}
+											<div class="bulk-bar-grid">
+												<label>
+													<span class="field-label">Selling price</span>
+													<input
+														bind:value={bulkEditor.price}
+														class="input-field bg-white"
+														inputmode="decimal"
+														placeholder="Unchanged"
+													/>
+												</label>
+												<label>
+													<span class="field-label">MRP</span>
+													<input
+														bind:value={bulkEditor.mrp}
+														class="input-field bg-white"
+														inputmode="decimal"
+														placeholder="Unchanged"
+													/>
+												</label>
+												<label>
+													<span class="field-label">Stock</span>
+													<input
+														bind:value={bulkEditor.stock}
+														class="input-field bg-white"
+														inputmode="numeric"
+														placeholder="Unchanged"
+													/>
+												</label>
+												<label>
+													<span class="field-label">Status</span>
+													<select bind:value={bulkEditor.status} class="input-field bg-white">
+														<option value="">Unchanged</option>
+														{#each productStatusOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+												<label>
+													<span class="field-label">Category</span>
+													<select bind:value={bulkEditor.category} class="input-field bg-white">
+														<option value="">Unchanged</option>
+														{#each categoryOptions as option (option.value)}
+															<option value={option.value}>{option.label}</option>
+														{/each}
+													</select>
+												</label>
+												<label>
+													<span class="field-label">Warranty</span>
+													<input
+														bind:value={bulkEditor.warranty}
+														class="input-field bg-white"
+														placeholder="Unchanged"
+													/>
+												</label>
+												<label>
+													<span class="field-label">Local delivery</span>
+													<select
+														bind:value={bulkEditor.localDeliveryEligible}
+														class="input-field bg-white"
+													>
+														<option value="">Unchanged</option>
+														<option value="true">Enabled</option>
+														<option value="false">Disabled</option>
+													</select>
+												</label>
+												<label>
+													<span class="field-label">COD</span>
+													<select bind:value={bulkEditor.codAllowed} class="input-field bg-white">
+														<option value="">Unchanged</option>
+														<option value="true">Allowed</option>
+														<option value="false">Disabled</option>
+													</select>
+												</label>
+												<label>
+													<span class="field-label">Returnable</span>
+													<select bind:value={bulkEditor.returnable} class="input-field bg-white">
+														<option value="">Unchanged</option>
+														<option value="true">Yes</option>
+														<option value="false">No</option>
+													</select>
+												</label>
+											</div>
+											{#if bulkNotice}
 												<div
-													class="mx-3 mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
-														sheetNotice.tone
+													class="mt-2 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+														bulkNotice.tone
 													)}"
-													in:fly={{ y: -4, duration: 180 }}
 												>
 													<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
-													<span>{sheetNotice.text}</span>
+													<span>{bulkNotice.text}</span>
 												</div>
 											{/if}
-
-													{#if spreadsheetOpen}
-												<div
-													class="sheet-frame"
-													bind:this={sheetFrameElement}
-													tabindex="-1"
-													onscroll={handleSheetScroll}
-												>
-													<table class="sheet-table">
-														<colgroup>
-															<col style="width: 54px" />
-															{#each sheetColumns as column (column.key)}
-																<col style="width: {column.width}" />
-															{/each}
-														</colgroup>
-														<thead>
-															<tr>
-																<th class="sheet-corner sheet-letter-corner"></th>
-																{#each sheetColumns as column, columnIndex (column.key)}
-																	<th
-																		scope="col"
-																		class:sheet-column-active={activeSheetCell?.key === column.key}
-																	>
-																		<span>{sheetColumnLabel(columnIndex)}</span>
-																	</th>
-																{/each}
-															</tr>
-															<tr>
-																<th class="sheet-corner">#</th>
-																{#each sheetColumns as column (column.key)}
-																	<th
-																		scope="col"
-																		class:sheet-column-active={activeSheetCell?.key === column.key}
-																	>
-																		<button
-																			type="button"
-																			class="sheet-column-sort"
-																			class:active={sheetSortKey === column.key}
-																			aria-label={`Sort sheet by ${column.label}`}
-																			onclick={() => toggleSheetSort(column.key)}
-																		>
-																			<span>{column.label}</span>
-																			<span aria-hidden="true">{sheetSortGlyph(column.key)}</span>
-																		</button>
-																	</th>
-																{/each}
-															</tr>
-														</thead>
-														<tbody>
-															{#each sheetRows as product, rowIndex (product.id)}
-																<tr
-																	class:sheet-row-active={activeSheetCell?.productId === product.id}
-																	class:sheet-row-dirty={sheetRowDirty(product)}
-																>
-																	<th scope="row">
-																		<button
-																			type="button"
-																			class="sheet-row-button {selectedProductIds.includes(product.id)
-																				? 'selected'
-																				: ''}"
-																			aria-label={selectedProductIds.includes(product.id)
-																				? `Deselect row ${rowIndex + 1}`
-																				: `Select row ${rowIndex + 1}`}
-																			aria-pressed={selectedProductIds.includes(product.id)}
-																			onclick={() => toggleProductSelection(product.id)}
-																		>
-																			{rowIndex + 1}
-																		</button>
-																	</th>
-																	{#each sheetColumns as column, columnIndex (column.key)}
-																		{@const active =
-																			activeSheetCell?.productId === product.id &&
-																			activeSheetCell?.key === column.key}
-																		{@const dirty = sheetCellDirty(product, column.key)}
-																		<td
-																			class:sheet-cell-active={active}
-																			class:sheet-cell-dirty={dirty}
-																			class:sheet-column-active={activeSheetCell?.key === column.key}
-																		>
-																			{#if column.kind === 'select'}
-																				<select
-																					value={sheetCellValue(product, column.key)}
-																					data-sheet-row={rowIndex}
-																					data-sheet-col={columnIndex}
-																					class="sheet-input"
-																					aria-label={`${column.label} for ${product.title}`}
-																					onfocus={() =>
-																						setActiveSheetCell(product, column.key)}
-																					onchange={(event) =>
-																						setSheetCell(product, column.key, event.currentTarget.value)}
-																					onkeydown={(event) =>
-																						handleSheetCellKeydown(event, rowIndex, columnIndex)}
-																				>
-																					{#each sheetColumnOptions(column) as option (option.value)}
-																						<option value={option.value}>{option.label}</option>
-																					{/each}
-																				</select>
-																			{:else}
-																				<input
-																					value={sheetCellValue(product, column.key)}
-																					data-sheet-row={rowIndex}
-																					data-sheet-col={columnIndex}
-																					class="sheet-input"
-																					inputmode={column.kind === 'number' ? 'decimal' : undefined}
-																					aria-label={`${column.label} for ${product.title}`}
-																					onfocus={() =>
-																						setActiveSheetCell(product, column.key)}
-																					oninput={(event) =>
-																						setSheetCell(product, column.key, event.currentTarget.value)}
-																					onkeydown={(event) =>
-																						handleSheetCellKeydown(event, rowIndex, columnIndex)}
-																					onpaste={(event) =>
-																						handleSheetPaste(event, rowIndex, columnIndex)}
-																				/>
-																			{/if}
-																		</td>
-																	{/each}
-																</tr>
-															{/each}
-														</tbody>
-													</table>
-												</div>
-												{#if sheetMode === 'all'}
-													<div class="sheet-load-more">
-														<div>
-															<span>
-																{sheetProducts.length.toLocaleString('en-IN')} of {Math.max(
-																	sheetAllProgress.total,
-																	productTotal
-																).toLocaleString('en-IN')}
-															</span>
-															{#if sheetLoadMoreError}
-																<small>{sheetLoadMoreError}</small>
-															{:else}
-																<small>
-																	{sheetCanLoadMore
-																		? 'Scroll to keep loading matching products'
-																		: 'All matching products loaded'}
-																</small>
-															{/if}
-														</div>
-														{#if sheetCanLoadMore}
-															<button
-																type="button"
-																class="catalog-mini-action"
-																disabled={sheetAllProductsLoading}
-																onclick={loadMoreSheetProducts}
-															>
-																{sheetAllProductsLoading ? 'Loading...' : 'Load more'}
-															</button>
-														{/if}
-													</div>
-												{/if}
-												<div class="sheet-status-bar">
-													<span>{activeSheetAddress}</span>
-													<span>{activeSheetProduct?.title ?? 'No cell selected'}</span>
-													{#if activeSheetProduct}
-														<span title={formatAdminDateTime(activeSheetProduct.updated_at)}>
-															Edited {formatRelativeTime(activeSheetProduct.updated_at)}
-														</span>
-														<span title={formatAdminDateTime(activeSheetProduct.created_at)}>
-															Created {formatRelativeTime(activeSheetProduct.created_at)}
-														</span>
-													{/if}
-													<span>{dirtySheetProducts.length} dirty rows</span>
-													<span>
-														{sheetMode === 'all'
-															? `${sheetRows.length.toLocaleString('en-IN')} loaded products`
-															: `Page ${productPage} of ${productTotalPages}`}
-													</span>
-												</div>
-											{/if}
-										</section>
-										{/if}
-
-										<div class="editor-panel">
-										{#if selectedProductIds.length > 0}
-											<section class="bulk-editor" in:fly={{ y: -6, duration: 180 }}>
-												<div class="flex flex-wrap items-start justify-between gap-3">
-													<div>
-														<p
-															class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
-														>
-															Bulk edit
-														</p>
-														<h2 class="mt-1 text-[15px] font-medium text-foreground">
-															{selectedProductIds.length} selected product{selectedProductIds.length ===
-															1
-																? ''
-																: 's'}
-														</h2>
-														<p class="mt-1 text-[11px] text-[var(--black-alpha-48)]">
-															Only filled fields will be applied to the selected products.
-															{#if selectedProductIds.length !== selectedProducts.length}
-																{selectedProducts.length} selected item{selectedProducts.length ===
-																1
-																	? ''
-																	: 's'} visible on this page.
-															{/if}
-														</p>
-													</div>
-													<button
-														type="button"
-														class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground"
-														onclick={clearProductSelection}
-													>
-														<X class="size-3.5" strokeWidth={2} />
-														Clear
-													</button>
-												</div>
-
-												<div class="mt-3 grid gap-2.5 md:grid-cols-3 xl:grid-cols-4">
-													<label>
-														<span class="field-label">Set selling price</span>
-														<input
-															bind:value={bulkEditor.price}
-															class="input-field bg-white"
-															inputmode="decimal"
-															placeholder="Leave unchanged"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Set MRP</span>
-														<input
-															bind:value={bulkEditor.mrp}
-															class="input-field bg-white"
-															inputmode="decimal"
-															placeholder="Leave unchanged"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Set stock</span>
-														<input
-															bind:value={bulkEditor.stock}
-															class="input-field bg-white"
-															inputmode="numeric"
-															placeholder="Leave unchanged"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Set status</span>
-														<select bind:value={bulkEditor.status} class="input-field bg-white">
-															<option value="">Leave unchanged</option>
-															{#each productStatusOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span class="field-label">Move category</span>
-														<select bind:value={bulkEditor.category} class="input-field bg-white">
-															<option value="">Leave unchanged</option>
-															{#each categoryOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span class="field-label">Warranty</span>
-														<input
-															bind:value={bulkEditor.warranty}
-															class="input-field bg-white"
-															placeholder="Leave unchanged"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Local delivery</span>
-														<select
-															bind:value={bulkEditor.localDeliveryEligible}
-															class="input-field bg-white"
-														>
-															<option value="">Leave unchanged</option>
-															<option value="true">Enabled</option>
-															<option value="false">Disabled</option>
-														</select>
-													</label>
-													<label>
-														<span class="field-label">COD</span>
-														<select bind:value={bulkEditor.codAllowed} class="input-field bg-white">
-															<option value="">Leave unchanged</option>
-															<option value="true">Allowed</option>
-															<option value="false">Disabled</option>
-														</select>
-													</label>
-													<label>
-														<span class="field-label">Returnable</span>
-														<select bind:value={bulkEditor.returnable} class="input-field bg-white">
-															<option value="">Leave unchanged</option>
-															<option value="true">Yes</option>
-															<option value="false">No</option>
-														</select>
-													</label>
-													<label class="md:col-span-3 xl:col-span-4">
-														<span class="field-label">Compatibility</span>
-														<textarea
-															bind:value={bulkEditor.compatibility}
-															class="input-field min-h-[64px] bg-white py-2"
-															placeholder="Leave unchanged"
-														></textarea>
-													</label>
-												</div>
-
-												{#if bulkNotice}
-													<div
-														class="mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
-															bulkNotice.tone
-														)}"
-													>
-														<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
-														<span>{bulkNotice.text}</span>
-													</div>
-												{/if}
-
-												<div class="mt-3 flex flex-wrap gap-2">
-													<button
-														type="button"
-														class="button button-primary inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-[12px] font-medium text-white disabled:opacity-50"
-														disabled={bulkSaving}
-														onclick={applyBulkProductUpdate}
-													>
-														<Check class="size-3.5" strokeWidth={2.4} />
-														{bulkSaving ? 'Applying...' : 'Apply to selected'}
-													</button>
-													<button
-														type="button"
-														class="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground"
-														onclick={resetBulkProductEditor}
-														disabled={bulkSaving}
-													>
-														Reset fields
-													</button>
-												</div>
-											</section>
-										{/if}
-
-										<div class="border-b border-[var(--border-faint)] p-5">
-											<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-												<div
-													class="flex size-24 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] p-3"
-												>
-													{#if productEditor.image}
-														<img
-															src={productEditor.image}
-															alt={productEditor.title || 'Preview'}
-															class="max-h-full max-w-full object-contain"
-														/>
-													{:else}
-														<Boxes class="size-5 text-[var(--black-alpha-16)]" strokeWidth={1.5} />
-													{/if}
-												</div>
-												<div class="min-w-0 flex-1">
-													<div class="flex flex-wrap items-center gap-1.5">
-														<span
-															class="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase
-																{selectedProductId === 'new'
-																? 'bg-[var(--heat-100)] text-white'
-																: productEditor.status === 'active'
-																	? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
-																	: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
-														>
-															{selectedProductId === 'new' ? 'new' : productEditor.status}
-														</span>
-														<span
-															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
-														>
-															{categoryNameBySlug.get(productEditor.category) ?? 'Category pending'}
-														</span>
-													</div>
-													<h2 class="mt-1 truncate text-[16px] font-medium text-foreground">
-														{productEditor.title || 'Untitled product'}
-													</h2>
-													<p class="text-[12px] text-[var(--black-alpha-40)]">
-														{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku ||
-															'—'}
-													</p>
-													{#if selectedProductId !== 'new'}
-														<p
-															class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--black-alpha-32)]"
-														>
-															<span title={formatAdminDateTime(productEditor.updatedAt)}>
-																Edited {formatRelativeTime(productEditor.updatedAt)}
-															</span>
-															<span title={formatAdminDateTime(productEditor.createdAt)}>
-																Created {formatRelativeTime(productEditor.createdAt)}
-															</span>
-														</p>
-													{/if}
-												</div>
-												<div class="flex shrink-0 gap-5">
-													<div>
-														<p
-															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
-														>
-															Price
-														</p>
-														<p class="mt-0.5 text-[14px] font-medium text-foreground">
-															{formatINR(Number(productEditor.price || 0))}
-														</p>
-													</div>
-													<div>
-														<p
-															class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
-														>
-															Stock
-														</p>
-														<p class="mt-0.5 text-[14px] font-medium text-foreground">
-															{productEditor.stock || '0'}
-														</p>
-													</div>
-												</div>
-											</div>
-										</div>
-
-										{#if productNotice}
-											<div
-												class="m-5 mb-0 flex items-start gap-2 rounded-md border px-3 py-2.5 text-[12px] {noticeClasses(
-													productNotice.tone
-												)}"
-												in:fly={{ y: -4, duration: 200 }}
-											>
-												<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
-												<span>{productNotice.text}</span>
-											</div>
-										{/if}
-
-										<div class="space-y-6 p-5">
-											<section>
-												<h3 class="section-title">Product identity</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-													<label>
-														<span class="field-label">Title</span>
-														<input bind:value={productEditor.title} class="input-field" />
-													</label>
-													<label>
-														<span class="field-label">Brand</span>
-														<input bind:value={productEditor.brand} class="input-field" />
-													</label>
-													<label>
-														<span class="field-label">Category</span>
-														<select bind:value={productEditor.category} class="input-field">
-															{#each categoryOptions as option (option.value)}
-																<option value={option.value}>{option.label}</option>
-															{/each}
-														</select>
-													</label>
-													<label>
-														<span class="field-label">SKU</span>
-														<input bind:value={productEditor.sku} class="input-field" />
-													</label>
-													<label class="sm:col-span-2">
-														<span class="field-label">Description</span>
-														<textarea
-															bind:value={productEditor.description}
-															class="input-field min-h-[80px] py-2"
-															style="height:auto"
-														></textarea>
-													</label>
-													<label class="sm:col-span-2">
-														<span class="field-label">Compatibility</span>
-														<input bind:value={productEditor.compatibility} class="input-field" />
-													</label>
-												</div>
-											</section>
-
-											<hr class="border-[var(--border-faint)]" />
-
-											<section>
-												<h3 class="section-title">Pricing &amp; availability</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-													<label>
-														<span class="field-label">Selling price</span>
-														<input
-															bind:value={productEditor.price}
-															class="input-field"
-															inputmode="decimal"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Cost price</span>
-														<input
-															bind:value={productEditor.costPrice}
-															class="input-field"
-															inputmode="decimal"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Max discount (%)</span>
-														<input
-															value={productEditor.maxDiscountPct}
-															class="input-field bg-[var(--background-lighter)] text-[var(--black-alpha-56)]"
-															readonly
-															aria-readonly="true"
-														/>
-													</label>
-													<label>
-														<span class="field-label">MRP</span>
-														<input
-															bind:value={productEditor.mrp}
-															class="input-field"
-															inputmode="decimal"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Stock</span>
-														<input
-															bind:value={productEditor.stock}
-															class="input-field"
-															inputmode="numeric"
-														/>
-													</label>
-													<label>
-														<span class="field-label">Status</span>
-														<select bind:value={productEditor.status} class="input-field">
-															<option value="active">Active</option>
-															<option value="draft">Draft</option>
-															<option value="archived">Archived</option>
-														</select>
-													</label>
-												</div>
-											</section>
-
-											<hr class="border-[var(--border-faint)]" />
-
-											<section>
-												<h3 class="section-title">Trust, tax &amp; checkout</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-													<label>
-														<span class="field-label">Authenticity</span>
-														<select
-															bind:value={productEditor.authenticityGrade}
-															class="input-field"
-														>
-															<option value="oem">OEM</option>
-															<option value="compatible">Compatible</option>
-															<option value="refurbished">Refurbished</option>
-															<option value="open_box">Open box</option>
-														</select>
-													</label>
-													<label>
-														<span class="field-label">Condition</span>
-														<select bind:value={productEditor.conditionGrade} class="input-field">
-															<option value="new">New</option>
-															<option value="open_box">Open box</option>
-															<option value="refurbished">Refurbished</option>
-															<option value="used">Used</option>
-														</select>
-													</label>
-													<label>
-														<span class="field-label">HSN code</span>
-														<input bind:value={productEditor.hsnCode} class="input-field" />
-													</label>
-													<label>
-														<span class="field-label">GST rate (%)</span>
-														<input
-															bind:value={productEditor.gstRate}
-															class="input-field"
-															inputmode="numeric"
-														/>
-													</label>
-												</div>
-											</section>
-
-											<hr class="border-[var(--border-faint)]" />
-
-											<section>
-												<h3 class="section-title">Delivery &amp; policies</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-													<label>
-														<span class="field-label">DOA window (days)</span>
-														<input
-															bind:value={productEditor.doaPolicyDays}
-															class="input-field"
-															inputmode="numeric"
-														/>
-													</label>
-													<label class="checkbox-field">
-														<input
-															type="checkbox"
-															bind:checked={productEditor.localDeliveryEligible}
-															class="size-3.5 accent-[var(--heat-100)]"
-														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]"
-															>Local delivery</span
-														>
-													</label>
-													<label class="checkbox-field">
-														<input
-															type="checkbox"
-															bind:checked={productEditor.codAllowed}
-															class="size-3.5 accent-[var(--heat-100)]"
-														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]">COD allowed</span
-														>
-													</label>
-													<label class="checkbox-field">
-														<input
-															type="checkbox"
-															bind:checked={productEditor.returnable}
-															class="size-3.5 accent-[var(--heat-100)]"
-														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]">Returnable</span>
-													</label>
-													<label class="checkbox-field">
-														<input
-															type="checkbox"
-															bind:checked={productEditor.isUniversal}
-															class="size-3.5 accent-[var(--heat-100)]"
-														/>
-														<span class="text-[11px] text-[var(--black-alpha-56)]"
-															>Universal fit</span
-														>
-													</label>
-												</div>
-											</section>
-
-											<hr class="border-[var(--border-faint)]" />
-
-											<section>
-												<h3 class="section-title">Imagery &amp; dimensions</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-													<label>
-														<span class="field-label">Primary image URL</span>
-														<input bind:value={productEditor.image} class="input-field" />
-													</label>
-													<label>
-														<span class="field-label">Source URL</span>
-														<input bind:value={productEditor.sourceUrl} class="input-field" />
-													</label>
-													<label class="sm:col-span-2">
-														<span class="field-label">Additional images (one URL per line)</span>
-														<textarea
-															bind:value={productEditor.imagesText}
-															class="input-field min-h-[80px] py-2 font-mono"
-															style="height:auto"
-														></textarea>
-													</label>
-													<div class="grid grid-cols-2 gap-2.5 sm:col-span-2 sm:grid-cols-4">
-														<label>
-															<span class="field-label">Weight (kg)</span>
-															<input
-																bind:value={productEditor.weightKg}
-																class="input-field"
-																inputmode="decimal"
-															/>
-														</label>
-														<label>
-															<span class="field-label">Length (cm)</span>
-															<input
-																bind:value={productEditor.lengthCm}
-																class="input-field"
-																inputmode="decimal"
-															/>
-														</label>
-														<label>
-															<span class="field-label">Breadth (cm)</span>
-															<input
-																bind:value={productEditor.breadthCm}
-																class="input-field"
-																inputmode="decimal"
-															/>
-														</label>
-														<label>
-															<span class="field-label">Height (cm)</span>
-															<input
-																bind:value={productEditor.heightCm}
-																class="input-field"
-																inputmode="decimal"
-															/>
-														</label>
-													</div>
-												</div>
-											</section>
-
-											<hr class="border-[var(--border-faint)]" />
-
-											<section>
-												<h3 class="section-title">Merchandising</h3>
-												<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-													<label>
-														<span class="field-label">Highlights (one per line)</span>
-														<textarea
-															bind:value={productEditor.highlightsText}
-															class="input-field min-h-[80px] py-2"
-															style="height:auto"
-														></textarea>
-													</label>
-													<label>
-														<span class="field-label">Search keywords (one per line)</span>
-														<textarea
-															bind:value={productEditor.searchKeywordsText}
-															class="input-field min-h-[80px] py-2"
-															style="height:auto"
-														></textarea>
-														<span
-															class="mt-1 block text-[10px] {productKeywordOverflowCount > 0
-																? 'text-[var(--accent-crimson)]'
-																: 'text-[var(--black-alpha-40)]'}"
-														>
-															{productKeywordCount}/24 saved{productKeywordOverflowCount > 0
-																? `, ${productKeywordOverflowCount} extra ignored`
-																: ''}
-														</span>
-													</label>
-												</div>
-											</section>
-										</div>
-
-										<!-- Save bar -->
-										<div class="editor-save-bar">
-											<button
-												type="button"
-												class="button button-primary inline-flex h-9 items-center rounded-md px-5 text-[13px] font-medium text-white disabled:opacity-50"
-												disabled={productSaving}
-												onclick={saveProduct}
-											>
-												{productSaving ? 'Saving...' : 'Save product'}
-											</button>
-											{#if selectedProductId !== 'new'}
+											<div class="mt-2.5 flex flex-wrap gap-2">
 												<button
 													type="button"
-													class="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--accent-crimson)] transition-colors hover:border-[var(--accent-crimson)] hover:bg-[var(--accent-crimson)]/4 disabled:opacity-50"
-													disabled={productDeleting}
-													onclick={deleteProduct}
+													class="button button-primary inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-[12px] font-medium text-white disabled:opacity-50"
+													disabled={bulkSaving}
+													onclick={applyBulkProductUpdate}
 												>
-													<Trash2 class="size-3.5" strokeWidth={2} />
-													{productDeleting ? 'Processing...' : 'Delete or archive'}
+													<Check class="size-3.5" strokeWidth={2.4} />
+													{bulkSaving ? 'Applying...' : 'Apply to selected'}
 												</button>
-											{/if}
+												<button
+													type="button"
+													class="inline-flex h-9 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground"
+													onclick={resetBulkProductEditor}
+													disabled={bulkSaving}
+												>
+													Reset fields
+												</button>
+											</div>
+										</section>
+									{/if}
+
+									<div class="catalog-table-wrap">
+										<table class="catalog-table">
+											<thead>
+												<tr>
+													<th class="cat-check-col">
+														<button
+															type="button"
+															class="catalog-check {allVisibleProductsSelected ? 'active' : ''}"
+															aria-label={allVisibleProductsSelected
+																? 'Deselect page'
+																: 'Select page'}
+															aria-pressed={allVisibleProductsSelected}
+															disabled={!products.length}
+															onclick={allVisibleProductsSelected
+																? deselectVisibleProducts
+																: selectVisibleProducts}
+														>
+															{#if allVisibleProductsSelected}
+																<Check class="size-3.5" strokeWidth={2.6} />
+															{/if}
+														</button>
+													</th>
+													<th class="cat-img-col">Image</th>
+													<th>Product</th>
+													<th class="cat-type-col">Type</th>
+													<th class="cat-num-col">Price</th>
+													<th class="cat-stock-col">Stock</th>
+													<th class="cat-status-col">Status</th>
+													<th class="cat-act-col">Edit</th>
+												</tr>
+											</thead>
+											<tbody>
+												{#each products as product, idx (product.id)}
+													{@const isSelected = selectedProductIds.includes(product.id)}
+													<tr
+														class="catalog-trow {isSelected ? 'is-selected' : ''}"
+														in:fly={{ y: 6, duration: 180, delay: Math.min(idx * 14, 260) }}
+														onclick={() => openProductEditor(product)}
+														onkeydown={(event) => handleProductRowKeydown(event, product)}
+														tabindex="0"
+														role="button"
+														aria-label={`Edit ${product.title}`}
+													>
+														<td class="cat-check-col" onclick={(event) => event.stopPropagation()}>
+															<button
+																type="button"
+																class="catalog-check {isSelected ? 'active' : ''}"
+																aria-label={isSelected
+																	? `Deselect ${product.title}`
+																	: `Select ${product.title}`}
+																aria-pressed={isSelected}
+																onclick={() => toggleProductSelection(product.id)}
+															>
+																{#if isSelected}
+																	<Check class="size-3.5" strokeWidth={2.6} />
+																{/if}
+															</button>
+														</td>
+														<td class="cat-img-col">
+															<div class="catalog-thumb">
+																<img
+																	src={product.image || 'https://placehold.co/120x120?text=%20'}
+																	alt={product.title}
+																	loading="lazy"
+																/>
+															</div>
+														</td>
+														<td>
+															<p class="catalog-name">{product.title}</p>
+															<p class="catalog-sub">
+																<span class="truncate">{product.brand}</span>
+																{#if product.sku}
+																	<span class="catalog-sku">SKU {product.sku}</span>
+																{/if}
+															</p>
+														</td>
+														<td class="cat-type-col">
+															<span class="catalog-type">
+																{categoryNameBySlug.get(product.category) ?? product.category}
+															</span>
+														</td>
+														<td class="cat-num-col">
+															<span class="catalog-price">{formatINR(product.price)}</span>
+															{#if product.mrp > product.price}
+																<span class="catalog-mrp">{formatINR(product.mrp)}</span>
+															{/if}
+														</td>
+														<td class="cat-stock-col">
+															<span class="catalog-stock">
+																<span
+																	class="catalog-dot {product.stock <= 0
+																		? 'is-out'
+																		: product.stock <= 5
+																			? 'is-low'
+																			: 'is-ok'}"
+																></span>
+																{product.stock}
+															</span>
+														</td>
+														<td class="cat-status-col">
+															<span class="catalog-status {product.status}">{product.status}</span>
+														</td>
+														<td class="cat-act-col" onclick={(event) => event.stopPropagation()}>
+															<div class="catalog-actions">
+																<button
+																	type="button"
+																	class="catalog-act edit"
+																	aria-label={`Edit ${product.title}`}
+																	onclick={() => openProductEditor(product)}
+																>
+																	<Pencil class="size-4" strokeWidth={2} />
+																</button>
+																<button
+																	type="button"
+																	class="catalog-act delete"
+																	aria-label={`Delete ${product.title}`}
+																	disabled={rowDeletingId === product.id}
+																	onclick={() => deleteProductRow(product)}
+																>
+																	<Trash2 class="size-4" strokeWidth={2} />
+																</button>
+															</div>
+														</td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+										{#if !products.length}
+											<div class="catalog-empty">
+												{productsError || 'No products match your filters.'}
+											</div>
+										{/if}
+									</div>
+
+									{#if productTotalPages > 1}
+										<div
+											class="flex items-center justify-between gap-2 border-t border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
+										>
+											<button
+												type="button"
+												class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+												disabled={productPage <= 1 || productsLoading}
+												onclick={() => setProductPage(productPage - 1)}
+											>
+												Prev
+											</button>
+											<span class="text-[11px] text-[var(--black-alpha-48)]">
+												Page {productPage} of {productTotalPages}
+											</span>
+											<button
+												type="button"
+												class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+												disabled={productPage >= productTotalPages || productsLoading}
+												onclick={() => setProductPage(productPage + 1)}
+											>
+												Next
+											</button>
 										</div>
-									</div>
-									</div>
+									{/if}
 								</div>
+								<!-- end catalog board -->
+								{#if sheetFullscreen}
+									<section
+										class="spreadsheet-panel"
+										class:sheet-fullscreen={sheetFullscreen}
+										aria-label="Product spreadsheet editor"
+									>
+										<div class="spreadsheet-toolbar">
+											<div class="min-w-0">
+												<div class="flex items-center gap-2">
+													<Table2 class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+													<h2 class="text-[14px] font-medium text-foreground">Sheet edit</h2>
+													<span
+														class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+													>
+														{sheetRows.length.toLocaleString('en-IN')} rows
+													</span>
+													<span
+														class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+													>
+														{sheetMode === 'all'
+															? activeCatalogFilterCount > 0
+																? 'Filtered catalog'
+																: 'All products'
+															: 'Current page'}
+													</span>
+													{#if sheetMode === 'all' && activeCatalogFilterCount > 0}
+														<span
+															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
+															{activeCatalogFilterCount} filter{activeCatalogFilterCount === 1
+																? ''
+																: 's'}
+														</span>
+													{/if}
+													{#if dirtySheetCellCount > 0}
+														<span
+															class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
+														>
+															{dirtySheetCellCount} changed
+														</span>
+													{/if}
+													{#if selectedProductIds.length > 0}
+														<span
+															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
+															{selectedProductIds.length} selected
+														</span>
+													{/if}
+													{#if sheetAllProductsLoading}
+														<span
+															class="rounded bg-[var(--heat-8)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--heat-100)]"
+														>
+															Loading {sheetAllProgress.loaded.toLocaleString('en-IN')} / {Math.max(
+																sheetAllProgress.total,
+																productTotal
+															).toLocaleString('en-IN')}
+														</span>
+													{:else if sheetSortKey}
+														<span
+															class="rounded bg-[var(--background-lighter)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--black-alpha-48)]"
+														>
+															Sorted by {sheetColumnName(sheetSortKey)}
+															{sheetSortDirection}
+														</span>
+													{/if}
+												</div>
+											</div>
+											<div class="flex flex-wrap items-center gap-2">
+												<button
+													type="button"
+													class="catalog-mini-action"
+													disabled={sheetAllProductsLoading || sheetSaving}
+													onclick={loadAllSheetProducts}
+												>
+													{sheetAllProductsLoading ? 'Loading...' : 'Refresh'}
+												</button>
+												{#if sheetSortKey}
+													<button
+														type="button"
+														class="catalog-mini-action"
+														onclick={clearSheetSort}
+													>
+														Clear sort
+													</button>
+												{/if}
+												<button
+													type="button"
+													class="catalog-mini-action"
+													disabled={sheetFillTargetCount === 0 || sheetSaving}
+													onclick={fillActiveCellToSelectedRows}
+												>
+													Fill selected
+												</button>
+												<button
+													type="button"
+													class="catalog-mini-action"
+													onclick={() => (spreadsheetOpen = !spreadsheetOpen)}
+												>
+													{spreadsheetOpen ? 'Hide grid' : 'Show grid'}
+												</button>
+												<button
+													type="button"
+													class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+													onclick={closeSpreadsheetView}
+												>
+													<Minimize2 class="size-3.5" strokeWidth={2} />
+													Close
+												</button>
+												<button
+													type="button"
+													class="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+													disabled={dirtySheetCellCount === 0 || sheetSaving}
+													onclick={resetSheetDrafts}
+												>
+													<RotateCcw class="size-3.5" strokeWidth={2} />
+													Reset
+												</button>
+												<button
+													type="button"
+													class="button button-primary inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium text-white disabled:opacity-50"
+													disabled={dirtySheetProducts.length === 0 || sheetSaving}
+													onclick={saveSheetEdits}
+												>
+													<Save class="size-3.5" strokeWidth={2} />
+													{sheetSaving ? 'Saving...' : `Save ${dirtySheetProducts.length || ''}`}
+												</button>
+											</div>
+										</div>
+
+										<div class="sheet-formula-bar">
+											<div class="sheet-name-box" aria-label="Active cell">
+												{activeSheetAddress}
+											</div>
+											<div class="sheet-formula-mark" aria-hidden="true">fx</div>
+											{#if activeSheetProduct && activeSheetCell && activeSheetColumn?.kind === 'select'}
+												<select
+													class="sheet-formula-input"
+													value={activeSheetValue}
+													aria-label={`Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`}
+													onchange={(event) => setActiveSheetValue(event.currentTarget.value)}
+												>
+													{#each sheetColumnOptions(activeSheetColumn) as option (option.value)}
+														<option value={option.value}>{option.label}</option>
+													{/each}
+												</select>
+											{:else}
+												<input
+													class="sheet-formula-input"
+													value={activeSheetValue}
+													disabled={!activeSheetProduct || !activeSheetCell}
+													aria-label={activeSheetProduct && activeSheetColumn
+														? `Edit ${activeSheetColumn.label} for ${activeSheetProduct.title}`
+														: 'Active cell value'}
+													oninput={(event) => setActiveSheetValue(event.currentTarget.value)}
+												/>
+											{/if}
+											<button
+												type="button"
+												class="sheet-formula-action"
+												disabled={!activeSheetProduct || !activeSheetCell}
+												onclick={resetActiveSheetCell}
+											>
+												Reset cell
+											</button>
+											<button
+												type="button"
+												class="sheet-formula-action"
+												disabled={!activeSheetProduct ||
+													!activeSheetCell ||
+													activeSheetColumn?.kind === 'select'}
+												onclick={clearActiveSheetCell}
+											>
+												Clear
+											</button>
+										</div>
+
+										{#if sheetNotice}
+											<div
+												class="mx-3 mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px] {noticeClasses(
+													sheetNotice.tone
+												)}"
+												in:fly={{ y: -4, duration: 180 }}
+											>
+												<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
+												<span>{sheetNotice.text}</span>
+											</div>
+										{/if}
+
+										{#if spreadsheetOpen}
+											<div
+												class="sheet-frame"
+												bind:this={sheetFrameElement}
+												tabindex="-1"
+												onscroll={handleSheetScroll}
+											>
+												<table class="sheet-table">
+													<colgroup>
+														<col style="width: 54px" />
+														{#each sheetColumns as column (column.key)}
+															<col style="width: {column.width}" />
+														{/each}
+													</colgroup>
+													<thead>
+														<tr>
+															<th class="sheet-corner sheet-letter-corner"></th>
+															{#each sheetColumns as column, columnIndex (column.key)}
+																<th
+																	scope="col"
+																	class:sheet-column-active={activeSheetCell?.key === column.key}
+																>
+																	<span>{sheetColumnLabel(columnIndex)}</span>
+																</th>
+															{/each}
+														</tr>
+														<tr>
+															<th class="sheet-corner">#</th>
+															{#each sheetColumns as column (column.key)}
+																<th
+																	scope="col"
+																	class:sheet-column-active={activeSheetCell?.key === column.key}
+																>
+																	<button
+																		type="button"
+																		class="sheet-column-sort"
+																		class:active={sheetSortKey === column.key}
+																		aria-label={`Sort sheet by ${column.label}`}
+																		onclick={() => toggleSheetSort(column.key)}
+																	>
+																		<span>{column.label}</span>
+																		<span aria-hidden="true">{sheetSortGlyph(column.key)}</span>
+																	</button>
+																</th>
+															{/each}
+														</tr>
+													</thead>
+													<tbody>
+														{#each sheetRows as product, rowIndex (product.id)}
+															<tr
+																class:sheet-row-active={activeSheetCell?.productId === product.id}
+																class:sheet-row-dirty={sheetRowDirty(product)}
+															>
+																<th scope="row">
+																	<button
+																		type="button"
+																		class="sheet-row-button {selectedProductIds.includes(product.id)
+																			? 'selected'
+																			: ''}"
+																		aria-label={selectedProductIds.includes(product.id)
+																			? `Deselect row ${rowIndex + 1}`
+																			: `Select row ${rowIndex + 1}`}
+																		aria-pressed={selectedProductIds.includes(product.id)}
+																		onclick={() => toggleProductSelection(product.id)}
+																	>
+																		{rowIndex + 1}
+																	</button>
+																</th>
+																{#each sheetColumns as column, columnIndex (column.key)}
+																	{@const active =
+																		activeSheetCell?.productId === product.id &&
+																		activeSheetCell?.key === column.key}
+																	{@const dirty = sheetCellDirty(product, column.key)}
+																	<td
+																		class:sheet-cell-active={active}
+																		class:sheet-cell-dirty={dirty}
+																		class:sheet-column-active={activeSheetCell?.key === column.key}
+																	>
+																		{#if column.kind === 'select'}
+																			<select
+																				value={sheetCellValue(product, column.key)}
+																				data-sheet-row={rowIndex}
+																				data-sheet-col={columnIndex}
+																				class="sheet-input"
+																				aria-label={`${column.label} for ${product.title}`}
+																				onfocus={() => setActiveSheetCell(product, column.key)}
+																				onchange={(event) =>
+																					setSheetCell(
+																						product,
+																						column.key,
+																						event.currentTarget.value
+																					)}
+																				onkeydown={(event) =>
+																					handleSheetCellKeydown(event, rowIndex, columnIndex)}
+																			>
+																				{#each sheetColumnOptions(column) as option (option.value)}
+																					<option value={option.value}>{option.label}</option>
+																				{/each}
+																			</select>
+																		{:else}
+																			<input
+																				value={sheetCellValue(product, column.key)}
+																				data-sheet-row={rowIndex}
+																				data-sheet-col={columnIndex}
+																				class="sheet-input"
+																				inputmode={column.kind === 'number' ? 'decimal' : undefined}
+																				aria-label={`${column.label} for ${product.title}`}
+																				onfocus={() => setActiveSheetCell(product, column.key)}
+																				oninput={(event) =>
+																					setSheetCell(
+																						product,
+																						column.key,
+																						event.currentTarget.value
+																					)}
+																				onkeydown={(event) =>
+																					handleSheetCellKeydown(event, rowIndex, columnIndex)}
+																				onpaste={(event) =>
+																					handleSheetPaste(event, rowIndex, columnIndex)}
+																			/>
+																		{/if}
+																	</td>
+																{/each}
+															</tr>
+														{/each}
+													</tbody>
+												</table>
+											</div>
+											{#if sheetMode === 'all'}
+												<div class="sheet-load-more">
+													<div>
+														<span>
+															{sheetProducts.length.toLocaleString('en-IN')} of {Math.max(
+																sheetAllProgress.total,
+																productTotal
+															).toLocaleString('en-IN')}
+														</span>
+														{#if sheetLoadMoreError}
+															<small>{sheetLoadMoreError}</small>
+														{:else}
+															<small>
+																{sheetCanLoadMore
+																	? 'Scroll to keep loading matching products'
+																	: 'All matching products loaded'}
+															</small>
+														{/if}
+													</div>
+													{#if sheetCanLoadMore}
+														<button
+															type="button"
+															class="catalog-mini-action"
+															disabled={sheetAllProductsLoading}
+															onclick={loadMoreSheetProducts}
+														>
+															{sheetAllProductsLoading ? 'Loading...' : 'Load more'}
+														</button>
+													{/if}
+												</div>
+											{/if}
+											<div class="sheet-status-bar">
+												<span>{activeSheetAddress}</span>
+												<span>{activeSheetProduct?.title ?? 'No cell selected'}</span>
+												{#if activeSheetProduct}
+													<span title={formatAdminDateTime(activeSheetProduct.updated_at)}>
+														Edited {formatRelativeTime(activeSheetProduct.updated_at)}
+													</span>
+													<span title={formatAdminDateTime(activeSheetProduct.created_at)}>
+														Created {formatRelativeTime(activeSheetProduct.created_at)}
+													</span>
+												{/if}
+												<span>{dirtySheetProducts.length} dirty rows</span>
+												<span>
+													{sheetMode === 'all'
+														? `${sheetRows.length.toLocaleString('en-IN')} loaded products`
+														: `Page ${productPage} of ${productTotalPages}`}
+												</span>
+											</div>
+										{/if}
+									</section>
+								{/if}
+
+								{#if drawerOpen}
+									<button
+										type="button"
+										class="drawer-backdrop"
+										aria-label="Close editor"
+										onclick={closeProductEditor}
+										transition:fade={{ duration: 150 }}
+									></button>
+									<aside
+										class="editor-drawer"
+										transition:fly={{ x: 480, duration: 280, easing: cubicOut }}
+										aria-label="Product editor"
+									>
+										<div class="drawer-head">
+											<div class="min-w-0">
+												<p class="drawer-kicker">
+													{selectedProductId === 'new' ? 'New product' : 'Edit product'}
+												</p>
+												<h2 class="drawer-title">{productEditor.title || 'Untitled product'}</h2>
+											</div>
+											<button
+												type="button"
+												class="drawer-close"
+												aria-label="Close editor"
+												onclick={closeProductEditor}
+											>
+												<X class="size-4" strokeWidth={2.2} />
+											</button>
+										</div>
+										<div class="drawer-body">
+											<div class="border-b border-[var(--border-faint)] p-5">
+												<div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+													<div
+														class="flex size-24 shrink-0 items-center justify-center rounded-md bg-[var(--background-lighter)] p-3"
+													>
+														{#if productEditor.image}
+															<img
+																src={productEditor.image}
+																alt={productEditor.title || 'Preview'}
+																class="max-h-full max-w-full object-contain"
+															/>
+														{:else}
+															<Boxes
+																class="size-5 text-[var(--black-alpha-16)]"
+																strokeWidth={1.5}
+															/>
+														{/if}
+													</div>
+													<div class="min-w-0 flex-1">
+														<div class="flex flex-wrap items-center gap-1.5">
+															<span
+																class="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase
+																{selectedProductId === 'new'
+																	? 'bg-[var(--heat-100)] text-white'
+																	: productEditor.status === 'active'
+																		? 'bg-[var(--accent-forest)]/10 text-[var(--accent-forest)]'
+																		: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
+															>
+																{selectedProductId === 'new' ? 'new' : productEditor.status}
+															</span>
+															<span
+																class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+															>
+																{categoryNameBySlug.get(productEditor.category) ??
+																	'Category pending'}
+															</span>
+														</div>
+														<h2 class="mt-1 truncate text-[16px] font-medium text-foreground">
+															{productEditor.title || 'Untitled product'}
+														</h2>
+														<p class="text-[12px] text-[var(--black-alpha-40)]">
+															{productEditor.brand || 'Brand pending'} · SKU {productEditor.sku ||
+																'—'}
+														</p>
+														{#if selectedProductId !== 'new'}
+															<p
+																class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--black-alpha-32)]"
+															>
+																<span title={formatAdminDateTime(productEditor.updatedAt)}>
+																	Edited {formatRelativeTime(productEditor.updatedAt)}
+																</span>
+																<span title={formatAdminDateTime(productEditor.createdAt)}>
+																	Created {formatRelativeTime(productEditor.createdAt)}
+																</span>
+															</p>
+														{/if}
+													</div>
+													<div class="flex shrink-0 gap-5">
+														<div>
+															<p
+																class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+															>
+																Price
+															</p>
+															<p class="mt-0.5 text-[14px] font-medium text-foreground">
+																{formatINR(Number(productEditor.price || 0))}
+															</p>
+														</div>
+														<div>
+															<p
+																class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-32)] uppercase"
+															>
+																Stock
+															</p>
+															<p class="mt-0.5 text-[14px] font-medium text-foreground">
+																{productEditor.stock || '0'}
+															</p>
+														</div>
+													</div>
+												</div>
+											</div>
+
+											{#if productNotice}
+												<div
+													class="m-5 mb-0 flex items-start gap-2 rounded-md border px-3 py-2.5 text-[12px] {noticeClasses(
+														productNotice.tone
+													)}"
+													in:fly={{ y: -4, duration: 200 }}
+												>
+													<span class="mt-1 size-1.5 shrink-0 rounded-full bg-current"></span>
+													<span>{productNotice.text}</span>
+												</div>
+											{/if}
+
+											<div class="space-y-6 p-5">
+												<section>
+													<h3 class="section-title">Product identity</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+														<label>
+															<span class="field-label">Title</span>
+															<input bind:value={productEditor.title} class="input-field" />
+														</label>
+														<label>
+															<span class="field-label">Brand</span>
+															<input bind:value={productEditor.brand} class="input-field" />
+														</label>
+														<label>
+															<span class="field-label">Category</span>
+															<select bind:value={productEditor.category} class="input-field">
+																{#each categoryOptions as option (option.value)}
+																	<option value={option.value}>{option.label}</option>
+																{/each}
+															</select>
+														</label>
+														<label>
+															<span class="field-label">SKU</span>
+															<input bind:value={productEditor.sku} class="input-field" />
+														</label>
+														<label class="sm:col-span-2">
+															<span class="field-label">Description</span>
+															<textarea
+																bind:value={productEditor.description}
+																class="input-field min-h-[80px] py-2"
+																style="height:auto"
+															></textarea>
+														</label>
+														<label class="sm:col-span-2">
+															<span class="field-label">Compatibility</span>
+															<input bind:value={productEditor.compatibility} class="input-field" />
+														</label>
+													</div>
+												</section>
+
+												<hr class="border-[var(--border-faint)]" />
+
+												<section>
+													<h3 class="section-title">Pricing &amp; availability</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+														<label>
+															<span class="field-label">Selling price</span>
+															<input
+																bind:value={productEditor.price}
+																class="input-field"
+																inputmode="decimal"
+															/>
+														</label>
+														<label>
+															<span class="field-label">Cost price</span>
+															<input
+																bind:value={productEditor.costPrice}
+																class="input-field"
+																inputmode="decimal"
+															/>
+														</label>
+														<label>
+															<span class="field-label">Max discount (%)</span>
+															<input
+																value={productEditor.maxDiscountPct}
+																class="input-field bg-[var(--background-lighter)] text-[var(--black-alpha-56)]"
+																readonly
+																aria-readonly="true"
+															/>
+														</label>
+														<label>
+															<span class="field-label">MRP</span>
+															<input
+																bind:value={productEditor.mrp}
+																class="input-field"
+																inputmode="decimal"
+															/>
+														</label>
+														<label>
+															<span class="field-label">Stock</span>
+															<input
+																bind:value={productEditor.stock}
+																class="input-field"
+																inputmode="numeric"
+															/>
+														</label>
+														<label>
+															<span class="field-label">Status</span>
+															<select bind:value={productEditor.status} class="input-field">
+																<option value="active">Active</option>
+																<option value="draft">Draft</option>
+																<option value="archived">Archived</option>
+															</select>
+														</label>
+													</div>
+												</section>
+
+												<hr class="border-[var(--border-faint)]" />
+
+												<section>
+													<h3 class="section-title">Trust, tax &amp; checkout</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+														<label>
+															<span class="field-label">Authenticity</span>
+															<select
+																bind:value={productEditor.authenticityGrade}
+																class="input-field"
+															>
+																<option value="oem">OEM</option>
+																<option value="compatible">Compatible</option>
+																<option value="refurbished">Refurbished</option>
+																<option value="open_box">Open box</option>
+															</select>
+														</label>
+														<label>
+															<span class="field-label">Condition</span>
+															<select bind:value={productEditor.conditionGrade} class="input-field">
+																<option value="new">New</option>
+																<option value="open_box">Open box</option>
+																<option value="refurbished">Refurbished</option>
+																<option value="used">Used</option>
+															</select>
+														</label>
+														<label>
+															<span class="field-label">HSN code</span>
+															<input bind:value={productEditor.hsnCode} class="input-field" />
+														</label>
+														<label>
+															<span class="field-label">GST rate (%)</span>
+															<input
+																bind:value={productEditor.gstRate}
+																class="input-field"
+																inputmode="numeric"
+															/>
+														</label>
+													</div>
+												</section>
+
+												<hr class="border-[var(--border-faint)]" />
+
+												<section>
+													<h3 class="section-title">Delivery &amp; policies</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+														<label>
+															<span class="field-label">DOA window (days)</span>
+															<input
+																bind:value={productEditor.doaPolicyDays}
+																class="input-field"
+																inputmode="numeric"
+															/>
+														</label>
+														<label class="checkbox-field">
+															<input
+																type="checkbox"
+																bind:checked={productEditor.localDeliveryEligible}
+																class="size-3.5 accent-[var(--heat-100)]"
+															/>
+															<span class="text-[11px] text-[var(--black-alpha-56)]"
+																>Local delivery</span
+															>
+														</label>
+														<label class="checkbox-field">
+															<input
+																type="checkbox"
+																bind:checked={productEditor.codAllowed}
+																class="size-3.5 accent-[var(--heat-100)]"
+															/>
+															<span class="text-[11px] text-[var(--black-alpha-56)]"
+																>COD allowed</span
+															>
+														</label>
+														<label class="checkbox-field">
+															<input
+																type="checkbox"
+																bind:checked={productEditor.returnable}
+																class="size-3.5 accent-[var(--heat-100)]"
+															/>
+															<span class="text-[11px] text-[var(--black-alpha-56)]"
+																>Returnable</span
+															>
+														</label>
+														<label class="checkbox-field">
+															<input
+																type="checkbox"
+																bind:checked={productEditor.isUniversal}
+																class="size-3.5 accent-[var(--heat-100)]"
+															/>
+															<span class="text-[11px] text-[var(--black-alpha-56)]"
+																>Universal fit</span
+															>
+														</label>
+													</div>
+												</section>
+
+												<hr class="border-[var(--border-faint)]" />
+
+												<section>
+													<h3 class="section-title">Imagery &amp; dimensions</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+														<label>
+															<span class="field-label">Primary image URL</span>
+															<input bind:value={productEditor.image} class="input-field" />
+														</label>
+														<div class="flex items-end">
+															<button
+																type="button"
+																class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:border-[var(--heat-40)] hover:text-[var(--heat-100)] disabled:opacity-60"
+																disabled={productImageUploading}
+																onclick={uploadProductEditorImage}
+															>
+																<ImagePlus class="size-4" strokeWidth={2.2} />
+																{productImageUploading ? 'Uploading...' : 'Upload image'}
+															</button>
+														</div>
+														{#if productImageUploadError}
+															<p class="text-[11px] text-red-600 sm:col-span-2">
+																{productImageUploadError}
+															</p>
+														{/if}
+														<label>
+															<span class="field-label">Source URL</span>
+															<input bind:value={productEditor.sourceUrl} class="input-field" />
+														</label>
+														<label class="sm:col-span-2">
+															<span class="field-label">Additional images (one URL per line)</span>
+															<textarea
+																bind:value={productEditor.imagesText}
+																class="input-field min-h-[80px] py-2 font-mono"
+																style="height:auto"
+															></textarea>
+														</label>
+														<div class="grid grid-cols-2 gap-2.5 sm:col-span-2 sm:grid-cols-4">
+															<label>
+																<span class="field-label">Weight (kg)</span>
+																<input
+																	bind:value={productEditor.weightKg}
+																	class="input-field"
+																	inputmode="decimal"
+																/>
+															</label>
+															<label>
+																<span class="field-label">Length (cm)</span>
+																<input
+																	bind:value={productEditor.lengthCm}
+																	class="input-field"
+																	inputmode="decimal"
+																/>
+															</label>
+															<label>
+																<span class="field-label">Breadth (cm)</span>
+																<input
+																	bind:value={productEditor.breadthCm}
+																	class="input-field"
+																	inputmode="decimal"
+																/>
+															</label>
+															<label>
+																<span class="field-label">Height (cm)</span>
+																<input
+																	bind:value={productEditor.heightCm}
+																	class="input-field"
+																	inputmode="decimal"
+																/>
+															</label>
+														</div>
+													</div>
+												</section>
+
+												<hr class="border-[var(--border-faint)]" />
+
+												<section>
+													<h3 class="section-title">Merchandising</h3>
+													<div class="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+														<label>
+															<span class="field-label">Highlights (one per line)</span>
+															<textarea
+																bind:value={productEditor.highlightsText}
+																class="input-field min-h-[80px] py-2"
+																style="height:auto"
+															></textarea>
+														</label>
+														<label>
+															<span class="field-label">Search keywords (one per line)</span>
+															<textarea
+																bind:value={productEditor.searchKeywordsText}
+																class="input-field min-h-[80px] py-2"
+																style="height:auto"
+															></textarea>
+															<span
+																class="mt-1 block text-[10px] {productKeywordOverflowCount > 0
+																	? 'text-[var(--accent-crimson)]'
+																	: 'text-[var(--black-alpha-40)]'}"
+															>
+																{productKeywordCount}/24 saved{productKeywordOverflowCount > 0
+																	? `, ${productKeywordOverflowCount} extra ignored`
+																	: ''}
+															</span>
+														</label>
+													</div>
+												</section>
+											</div>
+
+											<!-- Save bar -->
+											<div class="editor-save-bar">
+												<button
+													type="button"
+													class="button button-primary inline-flex h-9 items-center rounded-md px-5 text-[13px] font-medium text-white disabled:opacity-50"
+													disabled={productSaving}
+													onclick={saveProduct}
+												>
+													{productSaving ? 'Saving...' : 'Save product'}
+												</button>
+												{#if selectedProductId !== 'new'}
+													<button
+														type="button"
+														class="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--accent-crimson)] transition-colors hover:border-[var(--accent-crimson)] hover:bg-[var(--accent-crimson)]/4 disabled:opacity-50"
+														disabled={productDeleting}
+														onclick={deleteProduct}
+													>
+														<Trash2 class="size-3.5" strokeWidth={2} />
+														{productDeleting ? 'Processing...' : 'Delete or archive'}
+													</button>
+												{/if}
+											</div>
+										</div>
+									</aside>
+								{/if}
 							{/if}
 						{:else if view === 'operations'}
 							<!-- OPERATIONS TAB (orders + fulfillment) -->
@@ -4418,13 +4584,16 @@
 													<option value="inactive">Inactive</option>
 												</select>
 											</label>
-											<label class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2">
+											<label
+												class="flex items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
+											>
 												<input
 													type="checkbox"
 													class="size-4 rounded border-[var(--border-muted)] accent-[var(--heat-100)]"
 													bind:checked={couponEditor.firstOrderOnly}
 												/>
-												<span class="text-[12px] font-medium text-foreground">First order only</span>
+												<span class="text-[12px] font-medium text-foreground">First order only</span
+												>
 											</label>
 											<label>
 												<span class="field-label">Pincode prefix</span>
@@ -4454,7 +4623,9 @@
 											</label>
 										</div>
 
-										<fieldset class="mt-3 rounded-md border border-[var(--border-faint)] bg-white p-3">
+										<fieldset
+											class="mt-3 rounded-md border border-[var(--border-faint)] bg-white p-3"
+										>
 											<legend class="field-label">Applicable categories</legend>
 											<div class="mt-1 flex flex-wrap items-center justify-between gap-2">
 												<span class="text-[11px] text-[var(--black-alpha-40)]">
@@ -4837,25 +5008,37 @@
 	}
 
 	/* ── Catalog ── */
-	.catalog-sidebar {
+	.catalog-board {
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
-		border-radius: 8px;
-		border: 1px solid var(--border-faint);
-		background: white;
+		gap: 14px;
 	}
 
-	.catalog-list {
-		max-height: calc(100vh - 220px);
-		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		padding: 6px;
-		scrollbar-gutter: stable;
+	.catalog-toolbar {
 		display: flex;
-		flex-direction: column;
-		gap: 2px;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.catalog-toolbar-icon {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		flex-shrink: 0;
+		border-radius: 10px;
+		border: 1px solid var(--border-faint);
+		background: linear-gradient(135deg, var(--heat-4), white);
+		color: var(--heat-100);
+	}
+
+	.catalog-controls {
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 12px;
+		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 	}
 
 	.catalog-search-row {
@@ -5033,87 +5216,404 @@
 		cursor: not-allowed;
 	}
 
-	.catalog-row {
+	/* ── Bulk bar ── */
+	.bulk-bar {
+		border-radius: 12px;
+		border: 1px solid var(--heat-20);
+		background: linear-gradient(180deg, var(--heat-4), white 70%);
+		padding: 14px 16px;
+	}
+
+	.bulk-bar-head {
 		display: flex;
-		align-items: stretch;
-		gap: 4px;
-		border-radius: 8px;
-		padding: 2px;
-		transition:
-			background-color 150ms ease,
-			box-shadow 150ms ease;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
 	}
 
-	.catalog-row.bulk-selected {
-		background: var(--heat-4);
-		box-shadow: inset 0 0 0 1px rgba(250, 93, 25, 0.1);
+	.bulk-bar-kicker {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--heat-100);
 	}
 
-	.catalog-select {
+	.bulk-bar-title {
+		margin-top: 2px;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.bulk-bar-note {
+		margin-top: 2px;
+		font-size: 11px;
+		color: var(--black-alpha-48);
+	}
+
+	.bulk-bar-grid {
+		margin-top: 12px;
 		display: grid;
-		width: 28px;
-		min-height: 58px;
-		place-items: center;
-		border-radius: 6px;
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: 10px;
+	}
+
+	/* ── Catalog table ── */
+	.catalog-table-wrap {
+		overflow-x: auto;
+		border-radius: 12px;
 		border: 1px solid var(--border-faint);
+		background: white;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+	}
+
+	.catalog-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 13px;
+	}
+
+	.catalog-table thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--background-lighter);
+		border-bottom: 1px solid var(--border-faint);
+		padding: 10px 14px;
+		text-align: left;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+		white-space: nowrap;
+	}
+
+	.catalog-table tbody td {
+		padding: 10px 14px;
+		border-bottom: 1px solid var(--border-faint);
+		vertical-align: middle;
+	}
+
+	.catalog-table tbody tr:last-child td {
+		border-bottom: 0;
+	}
+
+	.cat-check-col {
+		width: 44px;
+	}
+	.cat-img-col {
+		width: 64px;
+	}
+	.cat-type-col {
+		width: 150px;
+	}
+	.cat-num-col,
+	.catalog-table th.cat-num-col {
+		width: 120px;
+		text-align: right;
+	}
+	.cat-stock-col {
+		width: 84px;
+	}
+	.cat-status-col {
+		width: 110px;
+	}
+	.cat-act-col,
+	.catalog-table th.cat-act-col {
+		width: 92px;
+		text-align: right;
+	}
+
+	.catalog-trow {
+		cursor: pointer;
+		outline: none;
+		transition: background-color 140ms ease;
+	}
+
+	.catalog-trow:hover {
+		background: var(--heat-4);
+	}
+
+	.catalog-trow:focus-visible {
+		background: var(--heat-4);
+		box-shadow: inset 2px 0 0 var(--heat-100);
+	}
+
+	.catalog-trow.is-selected {
+		background: var(--heat-8);
+	}
+
+	.catalog-check {
+		display: grid;
+		place-items: center;
+		width: 20px;
+		height: 20px;
+		border-radius: 6px;
+		border: 1.5px solid var(--black-alpha-24);
 		background: white;
 		color: white;
 		transition:
-			background-color 150ms ease,
-			border-color 150ms ease,
-			color 150ms ease;
+			background-color 140ms ease,
+			border-color 140ms ease;
 	}
 
-	.catalog-select::before {
-		content: '';
-		width: 10px;
-		height: 10px;
-		border-radius: 3px;
-		border: 1px solid var(--black-alpha-24);
+	.catalog-check:hover:not(:disabled) {
+		border-color: var(--heat-100);
 	}
 
-	.catalog-select.active {
+	.catalog-check.active {
 		border-color: var(--heat-100);
 		background: var(--heat-100);
-		color: white;
 	}
 
-	.catalog-select.active::before {
-		display: none;
+	.catalog-check:disabled {
+		opacity: 0.4;
 	}
 
-	.catalog-item {
+	.catalog-thumb {
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 3px;
+		overflow: hidden;
+	}
+
+	.catalog-thumb img {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+	}
+
+	.catalog-name {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--foreground);
+		line-height: 1.35;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.catalog-sub {
+		margin-top: 2px;
 		display: flex;
-		flex: 1;
-		min-width: 0;
-		align-items: flex-start;
-		gap: 10px;
-		border-radius: 6px;
-		padding: 8px;
-		text-align: left;
-		transition:
-			background-color 150ms ease,
-			box-shadow 150ms ease;
-		cursor: pointer;
-		border: none;
-		background: none;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		color: var(--black-alpha-40);
 	}
 
-	.catalog-item:hover {
+	.catalog-sku {
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		color: var(--black-alpha-32);
+	}
+
+	.catalog-type {
+		display: inline-block;
+		border-radius: 6px;
+		background: var(--background-lighter);
+		border: 1px solid var(--border-faint);
+		padding: 2px 8px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--black-alpha-64);
+		white-space: nowrap;
+	}
+
+	.catalog-price {
+		font-weight: 600;
+		color: var(--foreground);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.catalog-mrp {
+		display: block;
+		font-size: 11px;
+		color: var(--black-alpha-32);
+		text-decoration: line-through;
+	}
+
+	.catalog-stock {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-weight: 500;
+		font-variant-numeric: tabular-nums;
+		color: var(--foreground);
+	}
+
+	.catalog-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 999px;
+	}
+	.catalog-dot.is-ok {
+		background: var(--accent-forest);
+	}
+	.catalog-dot.is-low {
+		background: var(--accent-honey);
+	}
+	.catalog-dot.is-out {
+		background: var(--accent-crimson);
+	}
+
+	.catalog-status {
+		display: inline-block;
+		border-radius: 6px;
+		padding: 2px 8px;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.catalog-status.active {
+		background: color-mix(in srgb, var(--accent-forest) 12%, white);
+		color: var(--accent-forest);
+	}
+	.catalog-status.draft {
+		background: color-mix(in srgb, var(--accent-honey) 14%, white);
+		color: var(--accent-honey);
+	}
+	.catalog-status.archived {
+		background: var(--background-lighter);
+		color: var(--black-alpha-40);
+	}
+
+	.catalog-actions {
+		display: inline-flex;
+		gap: 6px;
+		justify-content: flex-end;
+	}
+
+	.catalog-act {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		color: var(--black-alpha-56);
+		transition:
+			background-color 140ms ease,
+			border-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.catalog-act.edit:hover {
+		border-color: var(--heat-100);
+		background: var(--heat-4);
+		color: var(--heat-100);
+	}
+
+	.catalog-act.delete:hover:not(:disabled) {
+		border-color: var(--accent-crimson);
+		background: color-mix(in srgb, var(--accent-crimson) 6%, white);
+		color: var(--accent-crimson);
+	}
+
+	.catalog-act:disabled {
+		opacity: 0.5;
+		cursor: progress;
+	}
+
+	.catalog-empty {
+		padding: 40px 16px;
+		text-align: center;
+		font-size: 13px;
+		color: var(--black-alpha-32);
+	}
+
+	/* ── Editor drawer ── */
+	.drawer-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		background: rgba(15, 15, 15, 0.32);
+		backdrop-filter: blur(1.5px);
+		border: 0;
+	}
+
+	.editor-drawer {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 61;
+		width: min(560px, 100vw);
+		display: flex;
+		flex-direction: column;
+		background: white;
+		border-left: 1px solid var(--border-faint);
+		box-shadow: -16px 0 48px rgba(0, 0, 0, 0.16);
+	}
+
+	.drawer-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-shrink: 0;
+		padding: 14px 18px;
+		border-bottom: 1px solid var(--border-faint);
 		background: var(--background-lighter);
 	}
 
-	.catalog-item.selected {
-		background: var(--heat-4);
-		box-shadow: inset 0 0 0 1px rgba(250, 93, 25, 0.15);
+	.drawer-kicker {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--heat-100);
 	}
 
-	/* ── Editor ── */
-	.catalog-workspace {
-		display: flex;
-		min-width: 0;
-		flex-direction: column;
-		gap: 12px;
+	.drawer-title {
+		margin-top: 2px;
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--foreground);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 420px;
+	}
+
+	.drawer-close {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		flex-shrink: 0;
+		border-radius: 8px;
+		border: 1px solid var(--border-muted);
+		background: white;
+		color: var(--black-alpha-56);
+		transition:
+			color 140ms ease,
+			border-color 140ms ease;
+	}
+
+	.drawer-close:hover {
+		border-color: var(--accent-crimson);
+		color: var(--accent-crimson);
+	}
+
+	.drawer-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	.spreadsheet-panel {
@@ -5511,22 +6011,9 @@
 		}
 	}
 
-	.editor-panel {
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		border-radius: 8px;
-		border: 1px solid var(--border-faint);
-		background: white;
-	}
-
-	.bulk-editor {
-		border-bottom: 1px solid var(--border-faint);
-		background: linear-gradient(180deg, var(--heat-4), white 72%);
-		padding: 18px 20px;
-	}
-
 	.editor-save-bar {
+		position: sticky;
+		bottom: 0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;

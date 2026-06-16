@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hiddenCategories, type Product, type ProductSpecificationValue } from '$lib/catalog';
+import { isPrivateSupplierQuery, sanitizePublicProduct } from '$lib/public-product';
 import { supabase } from '$lib/supabase/client';
 import type { Database } from '$lib/supabase/types';
 
@@ -42,7 +43,7 @@ export const productSelectFields =
 	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,length_cm,breadth_cm,height_cm,compatibility,warranty,highlights,specifications,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
-	'id,title,brand,category,image,source_url,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,images,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
 
 type ProductClient = SupabaseClient<Database>;
 
@@ -107,7 +108,7 @@ export function normalizeProductRow(row: ProductRow): Product {
 	const lengthCm = Number(row.length_cm);
 	const breadthCm = Number(row.breadth_cm);
 	const heightCm = Number(row.height_cm);
-	return {
+	return sanitizePublicProduct({
 		id: row.id,
 		title: row.title,
 		brand: row.brand,
@@ -140,7 +141,7 @@ export function normalizeProductRow(row: ProductRow): Product {
 		doa_policy_days: row.doa_policy_days ?? undefined,
 		local_delivery_eligible: row.local_delivery_eligible ?? undefined,
 		cod_eligible: row.cod_eligible ?? undefined
-	};
+	});
 }
 
 export async function listProducts(client?: ProductClient) {
@@ -208,6 +209,8 @@ export async function listCatalogProductPage(
 	}
 
 	if (options.query) {
+		if (isPrivateSupplierQuery(options.query)) return { products: [], total: 0 };
+
 		const searchTerms = fallbackSearchTerms(options.query);
 		const searchFilters = searchTerms.flatMap((term) => [
 			`title.ilike.%${term}%`,
@@ -215,8 +218,7 @@ export async function listCatalogProductPage(
 			`sku.ilike.%${term}%`,
 			`compatibility.ilike.%${term}%`,
 			`warranty.ilike.%${term}%`,
-			`description.ilike.%${term}%`,
-			`source_url.ilike.%${term}%`
+			`description.ilike.%${term}%`
 		]);
 		const normalizedTerm = normalizedFallbackTerm(options.query);
 		if (normalizedTerm && normalizedTerm !== options.query.trim().toLowerCase()) {

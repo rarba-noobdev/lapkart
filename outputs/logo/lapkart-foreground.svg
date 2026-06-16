@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="orange" x1="120" y1="120" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF8A2B"/>
+      <stop offset="1" stop-color="#FF6A00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- mark only, transparent bg, enlarged ~1.35x to survive adaptive-icon safe-zone insets -->
+  <g transform="translate(244 266) scale(1.35) translate(-244 -266)">
+    <g stroke="url(#orange)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M150 138 L150 326 L362 326"/>
+      <path d="M150 196 L378 196 L344 300 L186 300"/>
+    </g>
+    <path d="M276 206 L226 262 L262 262 L246 306 L308 240 L270 240 Z" fill="url(#orange)"/>
+    <circle cx="196" cy="372" r="22" fill="url(#orange)"/>
+    <circle cx="338" cy="372" r="22" fill="url(#orange)"/>
+  </g>
+</svg>

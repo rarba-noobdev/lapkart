@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { page, navigating } from '$app/state';
+	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { setAuthContext } from '$lib/auth-context';
 	import type { LayoutProps } from './$types';
+	import AppUpdatePrompt from '$lib/components/AppUpdatePrompt.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import MobileTabBar from '$lib/components/MobileTabBar.svelte';
@@ -16,6 +17,7 @@
 	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
 	import { hydrateCart } from '$lib/cart';
 	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
+	import { setupNativeAppShell } from '$lib/native/capacitor';
 	import { organizationJsonLd, safeJsonLd, shouldNoIndexPath, websiteJsonLd } from '$lib/seo';
 
 	let { data, children }: LayoutProps = $props();
@@ -72,6 +74,21 @@
 
 	onMount(() => {
 		hydrateCart();
+		let disposed = false;
+		let nativeCleanup: (() => void | Promise<void>) | undefined;
+		void setupNativeAppShell({
+			getPathname: () => window.location.pathname,
+			navigate: (path) => window.location.assign(path),
+			onResume: () => {
+				void updated.check();
+			}
+		}).then((cleanup) => {
+			if (disposed) {
+				void cleanup();
+				return;
+			}
+			nativeCleanup = cleanup;
+		});
 
 		// Google Analytics (gtag.js). Loaded here instead of an inline app.html
 		// block so it stays CSP-clean (external loader is host-allowlisted, init
@@ -118,6 +135,8 @@
 		});
 
 		return () => {
+			disposed = true;
+			void nativeCleanup?.();
 			authListener.subscription.unsubscribe();
 		};
 	});
@@ -136,6 +155,8 @@
 <NavigationLoader />
 
 <OfflineBanner />
+
+<AppUpdatePrompt />
 
 <CookieConsent />
 

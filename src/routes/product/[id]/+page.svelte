@@ -25,6 +25,7 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
+	import NativeShareButton from '$lib/components/NativeShareButton.svelte';
 	import RecentlyBought from '$lib/components/RecentlyBought.svelte';
 	import { requestAdmin, roundMoney } from '$lib/admin';
 	import { getAuthContext } from '$lib/auth-context';
@@ -301,6 +302,9 @@
 	const hasDisplayCompatibilityTables = $derived(
 		product.category === 'displays' &&
 			(displayCompatibility.partNumbers.length > 0 || displayCompatibility.models.length > 0)
+	);
+	const showInternalCompatibilitySource = $derived(
+		isAdmin && (displayCompatibility.brands.length > 0 || displayCompatibility.source)
 	);
 	const detailSpecs = $derived(productSpecificationSpecs(product));
 	const hasDetailCondition = $derived(
@@ -623,11 +627,20 @@
 				</p>
 
 				<!-- Title -->
-				<h1
-					class="mt-1.5 font-display text-[clamp(1.25rem,2.8vw,1.75rem)] leading-snug tracking-[-0.015em] text-foreground"
-				>
-					{product.title}
-				</h1>
+				<div class="mt-1.5 flex items-start gap-3">
+					<h1
+						class="min-w-0 flex-1 font-display text-[clamp(1.25rem,2.8vw,1.75rem)] leading-snug tracking-[-0.015em] text-foreground"
+					>
+						{product.title}
+					</h1>
+					<NativeShareButton
+						title={product.title}
+						text={seoDescription}
+						url={productUrl}
+						label="Share"
+						className="mt-0.5"
+					/>
+				</div>
 
 				<!-- Rating row -->
 				<div class="mt-3 flex flex-wrap items-center gap-2.5">
@@ -1044,14 +1057,14 @@
 				{:else}
 					<div class="px-4 py-4 sm:px-6 md:px-8">
 						<p class="text-body-small text-[var(--black-alpha-56)]">
-							No laptop model list is published by the source for this panel. Use the panel number
-							and physical specs for matching.
+							No laptop model list is available for this panel. Use the panel number and physical
+							specs for matching.
 						</p>
 					</div>
 				{/if}
 			</div>
 
-			{#if displayCompatibility.brands.length > 0 || displayCompatibility.source}
+			{#if showInternalCompatibilitySource}
 				<div
 					class="flex flex-wrap gap-2 border-t border-[var(--border-faint)] px-4 py-3 sm:px-6 md:px-8"
 				>

@@ -274,6 +274,33 @@ export async function requestAdmin<T>(path: string, init?: RequestInit): Promise
 	return (body ?? {}) as T;
 }
 
+export type AdminImageUploadResponse = {
+	bucket: string;
+	path: string;
+	image_url: string;
+	uploaded_at: string;
+};
+
+export async function uploadAdminImage(
+	bucket: 'products' | 'users',
+	file: File
+): Promise<AdminImageUploadResponse> {
+	const formData = new FormData();
+	formData.append('file', file);
+
+	const response = await fetch(`${apiBase}/storage/upload/${bucket}`, {
+		method: 'POST',
+		headers: await getAuthorizationHeaders(),
+		body: formData
+	});
+
+	const body = (await response.json().catch(() => null)) as
+		| (AdminImageUploadResponse & { error?: string })
+		| null;
+	if (!response.ok) throw new Error(body?.error ?? 'Image upload failed');
+	return body as AdminImageUploadResponse;
+}
+
 export function postJson(body: Record<string, unknown>) {
 	return { method: 'POST', body: JSON.stringify(body) } satisfies RequestInit;
 }

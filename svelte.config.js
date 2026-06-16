@@ -11,6 +11,9 @@ const config = {
 	},
 	kit: {
 		adapter: isVercelBuild ? adapterVercel() : adapterAuto(),
+		version: {
+			pollInterval: 60000
+		},
 		csp: {
 			mode: 'auto',
 			directives: {

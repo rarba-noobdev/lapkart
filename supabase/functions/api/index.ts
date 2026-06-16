@@ -2042,7 +2042,7 @@ async function sendStockNotificationEvent(eventId: string) {
 	const productTitle = firstString(product.title) ?? 'Your saved LapKart part';
 	const origin =
 		config.webOrigins.find((value) => value.startsWith('https://')) ?? config.webOrigins[0];
-	const productUrl = `${origin?.replace(/\/$/, '') ?? 'https://lapkart-five.vercel.app'}/product/${event.product_id}`;
+	const productUrl = `${origin?.replace(/\/$/, '') ?? 'https://www.lapkart.store'}/product/${event.product_id}`;
 	let phone: string | null = null;
 	if (event.user_id) {
 		const { data: profile } = await adminDb

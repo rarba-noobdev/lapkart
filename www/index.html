@@ -1,102 +1,62 @@
 <!doctype html>
 <html lang="en">
 	<head>
-		<meta charset="utf-8" />
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
-		/>
-		<meta name="theme-color" content="#fa5d19" />
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<meta http-equiv="refresh" content="0; url=https://www.lapkart.store/" />
 		<title>LapKart</title>
 		<style>
-			#app-boot {
-				position: fixed;
-				inset: 0;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				gap: 18px;
+			:root {
+				color: #111111;
 				background: #ffffff;
-				font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-				z-index: 9999;
+				font-family:
+					Inter,
+					system-ui,
+					-apple-system,
+					BlinkMacSystemFont,
+					Segoe UI,
+					sans-serif;
 			}
-			#app-boot .boot-mark {
-				font-size: 26px;
-				font-weight: 800;
-				letter-spacing: -0.02em;
-				color: #1a1a1a;
+
+			body {
+				margin: 0;
+				min-height: 100vh;
+				display: grid;
+				place-items: center;
+				padding: 24px;
 			}
-			#app-boot .boot-mark b {
-				color: #fa5d19;
-			}
-			#app-boot .boot-spinner {
-				width: 34px;
-				height: 34px;
-				border-radius: 50%;
-				border: 3px solid rgba(250, 93, 25, 0.2);
-				border-top-color: #fa5d19;
-				animation: boot-spin 0.7s linear infinite;
-			}
-			@keyframes boot-spin {
-				to {
-					transform: rotate(360deg);
-				}
-			}
-			#app-boot .boot-error {
-				display: none;
-				max-width: 88%;
-				font-size: 12px;
-				line-height: 1.4;
-				color: #b91c1c;
-				white-space: pre-wrap;
-				word-break: break-word;
+
+			main {
+				max-width: 320px;
 				text-align: center;
 			}
+
+			.mark {
+				width: 42px;
+				height: 42px;
+				margin: 0 auto 18px;
+				border-radius: 12px;
+				background: #fa5d19;
+				box-shadow: 0 10px 30px rgba(250, 93, 25, 0.26);
+			}
+
+			p {
+				margin: 0;
+			}
+
+			a {
+				color: #fa5d19;
+				font-weight: 650;
+			}
 		</style>
-		<script type="module" src="/assets/index-BanTgG29.js"></script>
-		<link rel="stylesheet" href="/assets/index-B5F8YRh9.css">
 	</head>
 	<body>
-		<div id="app">
-			<div id="app-boot">
-				<span class="boot-mark">lap<b>kart</b></span>
-				<span class="boot-spinner" role="status" aria-label="Loading"></span>
-				<pre class="boot-error" id="boot-error"></pre>
-			</div>
-		</div>
-		<script>
-			(function () {
-				function showBootError(label, detail) {
-					var box = document.getElementById('boot-error');
-					var spin = document.querySelector('#app-boot .boot-spinner');
-					if (!box) return;
-					if (spin) spin.style.display = 'none';
-					box.style.display = 'block';
-					box.textContent = label + '\n' + detail;
-				}
-				window.addEventListener('error', function (e) {
-					showBootError(
-						'Boot error',
-						(e.message || 'script error') +
-							(e.filename ? '\n' + e.filename + ':' + e.lineno : '')
-					);
-				});
-				window.addEventListener('unhandledrejection', function (e) {
-					var r = e.reason;
-					showBootError('Boot rejection', (r && (r.message || r.toString())) || 'unknown');
-				});
-				// Watchdog: if the Svelte shell never removed this loader, the bundle
-				// failed to execute. Surface that instead of spinning forever.
-				setTimeout(function () {
-					if (document.getElementById('app-boot')) {
-						showBootError(
-							'App did not start',
-							'Bundle loaded but did not mount within 8s.\nUA: ' + navigator.userAgent
-						);
-					}
-				}, 8000);
-			})();
-		</script>
+		<main>
+			<div class="mark"></div>
+			<p>Opening LapKart</p>
+			<p style="margin-top: 8px; color: rgba(0, 0, 0, 0.56); font-size: 13px; line-height: 1.5">
+				<a href="https://www.lapkart.store/">Continue to lapkart.store</a>
+			</p>
+		</main>
 	</body>
 </html>

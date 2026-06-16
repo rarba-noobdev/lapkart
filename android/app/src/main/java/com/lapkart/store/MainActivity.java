@@ -24,6 +24,10 @@ public class MainActivity extends BridgeActivity {
         "icici", "sbiyono", "myjio", "slice-upi", "bobupi",
         "shriramone", "indusmobile", "kotakbank"
     ));
+    private static final Set<String> ALLOWED_HTTPS_HOSTS = new HashSet<>(Arrays.asList(
+        "www.lapkart.store",
+        "lapkart.store"
+    ));
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -72,6 +76,20 @@ public class MainActivity extends BridgeActivity {
                     return true;
                 }
 
+                if (scheme != null && (scheme.equals("http") || scheme.equals("https"))) {
+                    String host = uri.getHost();
+                    if (host != null && !ALLOWED_HTTPS_HOSTS.contains(host.toLowerCase())) {
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        } catch (Exception e) {
+                            // No browser available
+                        }
+                        return true;
+                    }
+                }
+
                 return super.shouldOverrideUrlLoading(view, request);
             }
         });
@@ -88,16 +106,13 @@ public class MainActivity extends BridgeActivity {
             WebView webView = bridge.getWebView();
             if (webView == null) return;
 
-            // Notify Razorpay checkout JS that UPI intent flow completed
-            String callbackJs = "javascript:void(document.dispatchEvent(new CustomEvent('upi-intent-result', {detail: {resultCode: " + resultCode + "}})))";
+            // Notify Razorpay checkout JS that UPI intent flow completed.
             webView.post(() -> webView.evaluateJavascript(
                 "document.dispatchEvent(new CustomEvent('upi-intent-result', {detail: {resultCode: " + resultCode + "}}))",
                 null
             ));
         }
     }
-
-    private static final String ALLOWED_HOST = "lapkart-five.vercel.app";
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -112,7 +127,7 @@ public class MainActivity extends BridgeActivity {
         // trusted app shell).
         String scheme = data.getScheme();
         String host = data.getHost();
-        if (!"https".equalsIgnoreCase(scheme) || !ALLOWED_HOST.equalsIgnoreCase(host)) {
+        if (!"https".equalsIgnoreCase(scheme) || host == null || !ALLOWED_HTTPS_HOSTS.contains(host.toLowerCase())) {
             return;
         }
 
