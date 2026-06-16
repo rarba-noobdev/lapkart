@@ -168,7 +168,14 @@ function productImages(product: Product, origin: string) {
 	);
 }
 
-function compactText(value: unknown) {
+function compactText(value: unknown): string {
+	if (Array.isArray(value)) return value.map(compactText).filter(Boolean).join(', ');
+	if (value && typeof value === 'object') {
+		return Object.values(value)
+			.map(compactText)
+			.filter(Boolean)
+			.join(', ');
+	}
 	return String(value ?? '')
 		.replace(/\s+/g, ' ')
 		.trim();

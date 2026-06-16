@@ -89,6 +89,16 @@
 		product: Record<string, unknown>;
 	};
 
+	type DisplayPartNumberRow = {
+		type: string;
+		value: string;
+	};
+
+	type DisplayCompatibleModelRow = {
+		brand: string;
+		model: string;
+	};
+
 	function resetAdminForm(value: Product) {
 		adminForm = {
 			productId: value.id,
@@ -253,7 +263,14 @@
 		'authenticity',
 		'doa policy',
 		'cod',
-		'stock'
+		'stock',
+		'compatible device models',
+		'compatible device model table',
+		'panel part number table',
+		'panel part numbers',
+		'compatibility brands',
+		'compatibility classification',
+		'compatibility source'
 	]);
 
 	const galleryImages = $derived(
@@ -280,6 +297,11 @@
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const packageSize = $derived(formatPackageSize(product));
+	const displayCompatibility = $derived(displayCompatibilityTables(product));
+	const hasDisplayCompatibilityTables = $derived(
+		product.category === 'displays' &&
+			(displayCompatibility.partNumbers.length > 0 || displayCompatibility.models.length > 0)
+	);
 	const detailSpecs = $derived(productSpecificationSpecs(product));
 	const hasDetailCondition = $derived(
 		detailSpecs.some((spec) => specLabelKey(spec.label) === 'condition')
@@ -303,7 +325,7 @@
 		])
 	);
 	const specs = $derived([
-		{ label: 'Compatibility', value: compatibility },
+		...(hasDisplayCompatibilityTables ? [] : [{ label: 'Compatibility', value: compatibility }]),
 		{ label: 'Warranty', value: warranty },
 		...detailSpecs,
 		...(product.weight_kg
@@ -392,7 +414,7 @@
 
 	function normalizedSpec(label: string, value: unknown, seen: string[] = []) {
 		const cleanLabel = String(label ?? '').trim();
-		const cleanValue = String(value ?? '').trim();
+		const cleanValue = formatSpecValue(value);
 		if (!cleanLabel || !cleanValue || cleanLabel.length > 48) return null;
 
 		const key = specLabelKey(cleanLabel);
@@ -400,6 +422,74 @@
 
 		seen.push(key);
 		return { label: cleanLabel, value: cleanValue };
+	}
+
+	function formatSpecValue(value: unknown): string {
+		if (Array.isArray(value)) {
+			return value
+				.map((item) => formatSpecValue(item))
+				.filter(Boolean)
+				.join(', ');
+		}
+
+		if (value && typeof value === 'object') {
+			return Object.values(value)
+				.map((item) => formatSpecValue(item))
+				.filter(Boolean)
+				.join(', ');
+		}
+
+		return String(value ?? '').trim();
+	}
+
+	function stringListSpec(value: unknown): string[] {
+		if (Array.isArray(value)) {
+			return value
+				.map((item) => formatSpecValue(item))
+				.map((item) => item.trim())
+				.filter(Boolean);
+		}
+
+		return String(value ?? '')
+			.split(/\s*,\s*/)
+			.map((item) => item.trim())
+			.filter(Boolean);
+	}
+
+	function objectListSpec(value: unknown): Record<string, unknown>[] {
+		if (!Array.isArray(value)) return [];
+		return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+	}
+
+	function displayCompatibilityTables(value: Product) {
+		const productSpecs = value.specifications ?? {};
+		const partRows = objectListSpec(productSpecs['Panel Part Number Table'])
+			.map((row): DisplayPartNumberRow => {
+				return {
+					type: formatSpecValue(row.type) || 'Part number',
+					value: formatSpecValue(row.value)
+				};
+			})
+			.filter((row) => row.value);
+		const modelRows = objectListSpec(productSpecs['Compatible Device Model Table'])
+			.map((row): DisplayCompatibleModelRow => {
+				return {
+					brand: formatSpecValue(row.brand) || 'Compatible',
+					model: formatSpecValue(row.model)
+				};
+			})
+			.filter((row) => row.model);
+		const brands = stringListSpec(productSpecs['Compatibility Brands']);
+		const classification = formatSpecValue(productSpecs['Compatibility Classification']);
+		const source = formatSpecValue(productSpecs['Compatibility Source']);
+
+		return {
+			partNumbers: partRows,
+			models: modelRows,
+			brands,
+			classification,
+			source
+		};
 	}
 
 	function formatSpecNumber(value: number) {
@@ -866,6 +956,121 @@
 			</div>
 		</div>
 	</div>
+
+	{#if hasDisplayCompatibilityTables}
+		<div
+			class="mt-0 overflow-hidden border-t border-[var(--border-faint)] bg-white md:mt-4 md:rounded-lg md:border md:shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]"
+		>
+			<div
+				class="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-faint)] px-4 py-3 sm:px-6 sm:py-4 md:px-8"
+			>
+				<div>
+					<h2 class="text-label-large text-foreground">Display compatibility</h2>
+					<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">
+						Match the panel number first, then verify laptop model, connector, resolution and bracket
+						style before ordering.
+					</p>
+				</div>
+				{#if displayCompatibility.classification}
+					<span
+						class="text-mono-x-small rounded-full border border-[var(--border-faint)] bg-[var(--background-lighter)] px-2.5 py-1 tracking-[0.12em] text-[var(--black-alpha-56)] uppercase"
+					>
+						{displayCompatibility.classification}
+					</span>
+				{/if}
+			</div>
+
+			<div class="grid gap-0 md:grid-cols-[minmax(260px,0.9fr)_1fr]">
+				{#if displayCompatibility.partNumbers.length > 0}
+					<div class="border-b border-[var(--border-faint)] md:border-r md:border-b-0">
+						<div class="bg-[var(--background-lighter)] px-4 py-2.5 sm:px-6 md:px-8">
+							<h3
+								class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
+							>
+								Panel numbers
+							</h3>
+						</div>
+						<div class="divide-y divide-[var(--border-faint)]">
+							{#each displayCompatibility.partNumbers as row, index (`${row.type}-${row.value}-${index}`)}
+								<div
+									class="grid grid-cols-[104px_1fr] gap-3 px-4 py-2.5 sm:grid-cols-[132px_1fr] sm:px-6 md:px-8"
+								>
+									<span class="text-body-small text-[var(--black-alpha-48)]">{row.type}</span>
+									<span class="text-body-small font-medium text-foreground">{row.value}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				{#if displayCompatibility.models.length > 0}
+					<div>
+						<div class="bg-[var(--background-lighter)] px-4 py-2.5 sm:px-6 md:px-8">
+							<h3
+								class="text-mono-x-small font-medium tracking-[0.14em] text-[var(--black-alpha-56)] uppercase"
+							>
+								Compatible laptop models
+							</h3>
+						</div>
+						<div class="overflow-x-auto">
+							<table class="w-full min-w-[420px] border-collapse text-left">
+								<thead>
+									<tr class="border-b border-[var(--border-faint)]">
+										<th
+											class="text-body-small w-28 px-4 py-2.5 font-medium text-[var(--black-alpha-48)] sm:px-6 md:px-8"
+											>Brand</th
+										>
+										<th class="text-body-small px-4 py-2.5 font-medium text-[var(--black-alpha-48)] sm:px-6 md:px-8"
+											>Model</th
+										>
+									</tr>
+								</thead>
+								<tbody class="divide-y divide-[var(--border-faint)]">
+									{#each displayCompatibility.models as row, index (`${row.brand}-${row.model}-${index}`)}
+										<tr>
+											<td
+												class="text-body-small px-4 py-2.5 font-medium text-foreground sm:px-6 md:px-8"
+												>{row.brand}</td
+											>
+											<td class="text-body-small px-4 py-2.5 text-foreground sm:px-6 md:px-8"
+												>{row.model}</td
+											>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				{:else}
+					<div class="px-4 py-4 sm:px-6 md:px-8">
+						<p class="text-body-small text-[var(--black-alpha-56)]">
+							No laptop model list is published by the source for this panel. Use the panel number
+							and physical specs for matching.
+						</p>
+					</div>
+				{/if}
+			</div>
+
+			{#if displayCompatibility.brands.length > 0 || displayCompatibility.source}
+				<div
+					class="flex flex-wrap gap-2 border-t border-[var(--border-faint)] px-4 py-3 sm:px-6 md:px-8"
+				>
+					{#each displayCompatibility.brands as brand (brand)}
+						<span
+							class="text-mono-x-small rounded-full bg-[var(--black-alpha-4)] px-2.5 py-1 tracking-[0.12em] text-[var(--black-alpha-56)] uppercase"
+						>
+							{brand}
+						</span>
+					{/each}
+					{#if displayCompatibility.source}
+						<span class="text-body-small text-[var(--black-alpha-48)]">
+							Source: {displayCompatibility.source}
+						</span>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Specifications table -->
 	<div

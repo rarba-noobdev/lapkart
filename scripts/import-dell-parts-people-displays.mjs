@@ -2,6 +2,7 @@
 //
 // Dry run:
 //   node scripts/import-dell-parts-people-displays.mjs
+//   node scripts/import-dell-parts-people-displays.mjs --only-size=17.3
 //
 // Apply:
 //   node scripts/import-dell-parts-people-displays.mjs --apply
@@ -31,8 +32,15 @@ const WARRANTY = '1 year Parts-People warranty';
 const args = new Set(process.argv.slice(2));
 const apply = args.has('--apply');
 const refresh = args.has('--refresh');
+const skipExisting = !args.has('--no-skip-existing');
 const limit = numericArg('--limit=');
 const concurrency = numericArg('--concurrency=') || DEFAULT_CONCURRENCY;
+const onlySize = stringArg('--only-size=');
+
+function stringArg(prefix) {
+	const value = process.argv.find((arg) => arg.startsWith(prefix));
+	return value ? value.slice(prefix.length).trim() : '';
+}
 
 function numericArg(prefix) {
 	const value = process.argv.find((arg) => arg.startsWith(prefix));
@@ -131,6 +139,13 @@ function uniqueUrls(values, max = Infinity) {
 		if (out.length >= max) break;
 	}
 	return out;
+}
+
+function sourceUrlKey(value) {
+	return String(value ?? '')
+		.trim()
+		.replace(/\/+$/, '')
+		.toLowerCase();
 }
 
 function slugPart(value) {
@@ -292,6 +307,20 @@ function extractSize(title, lines) {
 	const fromLine = valueAfter(lines, 'Size');
 	if (fromLine) return fromLine;
 	return cleanText(title.match(/(\d{1,2}(?:\.\d)?")/)?.[1] ?? '');
+}
+
+function screenSizeFromRow(row) {
+	const value = row?.specifications?.Size ?? row?.specifications?.['Screen Size'] ?? '';
+	const match = String(value).match(/(\d{1,2}(?:\.\d)?)/);
+	return match ? Number(match[1]) : 0;
+}
+
+function isRequestedScreenSize(row) {
+	if (!onlySize) return true;
+	const actual = screenSizeFromRow(row);
+	const requested = Number(onlySize.replace(',', '.'));
+	if (!Number.isFinite(actual) || !Number.isFinite(requested)) return false;
+	return Math.abs(actual - requested) < 0.05;
 }
 
 function extractResolution(title, lines) {
@@ -495,7 +524,26 @@ function parseDetailProduct(entry, html) {
 	};
 }
 
-async function collectDellDisplayProducts(parsedCache) {
+async function fetchExistingDellDisplaySourceUrls(supabase) {
+	const urls = new Set();
+	for (let from = 0; ; from += 1000) {
+		const to = from + 999;
+		const { data, error } = await supabase
+			.from('products')
+			.select('source_url')
+			.eq('category', 'displays')
+			.ilike('source_url', '%parts-people.com%')
+			.range(from, to);
+		if (error) throw new Error(`Failed to read existing Parts-People display source URLs: ${error.message}`);
+		for (const row of data ?? []) {
+			if (row.source_url) urls.add(sourceUrlKey(row.source_url));
+		}
+		if (!data || data.length < 1000) break;
+	}
+	return urls;
+}
+
+async function collectDellDisplayProducts(parsedCache, supabase) {
 	const firstHtml = await fetchText(CATEGORY_URL);
 	const maxPage = parseMaxPage(firstHtml);
 	const pageUrls = Array.from({ length: maxPage }, (_, index) => categoryUrl(index + 1));
@@ -511,7 +559,12 @@ async function collectDellDisplayProducts(parsedCache) {
 		seen.add(entry.id);
 		productEntries.push(entry);
 	}
-	const limitedEntries = limit ? productEntries.slice(0, limit) : productEntries;
+	const existingSourceUrls =
+		skipExisting && supabase ? await fetchExistingDellDisplaySourceUrls(supabase) : new Set();
+	const missingEntries = existingSourceUrls.size
+		? productEntries.filter((entry) => !existingSourceUrls.has(sourceUrlKey(entry.url)))
+		: productEntries;
+	const limitedEntries = limit ? missingEntries.slice(0, limit) : missingEntries;
 	const products = [];
 	const skipped = [];
 	const errors = [];
@@ -539,6 +592,8 @@ async function collectDellDisplayProducts(parsedCache) {
 
 	return {
 		discovered: productEntries.length,
+		skippedExisting: productEntries.length - missingEntries.length,
+		selected: limitedEntries.length,
 		pageCount: pageUrls.length,
 		products,
 		skipped,
@@ -580,6 +635,8 @@ console.log(
 			source: CATEGORY_URL,
 			limit,
 			concurrency,
+			onlySize,
+			skipExisting,
 			rate: {
 				USD_TO_INR,
 				rateDate: '2026-06-12'
@@ -591,8 +648,9 @@ console.log(
 	)
 );
 
-const result = await collectDellDisplayProducts(parsedCache);
-const products = result.products;
+const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+const result = await collectDellDisplayProducts(parsedCache, supabase);
+const products = result.products.filter(isRequestedScreenSize);
 const byStock = products.reduce(
 	(acc, row) => {
 		if (row.stock > 0) acc.inStock += 1;
@@ -604,7 +662,6 @@ const byStock = products.reduce(
 
 let applyResult = { upserted: 0, errors: [] };
 if (apply && products.length > 0) {
-	const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 	applyResult = await upsertProducts(supabase, products);
 }
 
@@ -614,6 +671,8 @@ saveJson(auditFile, {
 	mode: apply ? 'apply' : 'dry-run',
 	source: CATEGORY_URL,
 	discovered: result.discovered,
+	skippedExisting: result.skippedExisting,
+	selected: result.selected,
 	pageCount: result.pageCount,
 	imported: products.length,
 	skipped: result.skipped.length,

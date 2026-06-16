@@ -4,6 +4,7 @@
 //   node scripts/import-display-sources.mjs --ipc-limit=5 --laptopscreen-limit=10
 //   node scripts/import-display-sources.mjs --apply --skip-ipc --laptopscreen-offset=1000 --laptopscreen-limit=1000
 //   node scripts/import-display-sources.mjs --ipc-all-category --skip-laptopscreen --ipc-page-limit=5
+//   node scripts/import-display-sources.mjs --ipc-all-category --skip-laptopscreen --only-size=17.3
 //
 // Apply:
 //   node scripts/import-display-sources.mjs --apply
@@ -58,6 +59,12 @@ const ipcPageOffset = numericArg('--ipc-page-offset=');
 const laptopScreenLimit = numericArg('--laptopscreen-limit=');
 const laptopScreenOffset = numericArg('--laptopscreen-offset=');
 const concurrency = numericArg('--concurrency=') || DEFAULT_CONCURRENCY;
+const onlySize = stringArg('--only-size=');
+
+function stringArg(prefix) {
+	const value = process.argv.find((arg) => arg.startsWith(prefix));
+	return value ? value.slice(prefix.length).trim() : '';
+}
 
 function numericArg(prefix) {
 	const value = process.argv.find((arg) => arg.startsWith(prefix));
@@ -206,20 +213,39 @@ function titleCaseBrand(value) {
 		['dell', 'Dell'],
 		['samsung', 'Samsung'],
 		['msi', 'MSI'],
-		['packard bell', 'Packard Bell']
+		['packard bell', 'Packard Bell'],
+		['toshiba', 'Toshiba'],
+		['dynabook', 'Dynabook'],
+		['sony', 'Sony'],
+		['fujitsu', 'Fujitsu'],
+		['microsoft', 'Microsoft'],
+		['medion', 'Medion'],
+		['huawei', 'Huawei'],
+		['apple', 'Apple'],
+		['lg', 'LG']
 	]);
 	return known.get(text.toLowerCase()) ?? text;
+}
+
+function knownLaptopBrand(value) {
+	const match = cleanText(value).match(
+		/\b(Acer|Asus|HP|Hewlett[ -]?Packard|Lenovo|Dell|Samsung|MSI|Packard Bell|Toshiba|Dynabook|Sony|Fujitsu|Microsoft|Medion|Huawei|Apple|LG)\b/i
+	);
+	if (!match) return '';
+	return titleCaseBrand(match[1].replace(/^Hewlett[ -]?Packard$/i, 'HP'));
 }
 
 function inferBrands(models) {
 	const brands = [];
 	for (const model of models) {
-		const match = cleanText(model).match(
-			/^(Acer|Asus|HP|Lenovo|Dell|Samsung|MSI|Packard Bell|Toshiba|Dynabook|Sony|Fujitsu|Microsoft)\b/i
-		);
-		if (match) brands.push(titleCaseBrand(match[1]));
+		const brand = knownLaptopBrand(model);
+		if (brand) brands.push(brand);
 	}
 	return unique(brands, 6);
+}
+
+function inferSourceBrand({ manufacturer = '', title = '' } = {}) {
+	return knownLaptopBrand(manufacturer) || knownLaptopBrand(title);
 }
 
 function splitKeywords(values, max = 120) {
@@ -420,12 +446,14 @@ function parseIpcProduct(url, html) {
 
 	const allPartNumbers = unique([itemNumber, primaryPartNumber, ...subPartNumbers], 30);
 	const brandList = inferBrands(models);
-	const brand = brandList.length === 1 ? brandList[0] : 'Compatible';
+	const sourceBrand = inferSourceBrand({ manufacturer: specs.Manufacturer, title });
+	const brand = brandList.length === 1 ? brandList[0] : models.length ? 'Compatible' : sourceBrand || 'Compatible';
 	const size = specs.Size?.replace(/\s*\/.*$/, '') ?? '';
 	const resolution = specs.Resolution ?? '';
 	const pins = specs['Connector Pins'] ? `${specs['Connector Pins']}-pin` : '';
 	const interfaceType = specs['Display Interface'] ?? '';
-	const titleParts = ['Compatible Display', itemNumber, size, resolution, pins, interfaceType].filter(Boolean);
+	const titlePrefix = brand === 'Compatible' ? 'Compatible Display' : `${brand} Display`;
+	const titleParts = [titlePrefix, itemNumber, size, resolution, pins, interfaceType].filter(Boolean);
 	const normalizedTitle = truncate(titleParts.join(' '), 190);
 	const compatibility = truncate(
 		[
@@ -764,6 +792,14 @@ function screenSizeFromRow(row) {
 	return match ? Number(match[1]) : 0;
 }
 
+function isRequestedScreenSize(row) {
+	if (!onlySize) return true;
+	const actual = screenSizeFromRow(row);
+	const requested = Number(onlySize.replace(',', '.'));
+	if (!Number.isFinite(actual) || !Number.isFinite(requested)) return false;
+	return Math.abs(actual - requested) < 0.05;
+}
+
 function expectedScreenSizeFromPanelPart(value) {
 	const part = String(value ?? '')
 		.toUpperCase()
@@ -985,7 +1021,8 @@ const [ipcResult, laptopScreenResult] = await Promise.all([
 	collectIpcProducts(parsedCache, supabase),
 	collectLaptopScreenProducts(parsedCache)
 ]);
-const products = dedupeProducts([...ipcResult.products, ...laptopScreenResult.products]);
+const collectedProducts = [...ipcResult.products, ...laptopScreenResult.products];
+const products = dedupeProducts(collectedProducts.filter(isRequestedScreenSize));
 
 const bySource = {
 	ipc: ipcResult.products.length,

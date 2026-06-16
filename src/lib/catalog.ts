@@ -4,6 +4,15 @@ export type Category = {
 	image?: string;
 };
 
+export type ProductSpecificationValue =
+	| string
+	| number
+	| boolean
+	| null
+	| string[]
+	| Record<string, unknown>
+	| Array<Record<string, unknown>>;
+
 const hiddenCategorySlugs = new Set(['ics']);
 
 export const allCategories: Category[] = [
@@ -58,7 +67,7 @@ export type Product = {
 	compatibility: string;
 	warranty: string;
 	highlights: string[];
-	specifications?: Record<string, string>;
+	specifications?: Record<string, ProductSpecificationValue>;
 	authenticity_grade?: 'oem' | 'compatible' | 'refurbished' | 'open_box';
 	condition_grade?: 'new' | 'open_box' | 'refurbished' | 'used';
 	hsn_code?: string;

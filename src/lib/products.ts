@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { hiddenCategories, type Product } from '$lib/catalog';
+import { hiddenCategories, type Product, type ProductSpecificationValue } from '$lib/catalog';
 import { supabase } from '$lib/supabase/client';
 import type { Database } from '$lib/supabase/types';
 
@@ -28,7 +28,7 @@ export type ProductRow = {
 	compatibility: string | null;
 	warranty: string | null;
 	highlights: string[] | null;
-	specifications?: Record<string, string> | null;
+	specifications?: Record<string, ProductSpecificationValue> | null;
 	authenticity_grade: 'oem' | 'compatible' | 'refurbished' | 'open_box' | null;
 	condition_grade: 'new' | 'open_box' | 'refurbished' | 'used' | null;
 	hsn_code: string | null;
