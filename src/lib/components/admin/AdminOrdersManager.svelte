@@ -38,11 +38,18 @@
 		initialSelectId?: string | null;
 	} = $props();
 
-	type OrderStatusFilter = 'all' | 'needs-action' | 'in-transit' | 'delivered' | 'cancelled';
+	type OrderStatusFilter =
+		| 'all'
+		| 'needs-action'
+		| 'returns'
+		| 'in-transit'
+		| 'delivered'
+		| 'cancelled';
 
 	const statusFilters: Array<{ id: OrderStatusFilter; label: string }> = [
 		{ id: 'all', label: 'All' },
 		{ id: 'needs-action', label: 'Needs action' },
+		{ id: 'returns', label: 'Returns' },
 		{ id: 'in-transit', label: 'In transit' },
 		{ id: 'delivered', label: 'Delivered' },
 		{ id: 'cancelled', label: 'Cancelled' }
@@ -57,6 +64,7 @@
 			'cancellation_requested',
 			'return_requested'
 		],
+		returns: ['return_requested', 'returned', 'rto', 'refunded'],
 		'in-transit': ['ready_for_delivery', 'shipped', 'out_for_delivery'],
 		delivered: ['delivered'],
 		cancelled: ['cancelled', 'returned', 'rto', 'refunded']
@@ -747,7 +755,9 @@
 							<p class="text-[13px] font-medium text-foreground">
 								{selectedOrder.rtoRisk}/100
 								{#if selectedOrder.codFee > 0}
-									<span class="text-[var(--black-alpha-40)]"> · COD {formatINR(selectedOrder.codFee)}</span>
+									<span class="text-[var(--black-alpha-40)]">
+										· COD {formatINR(selectedOrder.codFee)}</span
+									>
 								{/if}
 							</p>
 						</div>
@@ -774,7 +784,9 @@
 							{selectedOrder.paymentStatus}
 						</span>
 						{#if selectedOrder.holdReason}
-							<span class="rounded-md bg-[var(--accent-honey)]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--accent-honey)] uppercase">
+							<span
+								class="rounded-md bg-[var(--accent-honey)]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--accent-honey)] uppercase"
+							>
 								Review hold
 							</span>
 						{/if}
@@ -782,7 +794,9 @@
 				</div>
 
 				{#if selectedOrder.holdReason}
-					<div class="rounded-lg border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 p-3 text-[12px] text-[var(--black-alpha-72)]">
+					<div
+						class="rounded-lg border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 p-3 text-[12px] text-[var(--black-alpha-72)]"
+					>
 						<span class="font-medium text-foreground">Hold reason:</span>
 						{selectedOrder.holdReason}
 					</div>

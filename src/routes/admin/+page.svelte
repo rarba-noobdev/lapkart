@@ -3,11 +3,11 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import AdminCommandPalette from '$lib/components/admin/AdminCommandPalette.svelte';
-	import AdminOrdersManager from '$lib/components/admin/AdminOrdersManager.svelte';
 	import AdminSupportManager from '$lib/components/admin/AdminSupportManager.svelte';
 	import AdminGrievanceManager from '$lib/components/admin/AdminGrievanceManager.svelte';
 	import AdminPromotionsManager from '$lib/components/admin/AdminPromotionsManager.svelte';
-	import FulfillmentQueue from '$lib/components/admin/FulfillmentQueue.svelte';
+	import AdminOperationsPanel from '$lib/components/admin/AdminOperationsPanel.svelte';
+	import AdminOverviewPanel from '$lib/components/admin/AdminOverviewPanel.svelte';
 	import { uploadAdminImage, type AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
 	import { allCategories, formatINR } from '$lib/catalog';
@@ -18,6 +18,7 @@
 	import {
 		Activity,
 		ArrowUpRight,
+		Bell,
 		Boxes,
 		Check,
 		Filter,
@@ -47,7 +48,7 @@
 
 	type AdminView = 'overview' | 'catalog' | 'operations' | 'users' | 'promos' | 'support';
 
-	type OperationsSection = 'orders' | 'fulfillment';
+	type OperationsSection = 'orders' | 'fulfillment' | 'returns';
 
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
@@ -316,7 +317,7 @@
 
 	const tabs: Array<{ id: AdminView; label: string; icon: typeof LayoutDashboard }> = [
 		{ id: 'overview', label: 'Overview', icon: LayoutDashboard },
-		{ id: 'operations', label: 'Operations', icon: Package },
+		{ id: 'operations', label: 'Fulfillment', icon: Truck },
 		{ id: 'catalog', label: 'Catalog', icon: Boxes },
 		{ id: 'users', label: 'Users', icon: Users },
 		{ id: 'promos', label: 'Promos', icon: Tag },
@@ -334,7 +335,7 @@
 
 	const viewDescriptions: Record<AdminView, string> = {
 		overview: 'Store health, revenue, and what needs attention',
-		operations: 'Orders, fulfillment, cancellations, and refunds',
+		operations: 'Orders, dispatch, returns, and refunds',
 		catalog: 'Products, pricing, stock, and catalog search',
 		users: 'Customer accounts and staff roles',
 		promos: 'Coupons and discounts',
@@ -347,7 +348,8 @@
 		icon: typeof LayoutDashboard;
 	}> = [
 		{ id: 'orders', label: 'Orders', icon: Package },
-		{ id: 'fulfillment', label: 'Fulfillment', icon: Truck }
+		{ id: 'fulfillment', label: 'Dispatch', icon: Truck },
+		{ id: 'returns', label: 'Returns', icon: RotateCcw }
 	];
 
 	const overviewIcons: Record<string, typeof TrendingUp> = {
@@ -420,6 +422,7 @@
 	let ordersInitialSearch = $state<string | null>(null);
 	let ordersInitialSelectId = $state<string | null>(null);
 	let paletteOpen = $state(false);
+	let notifOpen = $state(false);
 	let mountedViews = $state<AdminView[]>(
 		initialView === 'overview' ? ['overview'] : ['overview', initialView]
 	);
@@ -665,6 +668,13 @@
 			}
 		].filter((card) => card.count > 0)
 	);
+
+	const notifCount = $derived(needsActionCards.reduce((sum, card) => sum + card.count, 0));
+
+	function runNotification(action: () => void) {
+		notifOpen = false;
+		action();
+	}
 
 	function emptyProductEditor(): ProductEditorState {
 		return {
@@ -1733,6 +1743,14 @@
 		setView('operations');
 	}
 
+	function openRecentOrder(order: NonNullable<AdminAnalytics['recentOrders']>[number]) {
+		ordersInitialFilter = null;
+		ordersInitialSearch = order.shippingName ?? '';
+		ordersInitialSelectId = order.id;
+		operationsSection = 'orders';
+		setView('operations');
+	}
+
 	function paletteNavigate(sectionId: string) {
 		if (isAdminView(sectionId)) setView(sectionId);
 	}
@@ -2431,6 +2449,56 @@
 						{analytics?.pendingFulfillment} to fulfil
 					</button>
 				{/if}
+				<div class="notif-wrap">
+					<button
+						type="button"
+						class="notif-bell"
+						aria-label="Notifications"
+						aria-expanded={notifOpen}
+						onclick={() => (notifOpen = !notifOpen)}
+					>
+						<Bell class="size-4" strokeWidth={2} />
+						{#if notifCount > 0}
+							<span class="notif-dot">{notifCount > 99 ? '99+' : notifCount}</span>
+						{/if}
+					</button>
+					{#if notifOpen}
+						<button
+							type="button"
+							class="notif-scrim"
+							aria-label="Close notifications"
+							onclick={() => (notifOpen = false)}
+						></button>
+						<div class="notif-panel" in:fly={{ y: -6, duration: 160 }}>
+							<div class="notif-head">
+								<span>Notifications</span>
+								{#if notifCount > 0}
+									<span class="notif-count">{notifCount}</span>
+								{/if}
+							</div>
+							{#if needsActionCards.length}
+								<div class="notif-list">
+									{#each needsActionCards as card (card.id)}
+										<button
+											type="button"
+											class="notif-item"
+											onclick={() => runNotification(card.action)}
+										>
+											<span class="notif-item-badge">{card.count}</span>
+											<span class="notif-item-text">
+												<span class="notif-item-label">{card.label}</span>
+												<span class="notif-item-hint">{card.hint}</span>
+											</span>
+											<ArrowUpRight class="size-3.5 text-[var(--black-alpha-24)]" strokeWidth={2} />
+										</button>
+									{/each}
+								</div>
+							{:else}
+								<div class="notif-empty">All clear — nothing needs attention.</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
 				<button
 					type="button"
 					class="inline-flex h-8 items-center gap-2 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] text-[var(--black-alpha-48)] shadow-sm transition-colors hover:border-[var(--black-alpha-24)] hover:text-foreground"
@@ -2471,333 +2539,16 @@
 						out:fade={{ duration: 120 }}
 					>
 						{#if view === 'overview'}
-							<!-- OVERVIEW TAB -->
-							<div class="space-y-5">
-								{#if overviewError}
-									<div
-										class="flex items-start gap-2 rounded-lg border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[13px] text-[var(--accent-crimson)]"
-										in:fly={{ y: -8, duration: 200 }}
-									>
-										<ShieldAlert class="mt-0.5 size-4 shrink-0" strokeWidth={2} />
-										<span>{overviewError}</span>
-									</div>
-								{/if}
-
-								<!-- Needs action -->
-								{#if needsActionCards.length}
-									<div in:fly={{ y: 12, duration: 300 }}>
-										<p
-											class="mb-2 text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
-										>
-											Needs action
-										</p>
-										<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-											{#each needsActionCards as card, idx (card.id)}
-												<button
-													type="button"
-													class="group flex items-center justify-between rounded-lg border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4 text-left transition-colors hover:border-[var(--heat-100)]"
-													in:fly={{ y: 12, duration: 250, delay: idx * 50 }}
-													onclick={card.action}
-												>
-													<div>
-														<p
-															class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
-														>
-															{card.label}
-														</p>
-														<p
-															class="mt-1.5 text-[24px] font-semibold tracking-tight text-foreground"
-														>
-															{card.count}
-														</p>
-														<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
-															{card.hint}
-														</p>
-													</div>
-													<ArrowUpRight
-														class="size-4 text-[var(--heat-100)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-														strokeWidth={2.5}
-													/>
-												</button>
-											{/each}
-										</div>
-									</div>
-								{/if}
-
-								<!-- KPI cards -->
-								<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-									{#each overviewCards as card, idx (card.id)}
-										{@const Icon = overviewIcons[card.id] ?? TrendingUp}
-										<div
-											class="kpi-card group"
-											in:fly={{ y: 16, duration: 300, delay: idx * 60, easing: cubicOut }}
-										>
-											<div class="flex items-start justify-between">
-												<div>
-													<p
-														class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
-													>
-														{card.label}
-													</p>
-													<p
-														class="mt-2 text-[26px] font-semibold tracking-tight text-foreground tabular-nums"
-													>
-														{card.value}
-													</p>
-												</div>
-												<div class="kpi-icon">
-													<Icon class="size-4" strokeWidth={2} />
-												</div>
-											</div>
-											{#if card.id === 'revenue' && analytics?.monthlySeries?.length}
-												<div class="mt-3 flex items-end gap-px" style="height: 22px">
-													{#each analytics.monthlySeries.slice(-12) as month (month.month)}
-														<div
-															class="flex-1 rounded-t-[1px] bg-[var(--heat-100)]/25 transition-colors duration-300 group-hover:bg-[var(--heat-100)]/60"
-															style="height: {Math.max(
-																8,
-																(month.revenue / maxMonthlyRevenue) * 100
-															)}%"
-														></div>
-													{/each}
-												</div>
-											{/if}
-										</div>
-									{/each}
-								</div>
-
-								<!-- Period reports -->
-								{#if analytics?.periodReports?.length}
-									<div
-										class="grid gap-3 sm:grid-cols-3"
-										in:fly={{ y: 12, duration: 300, delay: 280 }}
-									>
-										{#each analytics.periodReports as period (period.id)}
-											<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-												<p
-													class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
-												>
-													{period.label}
-												</p>
-												<div class="mt-3 grid grid-cols-2 gap-3">
-													<div>
-														<p class="text-[11px] text-[var(--black-alpha-48)]">Orders</p>
-														<p class="text-[16px] font-semibold text-foreground">{period.orders}</p>
-													</div>
-													<div>
-														<p class="text-[11px] text-[var(--black-alpha-48)]">Revenue</p>
-														<p class="text-[16px] font-semibold text-foreground">
-															{formatINR(period.revenue)}
-														</p>
-													</div>
-													<div>
-														<p class="text-[11px] text-[var(--black-alpha-48)]">AOV</p>
-														<p class="text-[14px] font-medium text-foreground">
-															{formatINR(period.averageOrderValue)}
-														</p>
-													</div>
-													<div>
-														<p class="text-[11px] text-[var(--black-alpha-48)]">Refunds</p>
-														<p class="text-[14px] font-medium text-[var(--accent-crimson)]">
-															{formatINR(period.refundAmount)}
-														</p>
-													</div>
-												</div>
-											</div>
-										{/each}
-									</div>
-								{/if}
-
-								<div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-									<!-- Recent orders -->
-									<div
-										class="rounded-lg border border-[var(--border-faint)] bg-white"
-										in:fly={{ y: 12, duration: 300, delay: 340 }}
-									>
-										<div
-											class="flex items-center justify-between border-b border-[var(--border-faint)] px-4 py-3"
-										>
-											<div class="flex items-center gap-2">
-												<Activity class="size-4 text-[var(--black-alpha-40)]" strokeWidth={2} />
-												<p class="text-[13px] font-medium text-foreground">Recent orders</p>
-											</div>
-											{#if loading}
-												<span
-													class="flex items-center gap-1.5 text-[10px] tracking-[0.1em] text-[var(--heat-100)] uppercase"
-												>
-													<span class="size-1.5 animate-pulse rounded-full bg-[var(--heat-100)]"
-													></span>
-													Live
-												</span>
-											{/if}
-										</div>
-										<div class="divide-y divide-[var(--border-faint)]">
-											{#each analytics?.recentOrders ?? [] as order, idx (order.id)}
-												<button
-													type="button"
-													class="group flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--background-lighter)]"
-													in:fly={{ x: -8, duration: 200, delay: idx * 30 }}
-													onclick={() => {
-														ordersInitialFilter = null;
-														ordersInitialSearch = order.shippingName ?? '';
-														ordersInitialSelectId = order.id;
-														operationsSection = 'orders';
-														setView('operations');
-													}}
-												>
-													<div class="flex items-center gap-2.5">
-														<div
-															class="flex size-7 items-center justify-center rounded bg-[var(--background-lighter)] font-mono text-[10px] font-medium text-[var(--black-alpha-48)] transition-colors group-hover:bg-[var(--heat-8)] group-hover:text-[var(--heat-100)]"
-														>
-															{order.id.slice(0, 2).toUpperCase()}
-														</div>
-														<div>
-															<p class="font-mono text-[12px] text-foreground">
-																#{order.id.slice(0, 8).toUpperCase()}
-															</p>
-															<p class="text-[11px] text-[var(--black-alpha-40)]">
-																{order.shippingName || 'Customer'}
-															</p>
-														</div>
-													</div>
-													<div class="flex items-center gap-2.5">
-														<span
-															class="rounded-sm px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase
-																{order.status === 'cancelled'
-																? 'bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
-																: order.status === 'delivered'
-																	? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-																	: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
-														>
-															{order.status}
-														</span>
-														<span
-															class="font-mono text-[12px] font-medium text-foreground tabular-nums"
-															>{formatINR(order.total)}</span
-														>
-														<ArrowUpRight
-															class="size-3 text-[var(--black-alpha-24)] opacity-0 transition-opacity group-hover:opacity-100"
-															strokeWidth={2.5}
-														/>
-													</div>
-												</button>
-											{/each}
-											{#if (analytics?.recentOrders ?? []).length === 0}
-												<div
-													class="px-4 py-10 text-center text-[12px] text-[var(--black-alpha-32)]"
-												>
-													No order history yet.
-												</div>
-											{/if}
-										</div>
-									</div>
-
-									<!-- Right sidebar column -->
-									<div class="flex flex-col gap-3" in:fly={{ y: 12, duration: 300, delay: 400 }}>
-										<!-- Pending fulfillment CTA -->
-										<div
-											class="rounded-lg border border-[var(--heat-20)] bg-gradient-to-br from-[var(--heat-4)] to-white p-4"
-										>
-											<div class="flex items-start justify-between">
-												<div>
-													<p
-														class="text-[10px] font-medium tracking-[0.14em] text-[var(--heat-100)] uppercase"
-													>
-														Pending fulfillment
-													</p>
-													<p
-														class="mt-1.5 text-[28px] font-semibold tracking-tight text-foreground"
-													>
-														{analytics?.pendingFulfillment ?? 0}
-													</p>
-													<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
-														Awaiting manual dispatch
-													</p>
-												</div>
-												<Truck class="size-5 text-[var(--heat-100)]" strokeWidth={1.5} />
-											</div>
-											<button
-												type="button"
-												class="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[var(--heat-100)] transition-colors hover:text-[var(--heat-120)]"
-												onclick={() => openOperations('fulfillment')}
-											>
-												Open queue <ArrowUpRight class="size-3" strokeWidth={2.5} />
-											</button>
-										</div>
-
-										<!-- Monthly revenue chart -->
-										{#if analytics?.monthlySeries?.length}
-											<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-												<p
-													class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
-												>
-													Monthly revenue
-												</p>
-												<div class="mt-3 flex items-end gap-1" style="height: 80px">
-													{#each analytics.monthlySeries as month, idx (month.month)}
-														<div
-															class="group relative flex flex-1 flex-col items-center justify-end"
-															style="height: 100%"
-														>
-															<div
-																class="chart-bar w-full rounded-t-sm bg-[var(--heat-100)] transition-[height] duration-500 ease-out"
-																style="height: {Math.max(
-																	4,
-																	(month.revenue / maxMonthlyRevenue) * 100
-																)}%; animation-delay: {idx * 60}ms"
-															></div>
-															<span class="mt-1 text-[8px] text-[var(--black-alpha-32)]"
-																>{month.month.slice(5)}</span
-															>
-															<div class="chart-tooltip">
-																{formatINR(month.revenue)}
-															</div>
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										<!-- Service health -->
-										<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-											<p class="text-[13px] font-medium text-foreground">Service health</p>
-											<div class="mt-3 space-y-2.5">
-												<div class="flex items-center justify-between">
-													<div class="flex items-center gap-2">
-														<span class="size-1.5 rounded-full bg-[var(--accent-forest)]"></span>
-														<span class="text-[12px] text-[var(--black-alpha-56)]">Delivered</span>
-													</div>
-													<span class="text-[12px] font-medium text-foreground"
-														>{analytics?.deliveredOrders ?? 0}</span
-													>
-												</div>
-												<div class="flex items-center justify-between">
-													<div class="flex items-center gap-2">
-														<span class="size-1.5 rounded-full bg-[var(--accent-honey)]"></span>
-														<span class="text-[12px] text-[var(--black-alpha-56)]"
-															>Cancellations</span
-														>
-													</div>
-													<span class="text-[12px] font-medium text-foreground"
-														>{analytics?.cancellationReport.total ?? 0}</span
-													>
-												</div>
-												<div class="flex items-center justify-between">
-													<div class="flex items-center gap-2">
-														<span class="size-1.5 rounded-full bg-[var(--accent-crimson)]"></span>
-														<span class="text-[12px] text-[var(--black-alpha-56)]"
-															>Awaiting review</span
-														>
-													</div>
-													<span class="text-[12px] font-medium text-foreground"
-														>{analytics?.cancellationReport.pending ?? 0}</span
-													>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
+							<AdminOverviewPanel
+								{analytics}
+								{overviewError}
+								{overviewCards}
+								{needsActionCards}
+								{maxMonthlyRevenue}
+								{loading}
+								{openOperations}
+								openOrder={openRecentOrder}
+							/>
 						{:else if view === 'catalog'}
 							<!-- CATALOG TAB -->
 							{#if productsLoading && !products.length}
@@ -4107,50 +3858,15 @@
 								{/if}
 							{/if}
 						{:else if view === 'operations'}
-							<!-- OPERATIONS TAB (orders + fulfillment) -->
-							<div class="space-y-4">
-								<div
-									class="inline-flex rounded-lg border border-[var(--border-faint)] bg-white p-1"
-									role="tablist"
-									aria-label="Operations sections"
-								>
-									{#each operationsSections as section (section.id)}
-										<button
-											type="button"
-											role="tab"
-											aria-selected={operationsSection === section.id}
-											class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors {operationsSection ===
-											section.id
-												? 'bg-[var(--heat-100)] text-white'
-												: 'text-[var(--black-alpha-56)] hover:text-foreground'}"
-											onclick={() => (operationsSection = section.id)}
-										>
-											<section.icon class="size-3.5" strokeWidth={2} />
-											{section.label}
-											{#if section.id === 'fulfillment' && (analytics?.pendingFulfillment ?? 0) > 0}
-												<span
-													class="ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold {operationsSection ===
-													section.id
-														? 'bg-white/20 text-white'
-														: 'bg-[var(--heat-8)] text-[var(--heat-100)]'}"
-												>
-													{analytics?.pendingFulfillment}
-												</span>
-											{/if}
-										</button>
-									{/each}
-								</div>
-
-								{#if operationsSection === 'orders'}
-									<AdminOrdersManager
-										initialFilter={ordersInitialFilter}
-										initialSearch={ordersInitialSearch}
-										initialSelectId={ordersInitialSelectId}
-									/>
-								{:else}
-									<FulfillmentQueue />
-								{/if}
-							</div>
+							<AdminOperationsPanel
+								sections={operationsSections}
+								{operationsSection}
+								pendingFulfillment={analytics?.pendingFulfillment ?? 0}
+								initialFilter={ordersInitialFilter}
+								initialSearch={ordersInitialSearch}
+								initialSelectId={ordersInitialSelectId}
+								setOperationsSection={(section) => (operationsSection = section)}
+							/>
 						{:else if view === 'users'}
 							<!-- USERS TAB -->
 							{#if usersLoading && !users.length}
@@ -6046,6 +5762,162 @@
 		border: 1px solid var(--border-faint);
 		background: var(--background-lighter);
 		padding: 8px 12px;
+	}
+
+	/* ── Notifications ── */
+	.notif-wrap {
+		position: relative;
+	}
+
+	.notif-bell {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid var(--border-muted);
+		background: white;
+		color: var(--black-alpha-56);
+		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+		transition:
+			border-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.notif-bell:hover {
+		border-color: var(--black-alpha-24);
+		color: var(--foreground);
+	}
+
+	.notif-dot {
+		position: absolute;
+		top: -6px;
+		right: -6px;
+		display: grid;
+		place-items: center;
+		min-width: 16px;
+		height: 16px;
+		padding: 0 4px;
+		border-radius: 999px;
+		background: var(--heat-100);
+		color: white;
+		font-size: 9px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		box-shadow: 0 0 0 2px white;
+	}
+
+	.notif-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		background: transparent;
+		border: 0;
+		cursor: default;
+	}
+
+	.notif-panel {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		z-index: 41;
+		width: 300px;
+		max-width: calc(100vw - 24px);
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+		overflow: hidden;
+	}
+
+	.notif-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 11px 14px;
+		border-bottom: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.notif-count {
+		display: grid;
+		place-items: center;
+		min-width: 18px;
+		height: 18px;
+		padding: 0 5px;
+		border-radius: 999px;
+		background: var(--heat-8);
+		color: var(--heat-100);
+		font-size: 10px;
+		font-weight: 700;
+	}
+
+	.notif-list {
+		max-height: 360px;
+		overflow-y: auto;
+	}
+
+	.notif-item {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 14px;
+		text-align: left;
+		border-bottom: 1px solid var(--border-faint);
+		transition: background-color 140ms ease;
+	}
+
+	.notif-item:last-child {
+		border-bottom: 0;
+	}
+
+	.notif-item:hover {
+		background: var(--heat-4);
+	}
+
+	.notif-item-badge {
+		display: grid;
+		place-items: center;
+		min-width: 24px;
+		height: 24px;
+		flex-shrink: 0;
+		padding: 0 6px;
+		border-radius: 7px;
+		background: var(--heat-8);
+		color: var(--heat-100);
+		font-size: 12px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.notif-item-text {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.notif-item-label {
+		display: block;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--foreground);
+	}
+
+	.notif-item-hint {
+		display: block;
+		font-size: 11px;
+		color: var(--black-alpha-40);
+	}
+
+	.notif-empty {
+		padding: 24px 14px;
+		text-align: center;
+		font-size: 12px;
+		color: var(--black-alpha-40);
 	}
 
 	/* ── Responsive: mobile ── */

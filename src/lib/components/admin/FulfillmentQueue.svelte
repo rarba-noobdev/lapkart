@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { Truck, RotateCcw, Check, X, ExternalLink, PackageSearch, MapPin } from '@lucide/svelte';
 	import { formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
 	import {
@@ -73,9 +75,7 @@
 			syncQueueState(nextOrders);
 		} catch (requestError) {
 			error =
-				requestError instanceof Error
-					? requestError.message
-					: 'Could not load fulfillment queue';
+				requestError instanceof Error ? requestError.message : 'Could not load fulfillment queue';
 		} finally {
 			if (showLoading) loading = false;
 		}
@@ -175,6 +175,18 @@
 		return order.shipment?.trackingActivities[0] ?? null;
 	}
 
+	function shipmentStage(order: FulfillmentOrder): {
+		label: string;
+		tone: 'ok' | 'warn' | 'bad' | 'muted';
+	} {
+		const status = order.shipment?.status;
+		if (!status) return { label: 'Not created', tone: 'muted' };
+		if (status === 'delivered') return { label: status, tone: 'ok' };
+		if (status === 'cancelled' || status.startsWith('rto'))
+			return { label: status.replaceAll('_', ' '), tone: 'bad' };
+		return { label: status.replaceAll('_', ' '), tone: 'warn' };
+	}
+
 	// Queue broken down by next required step, so the desk can see at a glance
 	// where the work is stuck.
 	const stageCounts = $derived.by(() => {
@@ -254,567 +266,268 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="space-y-4">
-	<section class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
-		<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+<div class="fq-board">
+	<!-- Toolbar -->
+	<div class="fq-toolbar">
+		<div class="fq-toolbar-main">
+			<div class="fq-toolbar-icon">
+				<Truck class="size-[18px]" strokeWidth={2} />
+			</div>
 			<div>
-				<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-					Fulfillment desk
-				</p>
-				<p class="mt-1 text-[16px] font-medium text-foreground">Manual dispatch queue</p>
-			</div>
-
-			<div class="flex flex-wrap items-center gap-4">
-				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-						>Provider</span
-					>
-					<span class="text-[14px] font-medium text-foreground"
-						>{account ? `Shiprocket ${formatINR(account.walletBalance)}` : 'Manual'}</span
-					>
-				</div>
-				<div class="h-4 w-px bg-[var(--border-faint)]"></div>
-				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-						>Pickup</span
-					>
-					<span class="text-[14px] font-medium text-foreground"
-						>{account?.configuredPickupLocation || 'Daily courier pickup'}</span
-					>
-					{#if account && !account.pickupLocationVerified}
-						<span class="text-[10px] text-[var(--accent-crimson)]">Not synced</span>
-					{/if}
-				</div>
-				<div class="h-4 w-px bg-[var(--border-faint)]"></div>
-				<div class="flex items-center gap-1.5">
-					<span class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-						>Queue</span
-					>
-					<span class="text-[14px] font-medium text-foreground">{orders.length}</span>
-				</div>
-				<button
-					type="button"
-					class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
-					disabled={loading}
-					onclick={() => void refresh()}
-				>
-					{loading ? 'Refreshing...' : 'Refresh'}
-				</button>
+				<h2 class="fq-title">Fulfillment desk</h2>
+				<p class="fq-subtitle">Manual dispatch queue</p>
 			</div>
 		</div>
-
-		<div class="mb-3 flex flex-wrap gap-2">
-			{#each stageChips as chip (chip.id)}
-				<span
-					class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium
-						{chip.count > 0 && chip.hot
-						? 'border-[var(--heat-20)] bg-[var(--heat-4)] text-[var(--heat-100)]'
-						: 'border-[var(--border-faint)] bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'}"
-				>
-					<span class="font-mono tabular-nums">{chip.count}</span>
-					{chip.label}
+		<div class="fq-toolbar-stats">
+			<div class="fq-stat">
+				<span class="fq-stat-label">Provider</span>
+				<span class="fq-stat-value">
+					{account ? `Shiprocket ${formatINR(account.walletBalance)}` : 'Manual'}
 				</span>
-			{/each}
+			</div>
+			<div class="fq-stat">
+				<span class="fq-stat-label">Pickup</span>
+				<span class="fq-stat-value">
+					{account?.configuredPickupLocation || 'Daily courier pickup'}
+				</span>
+				{#if account && !account.pickupLocationVerified}
+					<span class="fq-stat-warn">Not synced</span>
+				{/if}
+			</div>
+			<div class="fq-stat">
+				<span class="fq-stat-label">Queue</span>
+				<span class="fq-stat-value">{orders.length}</span>
+			</div>
+			<button type="button" class="fq-btn" disabled={loading} onclick={() => void refresh()}>
+				<RotateCcw class="size-3.5" strokeWidth={2} />
+				{loading ? 'Refreshing...' : 'Refresh'}
+			</button>
 		</div>
+	</div>
 
-		<div
-			class="flex flex-wrap items-center gap-2 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] px-3 py-2"
-		>
-			<span class="mr-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-				{selectedOrderIds.length} selected / {selectedOrdersWithoutShipment.length} need shipment
+	<!-- Stage chips -->
+	<div class="fq-chips">
+		{#each stageChips as chip (chip.id)}
+			<span class="fq-chip {chip.count > 0 && chip.hot ? 'hot' : ''}">
+				<span class="fq-chip-num">{chip.count}</span>
+				{chip.label}
 			</span>
+		{/each}
+	</div>
 
+	<!-- Bulk action bar -->
+	<div class="fq-bulkbar">
+		<span class="fq-bulk-label">
+			{selectedOrderIds.length} selected / {selectedOrdersWithoutShipment.length} need shipment
+		</span>
+		<div class="fq-bulk-actions">
 			<button
 				type="button"
-				class="button button-primary inline-flex h-8 items-center justify-center rounded-md px-3 text-[12px] font-medium text-white disabled:opacity-50"
+				class="button button-primary fq-btn-primary"
 				disabled={!selectedOrderIds.length || activeAction !== null}
 				onclick={() => void runBulkCreateShipments()}
 			>
 				{activeAction === 'bulk:create_orders' ? 'Creating...' : 'Bulk create shipments'}
 			</button>
-
 			<button
 				type="button"
-				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+				class="fq-btn"
 				disabled={!selectedShipmentIds.length || activeAction !== null}
 				onclick={() => void runBulkAction('assign_awb')}
 			>
 				{activeAction === 'bulk:assign_awb' ? 'Assigning...' : 'Bulk AWB'}
 			</button>
-
 			<button
 				type="button"
-				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+				class="fq-btn"
 				disabled={!selectedShipmentIds.length || activeAction !== null}
 				onclick={() => void runBulkAction('schedule_pickup')}
 			>
 				{activeAction === 'bulk:schedule_pickup' ? 'Scheduling...' : 'Bulk pickup'}
 			</button>
-
 			<button
 				type="button"
-				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+				class="fq-btn"
 				disabled={!selectedShipmentIds.length || activeAction !== null}
 				onclick={() => void runBulkAction('generate_labels')}
 			>
 				{activeAction === 'bulk:generate_labels' ? 'Generating...' : 'Bulk labels'}
 			</button>
-
 			<button
 				type="button"
-				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+				class="fq-btn"
 				disabled={!selectedShipmentIds.length || activeAction !== null}
 				onclick={() => void runBulkAction('refresh_tracking')}
 			>
 				{activeAction === 'bulk:refresh_tracking' ? 'Refreshing...' : 'Bulk tracking'}
 			</button>
 		</div>
+	</div>
 
-		{#if error}
-			<div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-[12px] text-red-700">
-				{error}
-			</div>
-		{/if}
+	{#if error}
+		<div class="fq-error">{error}</div>
+	{/if}
 
-		<div class="mt-4 overflow-x-auto">
-			<table class="w-full min-w-[980px] border-collapse text-left text-[12px]">
-				<thead>
-					<tr
-						class="border-b border-[var(--border-faint)] text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-					>
-						<th class="w-10 px-3 py-3 font-normal">
-							<input
-								type="checkbox"
-								checked={allVisibleOrdersSelected}
-								onchange={toggleAllVisibleOrders}
-								aria-label="Select all visible orders"
-								class="size-4 accent-[var(--heat-100)]"
-							/>
-						</th>
-						<th class="px-3 py-3 font-normal">Order</th>
-						<th class="px-3 py-3 font-normal">Delivery</th>
-						<th class="px-3 py-3 font-normal">Shipment</th>
-						<th class="px-3 py-3 font-normal">Tracking</th>
-						<th class="px-3 py-3 font-normal">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each orders as order (order.id)}
-						{@const shipment = order.shipment}
-						{@const serviceType =
-							shipment?.shippingServiceType ?? order.shippingServiceType ?? 'standard'}
-						{@const createKey = `${order.id}:create`}
-						{@const awbKey = `${order.id}:awb`}
-						{@const pickupKey = `${order.id}:pickup`}
-						{@const trackingKey = `${order.id}:tracking`}
-						{@const busy = activeAction?.startsWith(order.id) ?? false}
-						{@const latest = latestTracking(order)}
-						{@const shipmentCancelled =
-							shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
-
-						<tr
-							class={`border-b border-[var(--border-faint)] align-top transition-colors last:border-b-0 ${
-								detailOrderId === order.id
-									? 'bg-[var(--heat-4)]'
-									: 'hover:bg-[var(--background-lighter)]'
-							}`}
+	<!-- Queue table -->
+	<div class="fq-table-wrap">
+		<table class="fq-table">
+			<thead>
+				<tr>
+					<th class="fq-check-col">
+						<button
+							type="button"
+							class="fq-check {allVisibleOrdersSelected ? 'active' : ''}"
+							aria-label="Select all visible orders"
+							aria-pressed={allVisibleOrdersSelected}
+							disabled={!orders.length}
+							onclick={toggleAllVisibleOrders}
 						>
-							<td class="px-3 py-3">
-								<input
-									type="checkbox"
-									checked={selectedOrderSet.has(order.id)}
-									onchange={() => toggleOrderSelection(order.id)}
-									aria-label={`Select order ${order.id.slice(0, 8)}`}
-									class="size-4 accent-[var(--heat-100)]"
-								/>
-							</td>
-							<td class="px-3 py-3">
-								<button type="button" class="group text-left" onclick={() => openDetails(order.id)}>
-									<p class="text-[12px] font-medium text-foreground">
-										#{order.id.slice(0, 8).toUpperCase()}
-									</p>
-									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-										{order.shippingName || 'Customer'}
-									</p>
-									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-										{formatINR(Number(order.total ?? 0))}
-									</p>
-									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-										Placed {new Date(order.createdAt).toLocaleString('en-IN')}
-									</p>
-									<p
-										class="mt-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
-										{order.items.length} item{order.items.length === 1 ? '' : 's'}
-									</p>
-								</button>
-							</td>
-							<td class="px-3 py-3">
-								<p class="text-[12px] font-medium text-foreground capitalize">{serviceType}</p>
-								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-									{[order.shippingCity, order.shippingState, order.shippingPincode]
-										.filter(Boolean)
-										.join(', ') || 'Address pending'}
-								</p>
-							</td>
-							<td class="px-3 py-3">
-								<p class="text-[12px] font-medium text-foreground capitalize">
-									{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
-								</p>
-								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-									{shipment?.awbCode ? `AWB ${shipment.awbCode}` : 'AWB pending'}
-								</p>
-								{#if shipment?.courierName}
-									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)]">
-										{shipment.courierName}
-									</p>
+							{#if allVisibleOrdersSelected}
+								<Check class="size-3.5" strokeWidth={2.6} />
+							{/if}
+						</button>
+					</th>
+					<th>Order</th>
+					<th>Delivery</th>
+					<th>Shipment</th>
+					<th>Tracking</th>
+					<th class="fq-act-col">Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each orders as order (order.id)}
+					{@const shipment = order.shipment}
+					{@const serviceType =
+						shipment?.shippingServiceType ?? order.shippingServiceType ?? 'standard'}
+					{@const createKey = `${order.id}:create`}
+					{@const awbKey = `${order.id}:awb`}
+					{@const pickupKey = `${order.id}:pickup`}
+					{@const trackingKey = `${order.id}:tracking`}
+					{@const busy = activeAction?.startsWith(order.id) ?? false}
+					{@const latest = latestTracking(order)}
+					{@const stage = shipmentStage(order)}
+					{@const shipmentCancelled =
+						shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
+
+					<tr
+						class="fq-row {detailOrderId === order.id ? 'is-active' : ''}"
+						tabindex="0"
+						role="button"
+						aria-label={`Open order ${order.id.slice(0, 8)}`}
+						onclick={() => openDetails(order.id)}
+						onkeydown={(event) => {
+							if (event.key === 'Enter' || event.key === ' ') {
+								event.preventDefault();
+								openDetails(order.id);
+							}
+						}}
+					>
+						<td class="fq-check-col" onclick={(event) => event.stopPropagation()}>
+							<button
+								type="button"
+								class="fq-check {selectedOrderSet.has(order.id) ? 'active' : ''}"
+								aria-label={`Select order ${order.id.slice(0, 8)}`}
+								aria-pressed={selectedOrderSet.has(order.id)}
+								onclick={() => toggleOrderSelection(order.id)}
+							>
+								{#if selectedOrderSet.has(order.id)}
+									<Check class="size-3.5" strokeWidth={2.6} />
 								{/if}
-							</td>
-							<td class="px-3 py-3">
-								<p class="max-w-[240px] text-[12px] text-[var(--black-alpha-72)]">
-									{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
-								</p>
-								{#if latest?.location}
-									<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">{latest.location}</p>
-								{/if}
-								{#if shipment?.trackingUrl && !shipmentCancelled}
-									<button
-										type="button"
-										class="mt-1 inline-block text-[12px] font-medium text-[var(--heat-100)] hover:underline"
-										onclick={() => openExternal(shipment.trackingUrl)}
-									>
-										Live tracking
-									</button>
-								{/if}
-							</td>
-							<td class="px-3 py-3">
-								<div class="flex max-w-[300px] flex-wrap gap-1.5">
-									<button
-										type="button"
-										class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-										onclick={() => openDetails(order.id)}
-									>
-										Details
-									</button>
-
-									{#if shipmentCancelled}
-										<span
-											class="inline-flex h-7 items-center rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 text-[10px] tracking-[0.14em] text-[var(--accent-crimson)] uppercase"
-										>
-											Cancelled
-										</span>
-									{:else if !shipment}
-										<button
-											type="button"
-											class="button button-primary inline-flex h-7 items-center justify-center rounded-md px-2.5 text-[12px] font-medium text-white disabled:opacity-50"
-											disabled={busy}
-											onclick={() =>
-												void runAction(
-													createKey,
-													'/shipments/shiprocket/create',
-													postJson({ orderId: order.id })
-												)}
-										>
-											{activeAction === createKey ? 'Creating...' : 'Create shipment'}
-										</button>
+							</button>
+						</td>
+						<td>
+							<div class="fq-order">
+								<div class="fq-thumb">
+									{#if order.items[0]?.image}
+										<img src={order.items[0].image} alt="" loading="lazy" />
+									{:else}
+										<PackageSearch class="size-4 text-[var(--black-alpha-24)]" strokeWidth={1.8} />
 									{/if}
-
-									{#if shipment && !shipment.awbCode && !shipmentCancelled}
-										<button
-											type="button"
-											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
-											disabled={busy}
-											onclick={() =>
-												void runAction(
-													awbKey,
-													'/shipments/shiprocket/assign-awb',
-													postJson({ shipmentId: shipment.id })
-												)}
-										>
-											{activeAction === awbKey
-												? 'Assigning...'
-												: serviceType === 'quick'
-													? 'AWB + rider'
-													: 'Assign AWB'}
-										</button>
-									{/if}
-
-									{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate && !shipmentCancelled}
-										<button
-											type="button"
-											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
-											disabled={busy}
-											onclick={() =>
-												void runAction(
-													pickupKey,
-													'/shipments/shiprocket/pickup',
-													postJson({ shipmentId: shipment.id })
-												)}
-										>
-											{activeAction === pickupKey ? 'Scheduling...' : 'Pickup'}
-										</button>
-									{/if}
-
-									{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
-										<button
-											type="button"
-											class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
-											disabled={busy}
-											onclick={() =>
-												void runAction(
-													trackingKey,
-													`/shipments/shiprocket/${shipment.id}/tracking`
-												)}
-										>
-											{activeAction === trackingKey ? 'Refreshing...' : 'Tracking'}
-										</button>
+									{#if order.items.length > 1}
+										<span class="fq-thumb-count">+{order.items.length - 1}</span>
 									{/if}
 								</div>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-
-			{#if !loading && !orders.length}
-				<p
-					class="rounded-md border border-dashed border-[var(--border-muted)] bg-[var(--background-lighter)] py-8 text-center text-[12px] text-[var(--black-alpha-56)]"
-				>
-					No paid orders are waiting for fulfillment.
-				</p>
-			{/if}
-		</div>
-	</section>
-
-	{#if detailModalOpen && detailOrder}
-		{@const shipment = detailOrder.shipment}
-		{@const serviceType =
-			shipment?.shippingServiceType ?? detailOrder.shippingServiceType ?? 'standard'}
-		{@const createKey = `${detailOrder.id}:create`}
-		{@const awbKey = `${detailOrder.id}:awb`}
-		{@const pickupKey = `${detailOrder.id}:pickup`}
-		{@const trackingKey = `${detailOrder.id}:tracking`}
-		{@const latest = latestTracking(detailOrder)}
-		{@const busy = activeAction?.startsWith(detailOrder.id) ?? false}
-		{@const shipmentCancelled =
-			shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
-
-		<div class="fixed inset-0 z-50">
-			<button
-				type="button"
-				class="absolute inset-0 cursor-default bg-black/30 backdrop-blur-[2px]"
-				aria-label="Close fulfillment details"
-				onclick={closeDetails}
-				transition:fade={{ duration: 180 }}
-			></button>
-
-			<div class="pointer-events-none absolute inset-0 overflow-y-auto p-3 sm:p-6">
-				<div
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="fulfillment-detail-title"
-					class="pointer-events-auto mx-auto grid w-full max-w-6xl gap-5 rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-4 shadow-lg sm:p-5 lg:grid-cols-[1.15fr_0.85fr]"
-					transition:fly={{ y: 24, duration: 250 }}
-				>
-					<div class="rounded-lg border border-[var(--border-faint)] bg-white p-5">
-						<div class="flex flex-wrap items-start justify-between gap-3">
-							<div>
-								<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-									Fulfillment detail
-								</p>
-								<h2
-									id="fulfillment-detail-title"
-									class="mt-1 text-[18px] font-semibold text-foreground"
-								>
-									#{detailOrder.id.slice(0, 8).toUpperCase()}
-								</h2>
-								<p class="mt-1 text-[12px] text-[var(--black-alpha-56)]">
-									{detailOrder.shippingName || 'Customer'} / {formatINR(
-										Number(detailOrder.total ?? 0)
-									)}
-								</p>
-							</div>
-							<div class="flex flex-wrap items-center gap-2">
-								<button
-									type="button"
-									class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-									onclick={closeDetails}
-								>
-									Close
-								</button>
-								<span
-									class="rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] tracking-[0.14em] uppercase"
-								>
-									{serviceType}
-								</span>
-								{#if shipment?.status === 'delivered'}
-									<span
-										class="rounded-full border border-[var(--accent-forest)]/20 bg-[var(--accent-forest)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-forest)] uppercase"
-									>
-										{shipment.status}
-									</span>
-								{:else if shipment?.status === 'cancelled' || shipment?.status === 'rto'}
-									<span
-										class="rounded-full border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-crimson)] uppercase"
-									>
-										{shipment.status}
-									</span>
-								{:else if shipment?.status}
-									<span
-										class="rounded-full border border-[var(--accent-honey)]/20 bg-[var(--accent-honey)]/8 px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--accent-honey)] uppercase"
-									>
-										{shipment.status.replaceAll('_', ' ')}
-									</span>
-								{:else}
-									<span
-										class="rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-2.5 py-1 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-									>
-										not created
-									</span>
-								{/if}
-							</div>
-						</div>
-
-						<div class="mt-4 space-y-2.5">
-							{#each detailOrder.items as item (item.id)}
-								<div
-									class="grid gap-3 rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3 sm:grid-cols-[80px_1fr_auto] sm:items-center"
-								>
-									<img
-										src={item.image}
-										alt={item.title}
-										class="h-20 w-20 rounded-md border border-[var(--border-faint)] bg-white object-contain p-1.5"
-									/>
-									<div class="min-w-0">
-										<p class="line-clamp-2 text-[14px] font-medium text-foreground">{item.title}</p>
-										<div
-											class="mt-1.5 flex flex-wrap gap-2 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-										>
-											<span>{item.brand || 'Brand pending'}</span>
-											<span>SKU {item.sku || 'pending'}</span>
-										</div>
-									</div>
-									<div
-										class="rounded-md border border-[var(--border-faint)] bg-white px-3 py-1.5 text-center"
-									>
-										<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-											Qty
-										</p>
-										<p class="mt-0.5 text-[16px] font-medium text-foreground">{item.qty}</p>
-									</div>
+								<div class="min-w-0">
+									<p class="fq-order-id">#{order.id.slice(0, 8).toUpperCase()}</p>
+									<p class="fq-order-name">{order.shippingName || 'Customer'}</p>
+									<p class="fq-order-meta">
+										{formatINR(Number(order.total ?? 0))} · {order.items.length} item{order.items
+											.length === 1
+											? ''
+											: 's'}
+									</p>
+									<p class="fq-order-date">
+										{new Date(order.createdAt).toLocaleDateString('en-IN', {
+											day: '2-digit',
+											month: 'short',
+											hour: '2-digit',
+											minute: '2-digit'
+										})}
+									</p>
 								</div>
-							{/each}
-						</div>
-					</div>
-
-					<div class="space-y-3">
-						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-							<p class="text-[12px] font-medium text-foreground">Delivery</p>
-							<p class="mt-2 text-[12px] text-[var(--black-alpha-72)]">
-								{[detailOrder.shippingCity, detailOrder.shippingState, detailOrder.shippingPincode]
+							</div>
+						</td>
+						<td>
+							<p class="fq-cell-strong capitalize">{serviceType}</p>
+							<p class="fq-cell-muted">
+								{[order.shippingCity, order.shippingState, order.shippingPincode]
 									.filter(Boolean)
 									.join(', ') || 'Address pending'}
 							</p>
-							<p
-								class="mt-1.5 text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase"
-							>
-								Service {serviceType}
+						</td>
+						<td>
+							<span class="fq-pill {stage.tone}">{stage.label}</span>
+							<p class="fq-cell-muted mt-1">
+								{shipment?.awbCode ? `AWB ${shipment.awbCode}` : 'AWB pending'}
 							</p>
-						</div>
-
-						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-							<p class="text-[12px] font-medium text-foreground">Shipment</p>
-							<div class="mt-3 grid gap-2.5 sm:grid-cols-2">
-								<div
-									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
-								>
-									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-										Status
-									</p>
-									<p class="mt-1.5 text-[12px] text-foreground">
-										{shipment?.status?.replaceAll('_', ' ') || 'Not created'}
-									</p>
-								</div>
-								<div
-									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
-								>
-									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-										AWB
-									</p>
-									<p class="mt-1.5 text-[12px] text-foreground">
-										{shipment?.awbCode || 'Pending'}
-									</p>
-								</div>
-								<div
-									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
-								>
-									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-										Courier
-									</p>
-									<p class="mt-1.5 text-[12px] text-foreground">
-										{shipment?.courierName || 'Pending'}
-									</p>
-								</div>
-								<div
-									class="rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
-								>
-									<p class="text-[10px] tracking-[0.14em] text-[var(--black-alpha-48)] uppercase">
-										Pickup
-									</p>
-									<p class="mt-1.5 text-[12px] text-foreground">
-										{shipment?.pickupScheduledDate || 'Not scheduled'}
-									</p>
-								</div>
-							</div>
-						</div>
-
-						<div class="rounded-lg border border-[var(--border-faint)] bg-white p-4">
-							<p class="text-[12px] font-medium text-foreground">Tracking</p>
-							<p class="mt-2 text-[12px] text-[var(--black-alpha-72)]">
+							{#if shipment?.courierName}
+								<p class="fq-cell-muted">{shipment.courierName}</p>
+							{/if}
+						</td>
+						<td>
+							<p class="fq-cell-track">
 								{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
 							</p>
 							{#if latest?.location}
-								<p class="mt-0.5 text-[12px] text-[var(--black-alpha-48)]">{latest.location}</p>
+								<p class="fq-cell-muted">{latest.location}</p>
 							{/if}
 							{#if shipment?.trackingUrl && !shipmentCancelled}
 								<button
 									type="button"
-									class="mt-2 inline-block text-[12px] font-medium text-[var(--heat-100)] hover:underline"
-									onclick={() => openExternal(shipment.trackingUrl)}
+									class="fq-link"
+									onclick={(event) => {
+										event.stopPropagation();
+										openExternal(shipment.trackingUrl);
+									}}
 								>
-									Open live tracking
+									Live tracking
 								</button>
 							{/if}
-						</div>
-
-						<div class="rounded-lg border border-[var(--heat-20)] bg-white p-4">
-							<p class="text-[12px] font-medium text-foreground">Fulfillment actions</p>
-							<div class="mt-2.5 flex flex-wrap gap-1.5">
+						</td>
+						<td class="fq-act-col" onclick={(event) => event.stopPropagation()}>
+							<div class="fq-row-actions">
 								{#if shipmentCancelled}
-									<span
-										class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/8 px-3 py-1.5 text-[12px] text-[var(--accent-crimson)]"
-									>
-										Shipment cancelled — no further actions.
-									</span>
+									<span class="fq-pill bad">Cancelled</span>
 								{:else if !shipment}
 									<button
 										type="button"
-										class="button button-primary inline-flex h-8 items-center justify-center rounded-md px-3 text-[12px] font-medium text-white disabled:opacity-50"
+										class="button button-primary fq-btn-primary fq-btn-sm"
 										disabled={busy}
 										onclick={() =>
 											void runAction(
 												createKey,
 												'/shipments/shiprocket/create',
-												postJson({ orderId: detailOrder.id })
+												postJson({ orderId: order.id })
 											)}
 									>
 										{activeAction === createKey ? 'Creating...' : 'Create shipment'}
 									</button>
 								{/if}
+
 								{#if shipment && !shipment.awbCode && !shipmentCancelled}
 									<button
 										type="button"
-										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+										class="fq-btn fq-btn-sm"
 										disabled={busy}
 										onclick={() =>
 											void runAction(
@@ -826,14 +539,15 @@
 										{activeAction === awbKey
 											? 'Assigning...'
 											: serviceType === 'quick'
-												? 'Assign AWB + rider'
+												? 'AWB + rider'
 												: 'Assign AWB'}
 									</button>
 								{/if}
+
 								{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate && !shipmentCancelled}
 									<button
 										type="button"
-										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+										class="fq-btn fq-btn-sm"
 										disabled={busy}
 										onclick={() =>
 											void runAction(
@@ -842,50 +556,909 @@
 												postJson({ shipmentId: shipment.id })
 											)}
 									>
-										{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
+										{activeAction === pickupKey ? 'Scheduling...' : 'Pickup'}
 									</button>
 								{/if}
+
 								{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
 									<button
 										type="button"
-										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+										class="fq-btn fq-btn-sm"
 										disabled={busy}
 										onclick={() =>
 											void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
 									>
-										{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
+										{activeAction === trackingKey ? 'Refreshing...' : 'Tracking'}
 									</button>
 								{/if}
-								{#if shipment?.manifestUrl && !shipmentCancelled}
-									<button
-										type="button"
-										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-										onclick={() => openExternal(shipment.manifestUrl)}
-									>
-										Open manifest
-									</button>
-								{/if}
-								{#if shipment?.labelUrl && !shipmentCancelled}
-									<button
-										type="button"
-										class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-										onclick={() => openExternal(shipment.labelUrl)}
-									>
-										Open labels
-									</button>
-								{/if}
+
 								<button
 									type="button"
-									class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
-									onclick={closeDetails}
+									class="fq-btn fq-btn-sm"
+									onclick={() => openDetails(order.id)}
 								>
-									Close
+									Details
 								</button>
 							</div>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+
+		{#if !loading && !orders.length}
+			<p class="fq-empty">No paid orders are waiting for fulfillment.</p>
+		{/if}
+	</div>
+</div>
+
+{#if detailModalOpen && detailOrder}
+	{@const shipment = detailOrder.shipment}
+	{@const serviceType =
+		shipment?.shippingServiceType ?? detailOrder.shippingServiceType ?? 'standard'}
+	{@const createKey = `${detailOrder.id}:create`}
+	{@const awbKey = `${detailOrder.id}:awb`}
+	{@const pickupKey = `${detailOrder.id}:pickup`}
+	{@const trackingKey = `${detailOrder.id}:tracking`}
+	{@const latest = latestTracking(detailOrder)}
+	{@const busy = activeAction?.startsWith(detailOrder.id) ?? false}
+	{@const stage = shipmentStage(detailOrder)}
+	{@const shipmentCancelled =
+		shipment?.status === 'cancelled' || (shipment?.status?.startsWith('rto') ?? false)}
+
+	<button
+		type="button"
+		class="fq-drawer-backdrop"
+		aria-label="Close fulfillment details"
+		onclick={closeDetails}
+		transition:fade={{ duration: 150 }}
+	></button>
+
+	<div
+		class="fq-drawer"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="fulfillment-detail-title"
+		transition:fly={{ x: 520, duration: 280, easing: cubicOut }}
+	>
+		<div class="fq-drawer-head">
+			<div class="min-w-0">
+				<p class="fq-drawer-kicker">Fulfillment detail</p>
+				<h2 id="fulfillment-detail-title" class="fq-drawer-title">
+					#{detailOrder.id.slice(0, 8).toUpperCase()}
+				</h2>
+				<p class="fq-drawer-sub">
+					{detailOrder.shippingName || 'Customer'} · {formatINR(Number(detailOrder.total ?? 0))}
+				</p>
+			</div>
+			<button type="button" class="fq-drawer-close" aria-label="Close" onclick={closeDetails}>
+				<X class="size-4" strokeWidth={2.2} />
+			</button>
+		</div>
+
+		<div class="fq-drawer-body">
+			<div class="fq-drawer-badges">
+				<span class="fq-pill muted">{serviceType}</span>
+				<span class="fq-pill {stage.tone}">{stage.label}</span>
+			</div>
+
+			<div class="fq-card">
+				<p class="fq-card-title">Items</p>
+				<div class="mt-2 space-y-2">
+					{#each detailOrder.items as item (item.id)}
+						<div class="fq-item">
+							<img src={item.image} alt={item.title} class="fq-item-img" loading="lazy" />
+							<div class="min-w-0">
+								<p class="fq-item-title">{item.title}</p>
+								<p class="fq-item-meta">
+									{item.brand || 'Brand pending'} · SKU {item.sku || 'pending'}
+								</p>
+							</div>
+							<div class="fq-item-qty">
+								<span>Qty</span>
+								<strong>{item.qty}</strong>
+							</div>
 						</div>
+					{/each}
+				</div>
+			</div>
+
+			<div class="fq-card">
+				<p class="fq-card-title">
+					<MapPin class="size-3.5" strokeWidth={2} />
+					Delivery
+				</p>
+				<p class="fq-card-text">
+					{[detailOrder.shippingCity, detailOrder.shippingState, detailOrder.shippingPincode]
+						.filter(Boolean)
+						.join(', ') || 'Address pending'}
+				</p>
+				<p class="fq-card-sub">Service {serviceType}</p>
+			</div>
+
+			<div class="fq-card">
+				<p class="fq-card-title">Shipment</p>
+				<div class="fq-meta-grid">
+					<div class="fq-meta">
+						<span>Status</span>
+						<strong>{shipment?.status?.replaceAll('_', ' ') || 'Not created'}</strong>
+					</div>
+					<div class="fq-meta">
+						<span>AWB</span>
+						<strong>{shipment?.awbCode || 'Pending'}</strong>
+					</div>
+					<div class="fq-meta">
+						<span>Courier</span>
+						<strong>{shipment?.courierName || 'Pending'}</strong>
+					</div>
+					<div class="fq-meta">
+						<span>Pickup</span>
+						<strong>{shipment?.pickupScheduledDate || 'Not scheduled'}</strong>
 					</div>
 				</div>
 			</div>
+
+			<div class="fq-card">
+				<p class="fq-card-title">Tracking</p>
+				<p class="fq-card-text">
+					{latest?.activity || latest?.status || 'Tracking starts after AWB assignment'}
+				</p>
+				{#if latest?.location}
+					<p class="fq-card-sub">{latest.location}</p>
+				{/if}
+				{#if shipment?.trackingUrl && !shipmentCancelled}
+					<button
+						type="button"
+						class="fq-link mt-2"
+						onclick={() => openExternal(shipment.trackingUrl)}
+					>
+						<ExternalLink class="size-3.5" strokeWidth={2} />
+						Open live tracking
+					</button>
+				{/if}
+			</div>
+
+			<div class="fq-card fq-card-actions">
+				<p class="fq-card-title">Fulfillment actions</p>
+				<div class="mt-2.5 flex flex-wrap gap-2">
+					{#if shipmentCancelled}
+						<span class="fq-pill bad">Shipment cancelled — no further actions.</span>
+					{:else if !shipment}
+						<button
+							type="button"
+							class="button button-primary fq-btn-primary"
+							disabled={busy}
+							onclick={() =>
+								void runAction(
+									createKey,
+									'/shipments/shiprocket/create',
+									postJson({ orderId: detailOrder.id })
+								)}
+						>
+							{activeAction === createKey ? 'Creating...' : 'Create shipment'}
+						</button>
+					{/if}
+					{#if shipment && !shipment.awbCode && !shipmentCancelled}
+						<button
+							type="button"
+							class="fq-btn"
+							disabled={busy}
+							onclick={() =>
+								void runAction(
+									awbKey,
+									'/shipments/shiprocket/assign-awb',
+									postJson({ shipmentId: shipment.id })
+								)}
+						>
+							{activeAction === awbKey
+								? 'Assigning...'
+								: serviceType === 'quick'
+									? 'Assign AWB + rider'
+									: 'Assign AWB'}
+						</button>
+					{/if}
+					{#if shipment?.awbCode && serviceType === 'standard' && !shipment.pickupScheduledDate && !shipmentCancelled}
+						<button
+							type="button"
+							class="fq-btn"
+							disabled={busy}
+							onclick={() =>
+								void runAction(
+									pickupKey,
+									'/shipments/shiprocket/pickup',
+									postJson({ shipmentId: shipment.id })
+								)}
+						>
+							{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
+						</button>
+					{/if}
+					{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
+						<button
+							type="button"
+							class="fq-btn"
+							disabled={busy}
+							onclick={() =>
+								void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
+						>
+							{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
+						</button>
+					{/if}
+					{#if shipment?.manifestUrl && !shipmentCancelled}
+						<button type="button" class="fq-btn" onclick={() => openExternal(shipment.manifestUrl)}>
+							<ExternalLink class="size-3.5" strokeWidth={2} />
+							Manifest
+						</button>
+					{/if}
+					{#if shipment?.labelUrl && !shipmentCancelled}
+						<button type="button" class="fq-btn" onclick={() => openExternal(shipment.labelUrl)}>
+							<ExternalLink class="size-3.5" strokeWidth={2} />
+							Labels
+						</button>
+					{/if}
+				</div>
+			</div>
 		</div>
-	{/if}
-</div>
+	</div>
+{/if}
+
+<style>
+	.fq-board {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.fq-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 14px 16px;
+		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+	}
+
+	.fq-toolbar-main {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-width: 0;
+	}
+
+	.fq-toolbar-icon {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		flex-shrink: 0;
+		border-radius: 10px;
+		border: 1px solid var(--border-faint);
+		background: linear-gradient(135deg, var(--heat-4), white);
+		color: var(--heat-100);
+	}
+
+	.fq-title {
+		font-size: 15px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		color: var(--foreground);
+	}
+
+	.fq-subtitle {
+		font-size: 11px;
+		color: var(--black-alpha-40);
+	}
+
+	.fq-toolbar-stats {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.fq-stat {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.fq-stat-label {
+		font-size: 10px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--black-alpha-40);
+	}
+
+	.fq-stat-value {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.fq-stat-warn {
+		font-size: 10px;
+		color: var(--accent-crimson);
+	}
+
+	.fq-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.fq-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border-radius: 999px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 5px 12px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-chip.hot {
+		border-color: var(--heat-20);
+		background: var(--heat-4);
+		color: var(--heat-100);
+	}
+
+	.fq-chip-num {
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
+	}
+
+	.fq-bulkbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+		border-radius: 10px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 8px 12px;
+	}
+
+	.fq-bulk-label {
+		margin-right: 4px;
+		font-size: 10px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-bulk-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.fq-btn {
+		display: inline-flex;
+		height: 32px;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		border-radius: 8px;
+		border: 1px solid var(--border-muted);
+		background: white;
+		padding: 0 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--foreground);
+		transition:
+			border-color 140ms ease,
+			color 140ms ease,
+			background-color 140ms ease;
+	}
+
+	.fq-btn:hover:not(:disabled) {
+		border-color: var(--heat-100);
+		color: var(--heat-100);
+	}
+
+	.fq-btn:disabled,
+	.fq-btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.fq-btn-primary {
+		height: 32px;
+		border-radius: 8px;
+		padding: 0 14px;
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.fq-btn-sm {
+		height: 28px;
+		padding: 0 10px;
+		font-size: 11px;
+	}
+
+	.fq-error {
+		border-radius: 10px;
+		border: 1px solid color-mix(in srgb, var(--accent-crimson) 24%, white);
+		background: color-mix(in srgb, var(--accent-crimson) 6%, white);
+		padding: 10px 12px;
+		font-size: 12px;
+		color: var(--accent-crimson);
+	}
+
+	.fq-table-wrap {
+		overflow-x: auto;
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+	}
+
+	.fq-table {
+		width: 100%;
+		min-width: 980px;
+		border-collapse: collapse;
+		font-size: 12px;
+		text-align: left;
+	}
+
+	.fq-table thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--background-lighter);
+		border-bottom: 1px solid var(--border-faint);
+		padding: 10px 14px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+		white-space: nowrap;
+	}
+
+	.fq-table tbody td {
+		padding: 12px 14px;
+		border-bottom: 1px solid var(--border-faint);
+		vertical-align: top;
+	}
+
+	.fq-table tbody tr:last-child td {
+		border-bottom: 0;
+	}
+
+	.fq-check-col {
+		width: 44px;
+	}
+
+	.fq-act-col {
+		width: 220px;
+	}
+
+	.fq-row {
+		cursor: pointer;
+		outline: none;
+		transition: background-color 140ms ease;
+	}
+
+	.fq-row:hover {
+		background: var(--heat-4);
+	}
+
+	.fq-row:focus-visible {
+		background: var(--heat-4);
+		box-shadow: inset 2px 0 0 var(--heat-100);
+	}
+
+	.fq-row.is-active {
+		background: var(--heat-8);
+	}
+
+	.fq-check {
+		display: grid;
+		place-items: center;
+		width: 20px;
+		height: 20px;
+		border-radius: 6px;
+		border: 1.5px solid var(--black-alpha-24);
+		background: white;
+		color: white;
+		transition:
+			background-color 140ms ease,
+			border-color 140ms ease;
+	}
+
+	.fq-check:hover:not(:disabled) {
+		border-color: var(--heat-100);
+	}
+
+	.fq-check.active {
+		border-color: var(--heat-100);
+		background: var(--heat-100);
+	}
+
+	.fq-check:disabled {
+		opacity: 0.4;
+	}
+
+	.fq-order {
+		display: flex;
+		gap: 10px;
+		align-items: flex-start;
+	}
+
+	.fq-thumb {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		flex-shrink: 0;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 3px;
+		overflow: hidden;
+	}
+
+	.fq-thumb img {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+	}
+
+	.fq-thumb-count {
+		position: absolute;
+		right: -4px;
+		bottom: -4px;
+		display: grid;
+		place-items: center;
+		min-width: 16px;
+		height: 16px;
+		padding: 0 3px;
+		border-radius: 999px;
+		background: var(--heat-100);
+		color: white;
+		font-size: 9px;
+		font-weight: 700;
+	}
+
+	.fq-order-id {
+		font-family: ui-monospace, monospace;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.fq-order-name {
+		margin-top: 1px;
+		font-size: 12px;
+		color: var(--black-alpha-64);
+	}
+
+	.fq-order-meta {
+		margin-top: 1px;
+		font-size: 11px;
+		color: var(--black-alpha-48);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.fq-order-date {
+		margin-top: 1px;
+		font-size: 10px;
+		color: var(--black-alpha-32);
+	}
+
+	.fq-cell-strong {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--foreground);
+	}
+
+	.fq-cell-muted {
+		font-size: 12px;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-cell-track {
+		max-width: 240px;
+		font-size: 12px;
+		color: var(--black-alpha-72);
+	}
+
+	.fq-pill {
+		display: inline-block;
+		border-radius: 6px;
+		padding: 2px 8px;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: capitalize;
+		letter-spacing: 0.02em;
+	}
+
+	.fq-pill.ok {
+		background: color-mix(in srgb, var(--accent-forest) 12%, white);
+		color: var(--accent-forest);
+	}
+
+	.fq-pill.warn {
+		background: color-mix(in srgb, var(--accent-honey) 14%, white);
+		color: var(--accent-honey);
+	}
+
+	.fq-pill.bad {
+		background: color-mix(in srgb, var(--accent-crimson) 10%, white);
+		color: var(--accent-crimson);
+	}
+
+	.fq-pill.muted {
+		background: var(--background-lighter);
+		border: 1px solid var(--border-faint);
+		color: var(--black-alpha-56);
+	}
+
+	.fq-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 4px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--heat-100);
+	}
+
+	.fq-link:hover {
+		text-decoration: underline;
+	}
+
+	.fq-row-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		max-width: 220px;
+	}
+
+	.fq-empty {
+		margin: 10px;
+		border-radius: 10px;
+		border: 1px dashed var(--border-muted);
+		background: var(--background-lighter);
+		padding: 32px;
+		text-align: center;
+		font-size: 12px;
+		color: var(--black-alpha-56);
+	}
+
+	/* ── Detail drawer ── */
+	.fq-drawer-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		background: rgba(15, 15, 15, 0.32);
+		backdrop-filter: blur(1.5px);
+		border: 0;
+	}
+
+	.fq-drawer {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 61;
+		width: min(600px, 100vw);
+		display: flex;
+		flex-direction: column;
+		background: white;
+		border-left: 1px solid var(--border-faint);
+		box-shadow: -16px 0 48px rgba(0, 0, 0, 0.16);
+	}
+
+	.fq-drawer-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-shrink: 0;
+		padding: 14px 18px;
+		border-bottom: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+	}
+
+	.fq-drawer-kicker {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--heat-100);
+	}
+
+	.fq-drawer-title {
+		margin-top: 2px;
+		font-family: ui-monospace, monospace;
+		font-size: 16px;
+		font-weight: 700;
+		color: var(--foreground);
+	}
+
+	.fq-drawer-sub {
+		margin-top: 2px;
+		font-size: 12px;
+		color: var(--black-alpha-56);
+	}
+
+	.fq-drawer-close {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		flex-shrink: 0;
+		border-radius: 8px;
+		border: 1px solid var(--border-muted);
+		background: white;
+		color: var(--black-alpha-56);
+		transition:
+			color 140ms ease,
+			border-color 140ms ease;
+	}
+
+	.fq-drawer-close:hover {
+		border-color: var(--accent-crimson);
+		color: var(--accent-crimson);
+	}
+
+	.fq-drawer-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 16px 18px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.fq-drawer-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.fq-card {
+		border-radius: 10px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 14px;
+	}
+
+	.fq-card-actions {
+		border-color: var(--heat-20);
+		background: linear-gradient(180deg, var(--heat-4), white 60%);
+	}
+
+	.fq-card-title {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.fq-card-text {
+		margin-top: 8px;
+		font-size: 12px;
+		color: var(--black-alpha-72);
+	}
+
+	.fq-card-sub {
+		margin-top: 4px;
+		font-size: 10px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-item {
+		display: grid;
+		grid-template-columns: 56px 1fr auto;
+		gap: 10px;
+		align-items: center;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 8px;
+	}
+
+	.fq-item-img {
+		width: 56px;
+		height: 56px;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		object-fit: contain;
+		padding: 4px;
+	}
+
+	.fq-item-title {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--foreground);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.fq-item-meta {
+		margin-top: 2px;
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-item-qty {
+		text-align: center;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 4px 10px;
+	}
+
+	.fq-item-qty span {
+		display: block;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-item-qty strong {
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.fq-meta-grid {
+		margin-top: 10px;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+	}
+
+	.fq-meta {
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 8px 10px;
+	}
+
+	.fq-meta span {
+		display: block;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+	}
+
+	.fq-meta strong {
+		display: block;
+		margin-top: 3px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--foreground);
+		text-transform: capitalize;
+	}
+
+	@media (max-width: 640px) {
+		.fq-drawer {
+			width: 100vw;
+		}
+	}
+</style>
