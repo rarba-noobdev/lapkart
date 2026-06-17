@@ -220,6 +220,85 @@ export type Database = {
 					}
 				];
 			};
+			admin_notifications: {
+				Row: {
+					action_url: string | null;
+					body: string | null;
+					category: string;
+					created_at: string;
+					created_by: string | null;
+					entity_id: string | null;
+					entity_type: string | null;
+					id: string;
+					metadata: Json;
+					order_id: string | null;
+					severity: string;
+					title: string;
+				};
+				Insert: {
+					action_url?: string | null;
+					body?: string | null;
+					category: string;
+					created_at?: string;
+					created_by?: string | null;
+					entity_id?: string | null;
+					entity_type?: string | null;
+					id?: string;
+					metadata?: Json;
+					order_id?: string | null;
+					severity?: string;
+					title: string;
+				};
+				Update: {
+					action_url?: string | null;
+					body?: string | null;
+					category?: string;
+					created_at?: string;
+					created_by?: string | null;
+					entity_id?: string | null;
+					entity_type?: string | null;
+					id?: string;
+					metadata?: Json;
+					order_id?: string | null;
+					severity?: string;
+					title?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'admin_notifications_order_id_fkey';
+						columns: ['order_id'];
+						isOneToOne: false;
+						referencedRelation: 'orders';
+						referencedColumns: ['id'];
+					}
+				];
+			};
+			admin_notification_reads: {
+				Row: {
+					notification_id: string;
+					read_at: string;
+					user_id: string;
+				};
+				Insert: {
+					notification_id: string;
+					read_at?: string;
+					user_id: string;
+				};
+				Update: {
+					notification_id?: string;
+					read_at?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'admin_notification_reads_notification_id_fkey';
+						columns: ['notification_id'];
+						isOneToOne: false;
+						referencedRelation: 'admin_notifications';
+						referencedColumns: ['id'];
+					}
+				];
+			};
 			admin_user_events: {
 				Row: {
 					admin_user_id: string | null;

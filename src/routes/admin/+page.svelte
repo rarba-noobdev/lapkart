@@ -671,6 +671,128 @@
 
 	const notifCount = $derived(needsActionCards.reduce((sum, card) => sum + card.count, 0));
 
+	type AdminNotification = {
+		id: string;
+		category: string;
+		severity: string;
+		title: string;
+		body: string | null;
+		order_id: string | null;
+		entity_type: string | null;
+		entity_id: string | null;
+		action_url: string | null;
+		created_at: string;
+	};
+
+	let persistentNotifs = $state<AdminNotification[]>([]);
+	let notifReadIds = $state<Set<string>>(new Set());
+	let notifLoading = $state(false);
+
+	const persistentUnread = $derived(
+		persistentNotifs.filter((notification) => !notifReadIds.has(notification.id)).length
+	);
+	const notifTotal = $derived(persistentUnread + notifCount);
+
+	async function loadNotifications() {
+		if (!currentUser) return;
+		notifLoading = true;
+		try {
+			const [rowsResult, readsResult] = await Promise.all([
+				auth.supabase
+					.from('admin_notifications')
+					.select(
+						'id,category,severity,title,body,order_id,entity_type,entity_id,action_url,created_at'
+					)
+					.order('created_at', { ascending: false })
+					.limit(40),
+				auth.supabase
+					.from('admin_notification_reads')
+					.select('notification_id')
+					.eq('user_id', currentUser.id)
+			]);
+			persistentNotifs = (rowsResult.data as AdminNotification[] | null) ?? [];
+			notifReadIds = new Set((readsResult.data ?? []).map((row) => row.notification_id));
+		} catch {
+			// Feed is best-effort; the derived needs-action signals remain as fallback.
+		} finally {
+			notifLoading = false;
+		}
+	}
+
+	function handleIncomingNotification(row: AdminNotification) {
+		if (persistentNotifs.some((notification) => notification.id === row.id)) return;
+		persistentNotifs = [row, ...persistentNotifs].slice(0, 60);
+	}
+
+	async function markNotificationRead(notification: AdminNotification) {
+		if (!currentUser || notifReadIds.has(notification.id)) return;
+		const next = new Set(notifReadIds);
+		next.add(notification.id);
+		notifReadIds = next;
+		await auth.supabase
+			.from('admin_notification_reads')
+			.upsert({ notification_id: notification.id, user_id: currentUser.id })
+			.then(
+				() => undefined,
+				() => undefined
+			);
+	}
+
+	async function markAllNotificationsRead() {
+		if (!currentUser) return;
+		const unread = persistentNotifs.filter((notification) => !notifReadIds.has(notification.id));
+		if (!unread.length) return;
+		const next = new Set(notifReadIds);
+		for (const notification of unread) next.add(notification.id);
+		notifReadIds = next;
+		await auth.supabase
+			.from('admin_notification_reads')
+			.upsert(
+				unread.map((notification) => ({
+					notification_id: notification.id,
+					user_id: currentUser.id
+				}))
+			)
+			.then(
+				() => undefined,
+				() => undefined
+			);
+	}
+
+	function openNotification(notification: AdminNotification) {
+		notifOpen = false;
+		void markNotificationRead(notification);
+		if (notification.order_id) {
+			ordersInitialFilter = null;
+			ordersInitialSearch = '';
+			ordersInitialSelectId = notification.order_id;
+			operationsSection = notification.category === 'return' ? 'returns' : 'orders';
+			setView('operations');
+			return;
+		}
+		switch (notification.category) {
+			case 'return':
+				openOperations('returns');
+				break;
+			case 'fulfillment':
+				openOperations('fulfillment');
+				break;
+			case 'order':
+			case 'cancellation':
+			case 'refund':
+				openOperations('orders');
+				break;
+			case 'stock':
+				setView('catalog');
+				break;
+			case 'support':
+				setView('support');
+				break;
+			default:
+				setView('overview');
+		}
+	}
+
 	function runNotification(action: () => void) {
 		notifOpen = false;
 		action();
@@ -2269,6 +2391,7 @@
 
 		initializedForUserId = currentUser.id;
 		void loadAdmin().then(() => loadSectionData(view));
+		void loadNotifications();
 		const timelineTimer = window.setInterval(() => {
 			timelineNow = Date.now();
 		}, 60_000);
@@ -2298,6 +2421,11 @@
 			)
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupon_redemptions' }, () =>
 				scheduleAdminRealtimeRefresh({ analytics: true, coupons: true })
+			)
+			.on(
+				'postgres_changes',
+				{ event: 'INSERT', schema: 'public', table: 'admin_notifications' },
+				(payload) => handleIncomingNotification(payload.new as AdminNotification)
 			)
 			.subscribe();
 
@@ -2458,8 +2586,8 @@
 						onclick={() => (notifOpen = !notifOpen)}
 					>
 						<Bell class="size-4" strokeWidth={2} />
-						{#if notifCount > 0}
-							<span class="notif-dot">{notifCount > 99 ? '99+' : notifCount}</span>
+						{#if notifTotal > 0}
+							<span class="notif-dot">{notifTotal > 99 ? '99+' : notifTotal}</span>
 						{/if}
 					</button>
 					{#if notifOpen}
@@ -2472,30 +2600,75 @@
 						<div class="notif-panel" in:fly={{ y: -6, duration: 160 }}>
 							<div class="notif-head">
 								<span>Notifications</span>
-								{#if notifCount > 0}
-									<span class="notif-count">{notifCount}</span>
+								<div class="notif-head-actions">
+									{#if persistentUnread > 0}
+										<button type="button" class="notif-markall" onclick={markAllNotificationsRead}>
+											Mark all read
+										</button>
+									{/if}
+									{#if notifTotal > 0}
+										<span class="notif-count">{notifTotal}</span>
+									{/if}
+								</div>
+							</div>
+
+							<div class="notif-scroll">
+								{#if persistentNotifs.length}
+									<div class="notif-list">
+										{#each persistentNotifs as notification (notification.id)}
+											{@const unread = !notifReadIds.has(notification.id)}
+											<button
+												type="button"
+												class="notif-item {unread ? 'is-unread' : ''}"
+												onclick={() => openNotification(notification)}
+											>
+												<span class="notif-sev {notification.severity}"></span>
+												<span class="notif-item-text">
+													<span class="notif-item-label">{notification.title}</span>
+													{#if notification.body}
+														<span class="notif-item-hint">{notification.body}</span>
+													{/if}
+													<span class="notif-item-time">
+														{formatRelativeTime(notification.created_at)}
+													</span>
+												</span>
+												{#if unread}
+													<span class="notif-unread-dot"></span>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								{/if}
+
+								{#if needsActionCards.length}
+									<p class="notif-section">Needs attention</p>
+									<div class="notif-list">
+										{#each needsActionCards as card (card.id)}
+											<button
+												type="button"
+												class="notif-item"
+												onclick={() => runNotification(card.action)}
+											>
+												<span class="notif-item-badge">{card.count}</span>
+												<span class="notif-item-text">
+													<span class="notif-item-label">{card.label}</span>
+													<span class="notif-item-hint">{card.hint}</span>
+												</span>
+												<ArrowUpRight
+													class="size-3.5 text-[var(--black-alpha-24)]"
+													strokeWidth={2}
+												/>
+											</button>
+										{/each}
+									</div>
+								{/if}
+
+								{#if !persistentNotifs.length && !needsActionCards.length}
+									<div class="notif-empty">
+										{notifLoading ? 'Loading…' : 'All clear — nothing needs attention.'}
+									</div>
 								{/if}
 							</div>
-							{#if needsActionCards.length}
-								<div class="notif-list">
-									{#each needsActionCards as card (card.id)}
-										<button
-											type="button"
-											class="notif-item"
-											onclick={() => runNotification(card.action)}
-										>
-											<span class="notif-item-badge">{card.count}</span>
-											<span class="notif-item-text">
-												<span class="notif-item-label">{card.label}</span>
-												<span class="notif-item-hint">{card.hint}</span>
-											</span>
-											<ArrowUpRight class="size-3.5 text-[var(--black-alpha-24)]" strokeWidth={2} />
-										</button>
-									{/each}
-								</div>
-							{:else}
-								<div class="notif-empty">All clear — nothing needs attention.</div>
-							{/if}
 						</div>
 					{/if}
 				</div>
@@ -5856,9 +6029,78 @@
 		font-weight: 700;
 	}
 
-	.notif-list {
-		max-height: 360px;
+	.notif-head-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.notif-markall {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--heat-100);
+	}
+
+	.notif-markall:hover {
+		text-decoration: underline;
+	}
+
+	.notif-scroll {
+		max-height: 60vh;
 		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+
+	.notif-section {
+		padding: 8px 14px 4px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--black-alpha-40);
+		border-top: 1px solid var(--border-faint);
+	}
+
+	.notif-list {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.notif-item.is-unread {
+		background: var(--heat-4);
+	}
+
+	.notif-sev {
+		width: 7px;
+		height: 7px;
+		margin-top: 5px;
+		flex-shrink: 0;
+		border-radius: 999px;
+		background: var(--black-alpha-24);
+	}
+	.notif-sev.success {
+		background: var(--accent-forest);
+	}
+	.notif-sev.warning {
+		background: var(--accent-honey);
+	}
+	.notif-sev.critical {
+		background: var(--accent-crimson);
+	}
+
+	.notif-item-time {
+		display: block;
+		margin-top: 2px;
+		font-size: 10px;
+		color: var(--black-alpha-32);
+	}
+
+	.notif-unread-dot {
+		width: 7px;
+		height: 7px;
+		flex-shrink: 0;
+		border-radius: 999px;
+		background: var(--heat-100);
 	}
 
 	.notif-item {
