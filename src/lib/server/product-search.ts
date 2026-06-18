@@ -154,6 +154,68 @@ function fromSearchRow(row: ProductSearchRow): Product {
 	});
 }
 
+async function shouldUseFallbackForStockOrder(
+	options: ProductSearchOptions,
+	client: ProductClient,
+	rows: ProductSearchRow[],
+	limit: number,
+	page: number
+) {
+	if (options.inStock || rows.length === 0 || rows.every((row) => Number(row.stock ?? 0) > 0)) {
+		return false;
+	}
+
+	const inStockOnPage = rows.filter((row) => Number(row.stock ?? 0) > 0).length;
+	const offset = (page - 1) * limit;
+
+	const { data, error } = await client.rpc('search_active_products', {
+		p_brand: options.brand || null,
+		p_category: options.category || null,
+		p_in_stock: true,
+		p_limit: 1,
+		p_max_price: asNullableNumber(options.maxPrice) ?? null,
+		p_min_price: asNullableNumber(options.minPrice) ?? null,
+		p_min_rating: asNullableNumber(options.minRating) ?? null,
+		p_offset: 0,
+		p_query: options.query?.trim() || null,
+		p_sort: options.sort ?? 'relevance'
+	});
+
+	if (error) return false;
+
+	const inStockTotal = Number(((data ?? []) as ProductSearchRow[])[0]?.total_count ?? 0);
+	return offset + inStockOnPage < inStockTotal;
+}
+
+async function loadFallbackSearchProducts(
+	options: ProductSearchOptions,
+	client: ProductClient,
+	limit: number,
+	page: number
+): Promise<ProductSearchResult> {
+	const fallback = await listCatalogProductPage(
+		{
+			category: options.category,
+			query: options.query,
+			brand: options.brand,
+			minPrice: options.minPrice,
+			maxPrice: options.maxPrice,
+			inStock: options.inStock,
+			minRating: options.minRating,
+			sort: options.sort,
+			limit,
+			page
+		},
+		client
+	);
+
+	return {
+		products: fallback.products,
+		total: fallback.total,
+		source: 'supabase'
+	};
+}
+
 export async function searchProducts(
 	options: ProductSearchOptions,
 	client: ProductClient
@@ -209,6 +271,13 @@ async function loadSearchProducts(
 		const rows = ((data ?? []) as ProductSearchRow[]).filter(
 			(row) => !hiddenCategories.includes(row.category)
 		);
+		if (await shouldUseFallbackForStockOrder(options, client, rows, limit, page)) {
+			console.warn(
+				'Postgres product search RPC returned stale stock ordering; falling back to stock-first catalog query.'
+			);
+			return loadFallbackSearchProducts(options, client, limit, page);
+		}
+
 		return {
 			products: rows.map(fromSearchRow),
 			total: rows[0]?.total_count ?? 0,
@@ -221,25 +290,5 @@ async function loadSearchProducts(
 		);
 	}
 
-	const fallback = await listCatalogProductPage(
-		{
-			category: options.category,
-			query: options.query,
-			brand: options.brand,
-			minPrice: options.minPrice,
-			maxPrice: options.maxPrice,
-			inStock: options.inStock,
-			minRating: options.minRating,
-			sort: options.sort,
-			limit,
-			page
-		},
-		client
-	);
-
-	return {
-		products: fallback.products,
-		total: fallback.total,
-		source: 'supabase'
-	};
+	return loadFallbackSearchProducts(options, client, limit, page);
 }

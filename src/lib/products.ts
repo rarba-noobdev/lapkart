@@ -251,6 +251,8 @@ export async function listCatalogProductPage(
 		query = query.gte('rating', options.minRating);
 	}
 
+	query = query.order('stock', { ascending: false });
+
 	if (options.sort === 'price-asc') query = query.order('price', { ascending: true });
 	else if (options.sort === 'price-desc') query = query.order('price', { ascending: false });
 	else if (options.sort === 'rating-desc') query = query.order('rating', { ascending: false });
