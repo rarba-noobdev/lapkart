@@ -1,0 +1,27 @@
+{
+  "display_total": 7189,
+  "self_only": 6400,
+  "cross_brand": 779,
+  "no_detectable_brand": 10,
+  "self_only_by_brand": {
+    "Acer": 1507,
+    "Alienware": 20,
+    "Apple": 15,
+    "Asus": 1144,
+    "Dell": 650,
+    "Fujitsu": 3,
+    "HP": 1186,
+    "Huawei": 47,
+    "LG": 205,
+    "Lenovo": 1074,
+    "MSI": 17,
+    "Medion": 54,
+    "Samsung": 478
+  },
+  "classification_basis": {
+    "structured_db": 7189,
+    "compatible_models": 0,
+    "source_brand": 0,
+    "none": 0
+  }
+}

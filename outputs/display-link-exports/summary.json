@@ -1,0 +1,19 @@
+{
+  "display_total": 7303,
+  "self_only": 3299,
+  "cross_brand": 800,
+  "no_detectable_brand": 3204,
+  "self_only_by_brand": {
+    "Acer": 836,
+    "Apple": 7,
+    "Asus": 560,
+    "Dell": 644,
+    "Fujitsu": 8,
+    "HP": 144,
+    "Huawei": 1,
+    "Lenovo": 970,
+    "MSI": 17,
+    "Medion": 106,
+    "Samsung": 6
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "workbook": "D:\\1REAL PROJECTS HE HE HE\\lapkart\\outputs\\product-export-20260614-171436\\lapkart-products-non-archived-after-razer-removal.xlsx",
+  "database_total": 9100,
+  "database_non_archived": 8989,
+  "database_archived": 111,
+  "remaining_non_archived_razer": 0,
+  "workbook_product_rows": 8989,
+  "workbook_archived_rows": 0,
+  "workbook_razer_rows": 0,
+  "sheet_names": [
+    "Summary",
+    "Products",
+    "Category Summary",
+    "Brand Summary",
+    "Status Summary",
+    "Removed Razer Audit"
+  ]
+}

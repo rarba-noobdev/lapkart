@@ -1,4 +1,4 @@
-# LapKart Security Hardening Inventory
+LapKart Security Hardening Inventory
 
 Date: 2026-06-06
 
