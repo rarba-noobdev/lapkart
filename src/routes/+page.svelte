@@ -44,12 +44,18 @@
 	const categoryImages: Record<string, string> = {
 		ssd: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&w=900&q=80',
 		ram: 'https://images.unsplash.com/photo-1562976540-1502c2145186?auto=format&fit=crop&w=900&q=80',
-		batteries: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=900&q=80',
-		displays: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80',
-		chargers: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=900&q=80',
-		keyboards: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=900&q=80',
-		processors: 'https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?auto=format&fit=crop&w=900&q=80',
-		cooling: 'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?auto=format&fit=crop&w=900&q=80'
+		batteries:
+			'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=900&q=80',
+		displays:
+			'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80',
+		chargers:
+			'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=900&q=80',
+		keyboards:
+			'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=900&q=80',
+		processors:
+			'https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?auto=format&fit=crop&w=900&q=80',
+		cooling:
+			'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?auto=format&fit=crop&w=900&q=80'
 	};
 
 	const heroImage =
@@ -76,19 +82,14 @@
 		[...products]
 			.sort(
 				(a, b) =>
-					stockAvailabilityCompare(a, b) ||
-					discountPct(b) - discountPct(a) ||
-					b.reviews - a.reviews
+					stockAvailabilityCompare(a, b) || discountPct(b) - discountPct(a) || b.reviews - a.reviews
 			)
 			.slice(0, 4)
 	);
 	let bestSellers = $derived(
 		[...products]
 			.sort(
-				(a, b) =>
-					stockAvailabilityCompare(a, b) ||
-					b.rating - a.rating ||
-					b.reviews - a.reviews
+				(a, b) => stockAvailabilityCompare(a, b) || b.rating - a.rating || b.reviews - a.reviews
 			)
 			.slice(0, 8)
 	);
@@ -105,9 +106,16 @@
 	let featuredCategories = $derived(
 		categories
 			.filter((category) =>
-				['ssd', 'ram', 'batteries', 'displays', 'chargers', 'keyboards', 'processors', 'cooling'].includes(
-					category.slug
-				)
+				[
+					'ssd',
+					'ram',
+					'batteries',
+					'displays',
+					'chargers',
+					'keyboards',
+					'processors',
+					'cooling'
+				].includes(category.slug)
 			)
 			.map((category) => ({
 				...category,
@@ -118,7 +126,9 @@
 
 	let heroAdded = $state(false);
 	const canonicalUrl = $derived(absoluteUrl(page.url.origin, '/'));
-	const ogImage = $derived(heroProduct ? absoluteUrl(page.url.origin, heroProduct.image) : canonicalUrl);
+	const ogImage = $derived(
+		heroProduct ? absoluteUrl(page.url.origin, heroProduct.image) : canonicalUrl
+	);
 
 	const promoCards = [
 		{
@@ -323,7 +333,8 @@
 				<p class="home-kicker">Live offers</p>
 				<h2 id="deals-heading">Promos and marked-down parts</h2>
 			</div>
-			<a href={resolve('/products?sort=discount-desc')}>See deals <ChevronRight class="size-4" /></a>
+			<a href={resolve('/products?sort=discount-desc')}>See deals <ChevronRight class="size-4" /></a
+			>
 		</div>
 
 		<div class="deal-layout">
@@ -437,8 +448,7 @@
 
 <style>
 	.home-shell {
-		background:
-			linear-gradient(180deg, #fbfaf8 0%, #f5f2ee 44%, #fbfaf8 100%);
+		background: linear-gradient(180deg, #fbfaf8 0%, #f5f2ee 44%, #fbfaf8 100%);
 		color: var(--foreground);
 	}
 
@@ -455,7 +465,12 @@
 		content: '';
 		background:
 			radial-gradient(circle at 72% 24%, rgba(250, 93, 25, 0.2), transparent 28%),
-			linear-gradient(90deg, rgba(18, 18, 18, 0.98) 0%, rgba(18, 18, 18, 0.85) 46%, rgba(18, 18, 18, 0.48) 100%);
+			linear-gradient(
+				90deg,
+				rgba(18, 18, 18, 0.98) 0%,
+				rgba(18, 18, 18, 0.85) 46%,
+				rgba(18, 18, 18, 0.48) 100%
+			);
 	}
 
 	.home-hero-media {
@@ -472,15 +487,15 @@
 		z-index: 1;
 		display: grid;
 		max-width: 1240px;
-		min-height: min(720px, calc(100dvh - 84px));
+		min-height: min(540px, calc(100dvh - 140px));
 		margin: 0 auto;
 		align-items: center;
-		gap: 28px;
-		padding: 56px 16px 46px;
+		gap: 24px;
+		padding: 40px 16px 36px;
 	}
 
 	.home-hero-copy {
-		max-width: 760px;
+		max-width: 680px;
 	}
 
 	.home-kicker {
@@ -493,28 +508,29 @@
 	}
 
 	.home-hero h1 {
-		max-width: 780px;
-		margin-top: 14px;
+		max-width: 600px;
+		margin-top: 12px;
 		color: white;
-		font-size: clamp(38px, 8vw, 84px);
+		font-size: clamp(30px, 4.6vw, 50px);
 		font-weight: 650;
-		line-height: 0.94;
+		line-height: 1.02;
+		letter-spacing: -0.01em;
 		text-wrap: balance;
 	}
 
 	.home-hero-lede {
-		max-width: 610px;
-		margin-top: 18px;
+		max-width: 540px;
+		margin-top: 14px;
 		color: rgba(255, 255, 255, 0.68);
-		font-size: clamp(15px, 2vw, 18px);
-		line-height: 1.65;
+		font-size: clamp(14px, 1.4vw, 16px);
+		line-height: 1.6;
 	}
 
 	.hero-search {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
-		max-width: 720px;
-		margin-top: 28px;
+		max-width: 640px;
+		margin-top: 20px;
 		align-items: center;
 		gap: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.16);
@@ -704,14 +720,13 @@
 		position: relative;
 		z-index: 2;
 		display: flex;
-		min-height: 136px;
+		min-height: 112px;
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 18px;
 		border: 1px solid rgba(255, 255, 255, 0.62);
 		border-radius: 10px;
-		background:
-			linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 242, 0.95));
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 242, 0.95));
 		padding: 18px;
 		box-shadow: 0 20px 50px rgba(24, 20, 18, 0.1);
 		animation: promo-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
@@ -728,11 +743,11 @@
 	}
 
 	.promo-card h2 {
-		margin-top: 7px;
+		margin-top: 6px;
 		color: var(--foreground);
-		font-size: 18px;
+		font-size: 16px;
 		font-weight: 700;
-		line-height: 1.1;
+		line-height: 1.15;
 	}
 
 	.promo-card span {
@@ -750,7 +765,7 @@
 	}
 
 	.home-section {
-		padding-top: 64px;
+		padding-top: 44px;
 	}
 
 	.section-heading {
@@ -758,15 +773,16 @@
 		align-items: end;
 		justify-content: space-between;
 		gap: 18px;
-		margin-bottom: 18px;
+		margin-bottom: 14px;
 	}
 
 	.section-heading h2 {
-		margin-top: 6px;
+		margin-top: 5px;
 		color: var(--foreground);
-		font-size: clamp(24px, 4vw, 38px);
+		font-size: clamp(20px, 2.6vw, 28px);
 		font-weight: 680;
-		line-height: 1;
+		line-height: 1.05;
+		letter-spacing: -0.01em;
 		text-wrap: balance;
 	}
 
@@ -788,7 +804,7 @@
 
 	.category-tile {
 		position: relative;
-		min-height: 220px;
+		min-height: 180px;
 		overflow: hidden;
 		border-radius: 10px;
 		background: var(--accent-black);
@@ -802,8 +818,7 @@
 		position: absolute;
 		inset: 0;
 		background-image:
-			linear-gradient(180deg, rgba(15, 15, 15, 0.08), rgba(15, 15, 15, 0.78)),
-			var(--tile-image);
+			linear-gradient(180deg, rgba(15, 15, 15, 0.08), rgba(15, 15, 15, 0.78)), var(--tile-image);
 		background-position: center;
 		background-size: cover;
 		transition: transform 420ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -829,9 +844,9 @@
 	.category-tile h3 {
 		margin-top: 4px;
 		color: white;
-		font-size: 24px;
+		font-size: 19px;
 		font-weight: 720;
-		line-height: 1;
+		line-height: 1.05;
 	}
 
 	.category-tile span {
@@ -893,12 +908,12 @@
 	}
 
 	.feature-promo-copy h3 {
-		max-width: 12ch;
-		margin-top: 12px;
+		max-width: 16ch;
+		margin-top: 10px;
 		color: white;
-		font-size: clamp(30px, 4vw, 48px);
+		font-size: clamp(22px, 2.8vw, 32px);
 		font-weight: 730;
-		line-height: 0.98;
+		line-height: 1.04;
 	}
 
 	.feature-promo-copy span {
@@ -1043,21 +1058,21 @@
 		display: grid;
 		grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
 		gap: 28px;
-		margin-top: 70px;
+		margin-top: 48px;
 		border-radius: 12px;
-		background:
-			linear-gradient(135deg, rgba(18, 18, 18, 0.96), rgba(37, 31, 28, 0.96));
-		padding-top: 34px;
-		padding-bottom: 34px;
+		background: linear-gradient(135deg, rgba(18, 18, 18, 0.96), rgba(37, 31, 28, 0.96));
+		padding-top: 28px;
+		padding-bottom: 28px;
 		color: white;
 	}
 
 	.service-band-copy h2 {
-		max-width: 12ch;
-		margin-top: 10px;
-		font-size: clamp(28px, 5vw, 48px);
+		max-width: 18ch;
+		margin-top: 8px;
+		font-size: clamp(22px, 3vw, 32px);
 		font-weight: 720;
-		line-height: 0.98;
+		line-height: 1.04;
+		letter-spacing: -0.01em;
 		text-wrap: balance;
 	}
 
