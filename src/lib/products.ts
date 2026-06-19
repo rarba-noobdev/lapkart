@@ -154,7 +154,14 @@ export async function listProducts(client?: ProductClient) {
 	return ((data ?? []) as ProductRow[]).map(normalizeProductRow);
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getProduct(id: string, client?: ProductClient) {
+	// products.id is a uuid column. A non-uuid path param (old or broken link)
+	// makes Postgres raise 22P02, which would surface as a 500; treat it as
+	// "not found" so the page load returns a clean 404 instead.
+	if (!UUID_PATTERN.test(id)) return null;
+
 	const { data, error } = await getClient(client)
 		.from('products')
 		.select(productSelectFields)
