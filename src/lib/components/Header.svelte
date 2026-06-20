@@ -15,6 +15,7 @@
 	import { cartState } from '$lib/cart';
 	import { isStaffRole } from '$lib/roles';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import MobileSearch from '$lib/components/MobileSearch.svelte';
 
 	const auth = getAuthContext();
 
@@ -216,10 +217,8 @@
 	</div>
 
 	<div class="border-t border-[var(--border-faint)] md:hidden">
-		<SearchBar
-			size="md"
-			placeholder={isAdmin ? 'Search catalog' : 'Search parts'}
-			class="container mx-auto px-4 py-2.5"
-		/>
+		<div class="container mx-auto px-4 py-2.5">
+			<MobileSearch placeholder={isAdmin ? 'Search catalog' : 'Search parts'} />
+		</div>
 	</div>
 </header>
