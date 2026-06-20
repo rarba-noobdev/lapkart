@@ -212,10 +212,11 @@
 
 <!-- Trigger: looks like a search field, opens the full-screen overlay on tap. -->
 <button type="button" class="search-trigger {className}" onclick={openOverlay}>
-	<span class="trigger-icon">
-		<Search class="size-[15px]" strokeWidth={2.2} />
-	</span>
+	<Search class="trigger-icon size-[17px]" strokeWidth={2} />
 	<span class="trigger-label">{placeholder}</span>
+	<span class="trigger-cue" aria-hidden="true">
+		<ArrowRight class="size-3.5" strokeWidth={2.2} />
+	</span>
 </button>
 
 {#if open}
@@ -408,44 +409,53 @@
 <style>
 	.search-trigger {
 		display: flex;
-		height: 42px;
+		height: 44px;
 		width: 100%;
 		align-items: center;
 		gap: 10px;
 		border: 1px solid var(--border-muted);
-		border-radius: 12px;
-		background: var(--background-lighter);
-		padding: 4px 14px 4px 4px;
+		border-radius: 10px;
+		background: #fff;
+		padding: 0 10px 0 13px;
 		color: var(--black-alpha-48);
 		text-align: left;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 		transition:
 			border-color 200ms var(--motion-ease),
-			background-color 200ms var(--motion-ease),
 			box-shadow 200ms var(--motion-ease),
 			transform 120ms var(--motion-ease-out);
 	}
 
 	.search-trigger:active {
-		transform: scale(0.985);
+		transform: scale(0.99);
 		border-color: var(--heat-100);
 		box-shadow: 0 0 0 3px var(--heat-8);
 	}
 
-	.trigger-icon {
-		display: grid;
-		height: 34px;
-		width: 34px;
+	.search-trigger :global(.trigger-icon) {
 		flex-shrink: 0;
-		place-items: center;
-		border-radius: 9px;
-		background: var(--accent-black);
-		color: var(--heat-100);
+		color: var(--black-alpha-40);
 	}
 
 	.trigger-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
 		font-size: 14px;
 		font-weight: 450;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.trigger-cue {
+		display: grid;
+		height: 28px;
+		width: 28px;
+		flex-shrink: 0;
+		place-items: center;
+		border-radius: 8px;
+		background: var(--heat-8);
+		color: var(--heat-100);
 	}
 
 	.search-overlay {
