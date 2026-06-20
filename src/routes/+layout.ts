@@ -4,6 +4,10 @@ import type { LayoutLoad } from './$types';
 import { getSupabaseClient } from '$lib/supabase/client';
 import type { Database } from '$lib/supabase/types';
 
+const capacitorBuild = import.meta.env.VITE_CAPACITOR_BUILD === 'true';
+
+export const ssr = !capacitorBuild;
+
 export const load: LayoutLoad = async ({ data, depends, fetch }) => {
 	depends('supabase:auth');
 	depends('app:profile');

@@ -44,6 +44,7 @@ supabase/.temp/
 android/local.properties
 android/.gradle/
 android/**/build/
+www/
 
 # Local secrets and generated runtime artifacts
 .env
@@ -65,16 +66,12 @@ mobile-device-*.xml
 mobile-preview-*.png
 assets/
 
-# Capacitor web build artifacts
-www/assets/
-www/fonts/
-www/robots.txt
-
 # Sensitive files
 rzp-key.csv
 
 # One-time scripts
 scripts/*
+!scripts/build-capacitor.mjs
 !scripts/import-display-sources.mjs
 !scripts/import-dell-parts-people-displays.mjs
 !scripts/import-ipc-advanced-search-displays.mjs

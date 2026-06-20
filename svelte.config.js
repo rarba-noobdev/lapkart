@@ -1,7 +1,9 @@
 import adapterAuto from '@sveltejs/adapter-auto';
+import adapterStatic from '@sveltejs/adapter-static';
 import adapterVercel from '@sveltejs/adapter-vercel';
 
 const isVercelBuild = Boolean(process.env.VERCEL);
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === 'true';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -10,7 +12,19 @@ const config = {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
 	kit: {
-		adapter: isVercelBuild ? adapterVercel() : adapterAuto(),
+		adapter: isCapacitorBuild
+			? adapterStatic({
+					pages: 'www',
+					assets: 'www',
+					fallback: '200.html',
+					strict: false
+				})
+			: isVercelBuild
+				? adapterVercel()
+				: adapterAuto(),
+		output: {
+			bundleStrategy: isCapacitorBuild ? 'single' : 'split'
+		},
 		version: {
 			pollInterval: 60000
 		},

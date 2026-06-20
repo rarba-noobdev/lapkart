@@ -4863,10 +4863,6 @@
 		transition: transform 200ms ease;
 	}
 
-	.kpi-card:hover .kpi-icon {
-		transform: scale(1.08);
-	}
-
 	/* ── Chart ── */
 	.chart-bar {
 		opacity: 0.8;
@@ -4890,10 +4886,6 @@
 		border-radius: 4px;
 		white-space: nowrap;
 		z-index: 5;
-	}
-
-	.group:hover .chart-tooltip {
-		display: block;
 	}
 
 	/* ── Catalog ── */

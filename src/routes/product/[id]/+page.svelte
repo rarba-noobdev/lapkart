@@ -462,7 +462,9 @@
 
 	function objectListSpec(value: unknown): Record<string, unknown>[] {
 		if (!Array.isArray(value)) return [];
-		return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+		return value.filter(
+			(item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object'
+		);
 	}
 
 	function displayCompatibilityTables(value: Product) {
@@ -980,8 +982,8 @@
 				<div>
 					<h2 class="text-label-large text-foreground">Display compatibility</h2>
 					<p class="text-body-small mt-1 text-[var(--black-alpha-48)]">
-						Match the panel number first, then verify laptop model, connector, resolution and bracket
-						style before ordering.
+						Match the panel number first, then verify laptop model, connector, resolution and
+						bracket style before ordering.
 					</p>
 				</div>
 				{#if displayCompatibility.classification}
@@ -1033,7 +1035,8 @@
 											class="text-body-small w-28 px-4 py-2.5 font-medium text-[var(--black-alpha-48)] sm:px-6 md:px-8"
 											>Brand</th
 										>
-										<th class="text-body-small px-4 py-2.5 font-medium text-[var(--black-alpha-48)] sm:px-6 md:px-8"
+										<th
+											class="text-body-small px-4 py-2.5 font-medium text-[var(--black-alpha-48)] sm:px-6 md:px-8"
 											>Model</th
 										>
 									</tr>

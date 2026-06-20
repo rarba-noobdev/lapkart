@@ -39,8 +39,12 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 	listeners.push(
 		await App.addListener('backButton', async ({ canGoBack }) => {
 			const path = options.getPathname();
-			if (canGoBack && path !== '/') {
+			if (canGoBack) {
 				window.history.back();
+				return;
+			}
+			if (path !== '/') {
+				await options.navigate('/');
 				return;
 			}
 			await App.minimizeApp();

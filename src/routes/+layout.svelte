@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
 	import '../app.css';
@@ -78,7 +79,7 @@
 		let nativeCleanup: (() => void | Promise<void>) | undefined;
 		void setupNativeAppShell({
 			getPathname: () => window.location.pathname,
-			navigate: (path) => window.location.assign(path),
+			navigate: (path) => goto(resolve(path as unknown as '/')),
 			onResume: () => {
 				void updated.check();
 			}

@@ -31,7 +31,7 @@ No test suite exists. No vitest or playwright config.
 - **Logistics:** Shiprocket integration for shipments/tracking
 - **Maps:** Ola Maps for address picker and delivery estimates
 - **Deploy:** Vercel (adapter-vercel when `VERCEL` env set, adapter-auto otherwise)
-- **Mobile:** Capacitor (Android, app ID `com.lapkart.store`)
+- **Mobile:** Capacitor Android app in `android/`, app ID `com.lapkart.store`.
 
 ## Architecture
 
@@ -62,13 +62,13 @@ No external search service is required. Catalog edits are immediately searchable
 
 ### Key Data Modules
 
-| Module | Purpose |
-|---|---|
-| `$lib/products.ts` | Product queries: list, get, search, related items. `normalizeProductRow()` converts DB rows to `Product` type. |
-| `$lib/orders.ts` | Customer order queries: list (paginated), get by ID. Joins order_items, shipments, payments. |
-| `$lib/admin.ts` | Admin operations: order management, fulfillment (Shiprocket), stock/pricing updates, coupon CRUD, role management, support Q&A. |
-| `$lib/cart.ts` | Client-side cart store (Svelte writable). localStorage-backed with `hydrateCart()` on mount. |
-| `$lib/catalog.ts` | Static category list (16 categories), `Product` type, `discountPct()`, `formatINR()`. |
+| Module             | Purpose                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `$lib/products.ts` | Product queries: list, get, search, related items. `normalizeProductRow()` converts DB rows to `Product` type.                  |
+| `$lib/orders.ts`   | Customer order queries: list (paginated), get by ID. Joins order_items, shipments, payments.                                    |
+| `$lib/admin.ts`    | Admin operations: order management, fulfillment (Shiprocket), stock/pricing updates, coupon CRUD, role management, support Q&A. |
+| `$lib/cart.ts`     | Client-side cart store (Svelte writable). localStorage-backed with `hydrateCart()` on mount.                                    |
+| `$lib/catalog.ts`  | Static category list (16 categories), `Product` type, `discountPct()`, `formatINR()`.                                           |
 
 ### Realtime
 
