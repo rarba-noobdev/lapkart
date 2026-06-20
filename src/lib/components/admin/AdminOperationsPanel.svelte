@@ -133,9 +133,21 @@
 
 	<div class={fullscreen ? 'operations-fs-body' : ''}>
 		{#if operationsSection === 'orders'}
-			<AdminOrdersManager {initialFilter} {initialSearch} {initialSelectId} />
+			<AdminOrdersManager
+				{initialFilter}
+				{initialSearch}
+				{initialSelectId}
+				title="Orders"
+				subtitle="Shipments, returns, refunds"
+			/>
 		{:else if operationsSection === 'returns'}
-			<AdminOrdersManager initialFilter="returns" initialSearch={null} initialSelectId={null} />
+			<AdminOrdersManager
+				initialFilter="returns"
+				initialSearch={null}
+				initialSelectId={null}
+				title="Returns"
+				subtitle="Return requests, RTO, refunds"
+			/>
 		{:else}
 			<FulfillmentQueue />
 		{/if}

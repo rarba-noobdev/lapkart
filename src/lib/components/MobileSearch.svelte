@@ -6,6 +6,7 @@
 		ArrowLeft,
 		ArrowRight,
 		Clock,
+		Flame,
 		LoaderCircle,
 		Search,
 		TrendingUp,
@@ -211,7 +212,9 @@
 
 <!-- Trigger: looks like a search field, opens the full-screen overlay on tap. -->
 <button type="button" class="search-trigger {className}" onclick={openOverlay}>
-	<Search class="size-[15px] text-[var(--black-alpha-40)]" />
+	<span class="trigger-icon">
+		<Search class="size-[15px]" strokeWidth={2.2} />
+	</span>
 	<span class="trigger-label">{placeholder}</span>
 </button>
 
@@ -228,41 +231,49 @@
 			in:fly={{ y: reduce ? 0 : 16, duration: reduce ? 0 : 240, easing: quintOut }}
 			out:fly={{ y: reduce ? 0 : 12, duration: reduce ? 0 : 160, easing: quintOut }}
 		>
-			<form class="search-head" onsubmit={onSubmit} role="search">
-				<button type="button" class="head-btn" aria-label="Close search" onclick={closeOverlay}>
-					<ArrowLeft class="size-5" />
-				</button>
-				<div class="head-field">
-					{#if loading}
-						<LoaderCircle class="size-[17px] shrink-0 animate-spin text-[var(--heat-100)]" />
-					{:else}
-						<Search class="size-[17px] shrink-0 text-[var(--black-alpha-40)]" />
-					{/if}
-					<input
-						bind:this={input}
-						bind:value={query}
-						oninput={onInput}
-						onkeydown={onKeydown}
-						type="search"
-						name="q"
-						autocomplete="off"
-						enterkeyhint="search"
-						aria-label="Search laptop parts"
-						{placeholder}
-					/>
-					{#if trimmed}
-						<button
-							type="button"
-							class="clear-btn"
-							aria-label="Clear search"
-							onclick={clearQuery}
-							in:scale={{ duration: reduce ? 0 : 140, start: 0.6, easing: quintOut }}
-						>
-							<X class="size-4" />
-						</button>
-					{/if}
+			<div class="overlay-head">
+				<div class="head-top">
+					<button type="button" class="head-btn" aria-label="Close search" onclick={closeOverlay}>
+						<ArrowLeft class="size-[18px]" strokeWidth={2.2} />
+					</button>
+					<span class="head-kicker">
+						<Flame class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.4} />
+						Search lapkart
+					</span>
 				</div>
-			</form>
+				<form class="search-head" onsubmit={onSubmit} role="search">
+					<div class="head-field">
+						{#if loading}
+							<LoaderCircle class="size-[18px] shrink-0 animate-spin text-[var(--heat-100)]" />
+						{:else}
+							<Search class="size-[18px] shrink-0 text-[var(--black-alpha-40)]" strokeWidth={2.2} />
+						{/if}
+						<input
+							bind:this={input}
+							bind:value={query}
+							oninput={onInput}
+							onkeydown={onKeydown}
+							type="search"
+							name="q"
+							autocomplete="off"
+							enterkeyhint="search"
+							aria-label="Search laptop parts"
+							{placeholder}
+						/>
+						{#if trimmed}
+							<button
+								type="button"
+								class="clear-btn"
+								aria-label="Clear search"
+								onclick={clearQuery}
+								in:scale={{ duration: reduce ? 0 : 140, start: 0.6, easing: quintOut }}
+							>
+								<X class="size-4" />
+							</button>
+						{/if}
+					</div>
+				</form>
+			</div>
 
 			<div class="overlay-body">
 				{#if trimmed.length < 2}
@@ -397,29 +408,44 @@
 <style>
 	.search-trigger {
 		display: flex;
-		height: 40px;
+		height: 42px;
 		width: 100%;
 		align-items: center;
 		gap: 10px;
 		border: 1px solid var(--border-muted);
-		border-radius: 10px;
+		border-radius: 12px;
 		background: var(--background-lighter);
-		padding-inline: 12px;
+		padding: 4px 14px 4px 4px;
 		color: var(--black-alpha-48);
 		text-align: left;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 		transition:
 			border-color 200ms var(--motion-ease),
 			background-color 200ms var(--motion-ease),
+			box-shadow 200ms var(--motion-ease),
 			transform 120ms var(--motion-ease-out);
 	}
 
 	.search-trigger:active {
 		transform: scale(0.985);
 		border-color: var(--heat-100);
+		box-shadow: 0 0 0 3px var(--heat-8);
+	}
+
+	.trigger-icon {
+		display: grid;
+		height: 34px;
+		width: 34px;
+		flex-shrink: 0;
+		place-items: center;
+		border-radius: 9px;
+		background: var(--accent-black);
+		color: var(--heat-100);
 	}
 
 	.trigger-label {
 		font-size: 14px;
+		font-weight: 450;
 	}
 
 	.search-overlay {
@@ -433,8 +459,8 @@
 	.overlay-backdrop {
 		position: absolute;
 		inset: 0;
-		background: var(--black-alpha-20);
-		backdrop-filter: blur(2px);
+		background: var(--black-alpha-32);
+		backdrop-filter: blur(3px);
 	}
 
 	.overlay-sheet {
@@ -443,26 +469,57 @@
 		min-height: 0;
 		flex: 1;
 		flex-direction: column;
-		background: #fff;
+		background: var(--background);
 		box-shadow: var(--shadow-pop);
 	}
 
-	.search-head {
+	/* Branded dark header: mirrors the home hero (accent-black + heat glow). */
+	.overlay-head {
+		position: relative;
+		overflow: hidden;
+		flex: 0 0 auto;
+		background: var(--accent-black);
+		padding: max(12px, env(safe-area-inset-top)) 14px 16px;
+	}
+
+	.overlay-head::after {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		content: '';
+		background: radial-gradient(circle at 88% 0%, rgba(250, 93, 25, 0.28), transparent 42%);
+	}
+
+	.head-top {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		border-bottom: 1px solid var(--border-faint);
-		padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+		margin-bottom: 12px;
+	}
+
+	.head-kicker {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		color: rgba(255, 255, 255, 0.82);
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	.head-btn {
 		display: grid;
-		height: 40px;
-		width: 40px;
+		height: 36px;
+		width: 36px;
 		flex-shrink: 0;
 		place-items: center;
 		border-radius: 999px;
-		color: var(--foreground);
+		background: rgba(255, 255, 255, 0.08);
+		color: #fff;
 		transition:
 			background-color 160ms var(--motion-ease),
 			transform 120ms var(--motion-ease-out);
@@ -470,29 +527,34 @@
 
 	.head-btn:active {
 		transform: scale(0.9);
-		background: var(--black-alpha-4);
+		background: rgba(255, 255, 255, 0.16);
+	}
+
+	.search-head {
+		position: relative;
+		z-index: 1;
 	}
 
 	.head-field {
 		display: flex;
-		height: 44px;
-		flex: 1;
+		height: 48px;
 		align-items: center;
 		gap: 10px;
-		border: 1px solid var(--border-muted);
+		border: 1px solid transparent;
 		border-radius: 12px;
-		background: var(--background-lighter);
-		padding-inline: 12px;
+		background: #fff;
+		padding-inline: 14px;
+		box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.55);
 		transition:
 			border-color 200ms var(--motion-ease),
-			background-color 200ms var(--motion-ease),
 			box-shadow 200ms var(--motion-ease);
 	}
 
 	.head-field:focus-within {
 		border-color: var(--heat-100);
-		background: #fff;
-		box-shadow: 0 0 0 3px var(--heat-12);
+		box-shadow:
+			0 0 0 3px var(--heat-40),
+			0 18px 44px -18px rgba(0, 0, 0, 0.55);
 	}
 
 	.head-field input {
@@ -549,10 +611,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--black-alpha-48);
+		color: var(--heat-100);
+		font-family: var(--font-mono, ui-monospace, monospace);
 		font-size: 11px;
 		font-weight: 700;
-		letter-spacing: 0.06em;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}
 

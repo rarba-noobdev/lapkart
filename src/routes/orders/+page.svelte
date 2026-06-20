@@ -57,7 +57,7 @@
 
 	{#if orders.length === 0}
 		<div
-			class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-16 text-center"
+			class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white px-6 py-10 text-center sm:py-12"
 		>
 			<div
 				class="mx-auto grid size-14 place-items-center rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)]"

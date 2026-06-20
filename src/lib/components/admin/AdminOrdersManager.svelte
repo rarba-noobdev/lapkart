@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
+	import { quintOut } from 'svelte/easing';
+	import { ChevronRight, Filter, Package, RotateCcw, Search, X } from '@lucide/svelte';
 	import { formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
 	import {
@@ -31,12 +33,18 @@
 	let {
 		initialFilter = null,
 		initialSearch = null,
-		initialSelectId = null
+		initialSelectId = null,
+		title = 'Orders',
+		subtitle = 'Shipments, returns, refunds'
 	}: {
 		initialFilter?: string | null;
 		initialSearch?: string | null;
 		initialSelectId?: string | null;
+		title?: string;
+		subtitle?: string;
 	} = $props();
+
+	const HeadingIcon = $derived(title.toLowerCase().includes('return') ? RotateCcw : Package);
 
 	type OrderStatusFilter =
 		| 'all'
@@ -491,6 +499,28 @@
 		error = null;
 	}
 
+	function closeDetail() {
+		selectedId = null;
+	}
+
+	// Lock body scroll + close the detail drawer on Escape while it is open.
+	$effect(() => {
+		if (!selectedId) return;
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		const onKeydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				closeDetail();
+			}
+		};
+		window.addEventListener('keydown', onKeydown);
+		return () => {
+			document.body.style.overflow = previousOverflow;
+			window.removeEventListener('keydown', onKeydown);
+		};
+	});
+
 	function openExternal(url: string | null | undefined) {
 		if (!url) return;
 		window.open(url, '_blank', 'noopener,noreferrer');
@@ -544,172 +574,252 @@
 	});
 </script>
 
-<div class="grid items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-	<!-- ==================== SIDEBAR ==================== -->
-	<section class="flex flex-col gap-3 xl:sticky xl:top-8 xl:self-start">
-		<div class="flex items-center justify-between gap-3">
-			<div>
-				<h2 class="text-[13px] font-medium text-foreground">Orders</h2>
-				<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">Shipments, returns, refunds.</p>
+<div class="orders-board">
+	<!-- ==================== HEADER ==================== -->
+	<div class="orders-toolbar">
+		<div class="flex min-w-0 items-center gap-2.5">
+			<div class="orders-toolbar-icon">
+				<HeadingIcon class="size-[18px]" strokeWidth={2} />
 			</div>
-			<button
-				type="button"
-				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-[var(--black-alpha-64)] shadow-sm transition-colors hover:bg-[var(--background-lighter)] hover:text-foreground disabled:opacity-50"
-				disabled={loading}
-				onclick={() => void loadOrders()}
-			>
-				{loading ? 'Refreshing...' : 'Refresh'}
-			</button>
-		</div>
-
-		<input
-			bind:value={search}
-			oninput={queueSearch}
-			class="input-field !h-8 !text-[12px]"
-			placeholder="Search customer, phone, email, city, or pincode"
-		/>
-
-		<div class="mt-2 flex flex-wrap gap-1.5">
-			{#each statusFilters as filter (filter.id)}
-				<button
-					type="button"
-					class="inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors {statusFilter ===
-					filter.id
-						? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
-						: 'border-[var(--border-muted)] bg-white text-[var(--black-alpha-56)] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]'}"
-					onclick={() => setStatusFilter(filter.id)}
-				>
-					{filter.label}
-				</button>
-			{/each}
-		</div>
-
-		{#if totalPages > 1 || total > orders.length}
-			<div class="mt-1 flex items-center justify-between gap-2">
-				<button
-					type="button"
-					class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-					disabled={page <= 1}
-					onclick={() => setPage(page - 1)}
-				>
-					Prev
-				</button>
-				<span class="text-[11px] text-[var(--black-alpha-48)]">
-					Page {page} of {totalPages} · {total} orders
-				</span>
-				<button
-					type="button"
-					class="inline-flex h-7 items-center rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[11px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
-					disabled={page >= totalPages}
-					onclick={() => setPage(page + 1)}
-				>
-					Next
-				</button>
+			<div class="min-w-0">
+				<h2 class="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
+				<p class="text-[11px] text-[var(--black-alpha-40)]">
+					Showing {orders.length.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')}
+					{title.toLowerCase()}
+				</p>
 			</div>
-		{/if}
+		</div>
+		<button
+			type="button"
+			class="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3.5 text-[13px] font-medium text-[var(--black-alpha-64)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
+			disabled={loading}
+			onclick={() => void loadOrders()}
+		>
+			<RotateCcw class="size-3.5" strokeWidth={2} />
+			{loading ? 'Refreshing...' : 'Refresh'}
+		</button>
+	</div>
 
-		<div class="mt-2 flex max-h-[calc(100vh-220px)] flex-col gap-1.5 overflow-y-auto pr-1 pb-10">
-			{#if loading && !orders.length}
-				<div
-					class="rounded-lg border border-[var(--border-muted)] bg-[var(--background-lighter)] p-3 text-[12px] text-[var(--black-alpha-48)]"
-				>
-					Loading orders...
+	<!-- ==================== CONTROLS ==================== -->
+	<div class="orders-controls">
+		<div class="orders-search-row">
+			<label class="orders-search-field">
+				<Search class="size-3.5 text-[var(--black-alpha-32)]" strokeWidth={2} />
+				<input
+					bind:value={search}
+					oninput={queueSearch}
+					class="orders-search-input"
+					placeholder="Search customer, phone, email, city, or pincode"
+				/>
+			</label>
+		</div>
+		<div class="orders-filter-card">
+			<div class="orders-filter-head">
+				<div class="flex items-center gap-1.5">
+					<Filter class="size-3.5 text-[var(--black-alpha-40)]" strokeWidth={2} />
+					<span>Filters</span>
 				</div>
-			{:else if !filteredOrders.length}
-				<div
-					class="rounded-lg border border-dashed border-[var(--black-alpha-24)] bg-[var(--background-lighter)] p-4 text-center text-[12px] text-[var(--black-alpha-48)]"
-				>
-					No orders match the current search.
-				</div>
-			{:else}
-				{#each filteredOrders as order (order.id)}
+				{#if statusFilter !== 'all'}
+					<button type="button" onclick={() => setStatusFilter('all')}>Clear</button>
+				{/if}
+			</div>
+			<div class="flex flex-wrap gap-1.5">
+				{#each statusFilters as filter (filter.id)}
 					<button
 						type="button"
-						class={`flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition-[border-color,background-color,box-shadow] duration-150 ${
-							order.id === selectedId
-								? 'border-[var(--heat-100)] bg-[var(--heat-4)]'
-								: order.status.toLowerCase() === 'cancelled'
-									? 'border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/4 hover:border-[var(--accent-crimson)]/30 hover:bg-[var(--accent-crimson)]/6'
-									: 'border-[var(--border-muted)] bg-white shadow-sm hover:border-[var(--black-alpha-24)] hover:bg-[var(--background-lighter)]'
-						}`}
-						onclick={() => selectOrder(order)}
+						class="inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors {statusFilter ===
+						filter.id
+							? 'border-[var(--heat-100)] bg-[var(--heat-100)] text-white'
+							: 'border-[var(--border-muted)] bg-white text-[var(--black-alpha-56)] hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]'}"
+						onclick={() => setStatusFilter(filter.id)}
 					>
-						<div class="flex items-start justify-between gap-2">
-							<div>
+						{filter.label}
+					</button>
+				{/each}
+			</div>
+		</div>
+	</div>
+
+	<!-- ==================== TABLE ==================== -->
+	<div class="orders-table-wrap">
+		{#if loading && !orders.length}
+			<div class="px-6 py-10 text-center text-[12px] text-[var(--black-alpha-48)]">
+				Loading {title.toLowerCase()}...
+			</div>
+		{:else if !filteredOrders.length}
+			<div class="px-6 py-12 text-center">
+				<HeadingIcon class="mx-auto size-9 text-[var(--black-alpha-24)]" strokeWidth={1.5} />
+				<p class="mt-2.5 text-[13px] font-medium text-foreground">No {title.toLowerCase()} found</p>
+				<p class="mt-1 text-[12px] text-[var(--black-alpha-48)]">
+					Nothing matches the current search and filters.
+				</p>
+			</div>
+		{:else}
+			<table class="orders-table">
+				<thead>
+					<tr>
+						<th>Order</th>
+						<th class="ord-cust-col">Customer</th>
+						<th class="ord-date-col">Date</th>
+						<th class="ord-num-col">Total</th>
+						<th class="ord-pay-col">Payment</th>
+						<th class="ord-status-col">Status</th>
+						<th class="ord-act-col">View</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each filteredOrders as order, idx (order.id)}
+						<tr
+							class="orders-trow {order.id === selectedId ? 'is-selected' : ''}"
+							in:fly={{ y: 6, duration: 180, delay: Math.min(idx * 14, 260) }}
+							onclick={() => selectOrder(order)}
+							onkeydown={(event) => {
+								if (event.key === 'Enter' || event.key === ' ') {
+									event.preventDefault();
+									selectOrder(order);
+								}
+							}}
+							tabindex="0"
+							role="button"
+							aria-label={`View order ${order.id.slice(0, 8).toUpperCase()}`}
+						>
+							<td>
 								<div class="flex items-center gap-1.5">
-									<p class="text-[12px] font-medium text-foreground">
+									<span class="font-mono text-[12px] font-medium text-foreground">
 										#{order.id.slice(0, 8).toUpperCase()}
-									</p>
+									</span>
 									{#if isTerminalOrder(order)}
-										<span
-											class="rounded bg-[var(--background-lighter)] px-1 py-px text-[10px] font-semibold tracking-wider text-[var(--black-alpha-48)] uppercase"
-											>locked</span
-										>
+										<span class="ord-pill ord-pill-muted">Locked</span>
 									{/if}
 								</div>
-								<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+								<div class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
+									{[order.shippingCity, order.shippingState].filter(Boolean).join(', ') ||
+										'Address pending'}
+								</div>
+							</td>
+							<td class="ord-cust-col">
+								<span class="block truncate text-[13px] text-foreground">
+									{order.shippingName || order.userEmail || 'Customer'}
+								</span>
+							</td>
+							<td class="ord-date-col">
+								<span class="text-[12px] text-[var(--black-alpha-56)]">
 									{new Date(order.createdAt).toLocaleString('en-IN', {
 										month: 'short',
 										day: 'numeric',
-										hour: 'numeric',
-										minute: 'numeric'
+										year: '2-digit'
 									})}
-								</p>
-							</div>
-							<p class="text-[12px] font-medium text-foreground">{formatINR(order.total)}</p>
-						</div>
-
-						<div class="flex flex-wrap gap-1">
-							<span
-								class={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${
-									order.status === 'cancelled'
-										? 'bg-[var(--accent-crimson)]/8 text-[var(--accent-crimson)]'
-										: order.status === 'delivered'
-											? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-											: 'bg-[var(--accent-honey)]/12 text-[var(--accent-honey)]'
-								}`}
-							>
-								{order.status}
-							</span>
-							<span
-								class={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase ${
-									order.paymentStatus === 'paid'
-										? 'bg-[var(--accent-forest)]/8 text-[var(--accent-forest)]'
-										: 'bg-[var(--background-lighter)] text-[var(--black-alpha-48)]'
-								}`}
-							>
-								{order.paymentStatus}
-							</span>
-							{#if order.cancellationRequest}
+								</span>
+							</td>
+							<td class="ord-num-col">
+								<span class="text-[13px] font-semibold text-foreground">
+									{formatINR(order.total)}
+								</span>
+							</td>
+							<td class="ord-pay-col">
 								<span
-									class="rounded-md bg-[var(--accent-crimson)]/8 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-[var(--accent-crimson)] uppercase"
-									>cancel {order.cancellationRequest.status}</span
+									class={`ord-pill ${
+										order.paymentStatus === 'paid' ? 'ord-pill-forest' : 'ord-pill-muted'
+									}`}
 								>
-							{/if}
-						</div>
+									{order.paymentStatus}
+								</span>
+							</td>
+							<td class="ord-status-col">
+								<div class="flex flex-wrap items-center gap-1">
+									<span
+										class={`ord-pill ${
+											order.status === 'cancelled'
+												? 'ord-pill-crimson'
+												: order.status === 'delivered'
+													? 'ord-pill-forest'
+													: 'ord-pill-honey'
+										}`}
+									>
+										{order.status.replaceAll('_', ' ')}
+									</span>
+									{#if order.cancellationRequest}
+										<span class="ord-pill ord-pill-crimson">
+											cancel {order.cancellationRequest.status}
+										</span>
+									{/if}
+								</div>
+							</td>
+							<td class="ord-act-col">
+								<span class="orders-view-btn" aria-hidden="true">
+									<ChevronRight class="size-4" strokeWidth={2} />
+								</span>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{/if}
+	</div>
 
-						<div class="text-[11px] text-[var(--black-alpha-48)]">
-							<span class="font-medium text-[var(--black-alpha-64)]"
-								>{order.shippingName || order.userEmail || 'Customer'}</span
-							>
-							&middot; {[order.shippingCity, order.shippingState].filter(Boolean).join(', ') ||
-								'Address pending'}
-						</div>
-					</button>
-				{/each}
-			{/if}
+	{#if totalPages > 1 || total > orders.length}
+		<div class="flex items-center justify-between gap-2">
+			<button
+				type="button"
+				class="inline-flex h-8 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+				disabled={page <= 1}
+				onclick={() => setPage(page - 1)}
+			>
+				Prev
+			</button>
+			<span class="text-[11px] text-[var(--black-alpha-48)]">
+				Page {page} of {totalPages} · {total}
+				{title.toLowerCase()}
+			</span>
+			<button
+				type="button"
+				class="inline-flex h-8 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-[var(--black-alpha-64)] transition-colors hover:text-foreground disabled:opacity-40"
+				disabled={page >= totalPages}
+				onclick={() => setPage(page + 1)}
+			>
+				Next
+			</button>
 		</div>
-	</section>
+	{/if}
+</div>
 
-	<!-- ==================== DETAIL PANEL ==================== -->
-	<section
-		class="flex flex-col gap-5 overflow-hidden rounded-lg border border-[var(--border-muted)] bg-white shadow-sm"
+<!-- ==================== DETAIL DRAWER ==================== -->
+{#if selectedOrder}
+	<div
+		class="orders-drawer-backdrop"
+		onclick={closeDetail}
+		role="presentation"
+		in:fade={{ duration: 160 }}
+		out:fade={{ duration: 140 }}
+	></div>
+	<aside
+		class="orders-drawer"
+		aria-label="Order details"
+		in:fly={{ x: 32, duration: 260, easing: quintOut }}
+		out:fly={{ x: 24, duration: 180, easing: quintOut }}
 	>
-		<div class="border-b border-[var(--border-muted)] bg-[var(--background-lighter)]/50 px-5 py-4">
-			<h3 class="text-[13px] font-medium text-foreground">Order Details</h3>
+		<div class="orders-drawer-head">
+			<div class="min-w-0">
+				<p
+					class="text-[10px] font-semibold tracking-[0.12em] text-[var(--black-alpha-40)] uppercase"
+				>
+					{title} detail
+				</p>
+				<h3 class="font-mono text-[14px] font-semibold text-foreground">
+					#{selectedOrder.id.slice(0, 8).toUpperCase()}
+				</h3>
+			</div>
+			<button
+				type="button"
+				class="grid size-9 place-items-center rounded-full text-[var(--black-alpha-56)] transition-colors hover:bg-[var(--black-alpha-4)] hover:text-foreground"
+				aria-label="Close details"
+				onclick={closeDetail}
+			>
+				<X class="size-[18px]" strokeWidth={2} />
+			</button>
 		</div>
 
-		<div class="space-y-6 px-5 pb-6">
+		<div class="orders-drawer-body space-y-6 px-5 pb-6">
 			{#if error}
 				<div
 					class="rounded-md border border-[var(--accent-crimson)]/20 bg-[var(--accent-crimson)]/6 p-3 text-[12px] text-[var(--accent-crimson)]"
@@ -1591,5 +1701,295 @@
 				</div>
 			{/if}
 		</div>
-	</section>
-</div>
+	</aside>
+{/if}
+
+<style>
+	.orders-board {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.orders-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.orders-toolbar-icon {
+		display: grid;
+		width: 38px;
+		height: 38px;
+		flex-shrink: 0;
+		place-items: center;
+		border-radius: 10px;
+		border: 1px solid var(--border-faint);
+		background: linear-gradient(135deg, var(--heat-4), white);
+		color: var(--heat-100);
+	}
+
+	.orders-controls {
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 12px;
+		box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+	}
+
+	.orders-search-row {
+		display: flex;
+	}
+
+	.orders-search-field {
+		display: flex;
+		min-width: 0;
+		height: 36px;
+		flex: 1;
+		align-items: center;
+		gap: 8px;
+		border-radius: 6px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 0 10px;
+		transition:
+			border-color 150ms ease,
+			box-shadow 150ms ease;
+	}
+
+	.orders-search-field:focus-within {
+		border-color: var(--heat-40);
+		box-shadow: 0 0 0 3px var(--heat-8);
+	}
+
+	.orders-search-input {
+		min-width: 0;
+		flex: 1;
+		border: 0;
+		background: transparent;
+		color: var(--foreground);
+		font-size: 13px;
+		outline: none;
+	}
+
+	.orders-search-input::placeholder {
+		color: var(--black-alpha-32);
+	}
+
+	.orders-filter-card {
+		margin-top: 8px;
+		border-radius: 7px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 8px;
+	}
+
+	.orders-filter-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 8px;
+		color: var(--black-alpha-56);
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.orders-filter-head button {
+		border: 0;
+		background: transparent;
+		color: var(--heat-100);
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	/* ── Table ── */
+	.orders-table-wrap {
+		overflow-x: auto;
+		border-radius: 12px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+	}
+
+	.orders-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 13px;
+	}
+
+	.orders-table thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--background-lighter);
+		border-bottom: 1px solid var(--border-faint);
+		padding: 10px 14px;
+		text-align: left;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--black-alpha-48);
+		white-space: nowrap;
+	}
+
+	.orders-table tbody td {
+		padding: 11px 14px;
+		border-bottom: 1px solid var(--border-faint);
+		vertical-align: middle;
+	}
+
+	.orders-table tbody tr:last-child td {
+		border-bottom: 0;
+	}
+
+	.ord-cust-col {
+		max-width: 200px;
+	}
+	.ord-date-col {
+		width: 96px;
+	}
+	.ord-num-col,
+	.orders-table th.ord-num-col {
+		width: 120px;
+		text-align: right;
+	}
+	.ord-pay-col {
+		width: 110px;
+	}
+	.ord-status-col {
+		width: 180px;
+	}
+	.ord-act-col,
+	.orders-table th.ord-act-col {
+		width: 72px;
+		text-align: right;
+	}
+
+	.orders-trow {
+		cursor: pointer;
+		outline: none;
+		transition: background-color 140ms ease;
+	}
+
+	.orders-trow:hover {
+		background: var(--heat-4);
+	}
+
+	.orders-trow:focus-visible {
+		background: var(--heat-4);
+		box-shadow: inset 2px 0 0 var(--heat-100);
+	}
+
+	.orders-trow.is-selected {
+		background: var(--heat-8);
+	}
+
+	.orders-view-btn {
+		display: inline-grid;
+		width: 28px;
+		height: 28px;
+		place-items: center;
+		border-radius: 7px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		color: var(--black-alpha-48);
+		transition:
+			border-color 140ms ease,
+			color 140ms ease;
+	}
+
+	.orders-trow:hover .orders-view-btn {
+		border-color: var(--heat-100);
+		color: var(--heat-100);
+	}
+
+	/* ── Status pills ── */
+	.ord-pill {
+		display: inline-flex;
+		align-items: center;
+		border-radius: 6px;
+		padding: 2px 7px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+
+	.ord-pill-muted {
+		background: var(--background-lighter);
+		color: var(--black-alpha-48);
+	}
+
+	.ord-pill-forest {
+		background: color-mix(in srgb, var(--accent-forest) 10%, transparent);
+		color: var(--accent-forest);
+	}
+
+	.ord-pill-honey {
+		background: color-mix(in srgb, var(--accent-honey) 16%, transparent);
+		color: var(--accent-honey);
+	}
+
+	.ord-pill-crimson {
+		background: color-mix(in srgb, var(--accent-crimson) 10%, transparent);
+		color: var(--accent-crimson);
+	}
+
+	/* ── Detail drawer ── */
+	.orders-drawer-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 70;
+		background: var(--black-alpha-32);
+		backdrop-filter: blur(2px);
+	}
+
+	.orders-drawer {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 71;
+		display: flex;
+		width: min(560px, 100vw);
+		flex-direction: column;
+		background: white;
+		box-shadow: -24px 0 60px -24px rgba(0, 0, 0, 0.35);
+	}
+
+	.orders-drawer-head {
+		display: flex;
+		flex: 0 0 auto;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		border-bottom: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+	}
+
+	.orders-drawer-body {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		padding-top: 20px;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior: contain;
+	}
+
+	@media (max-width: 640px) {
+		.orders-drawer {
+			width: 100vw;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.orders-trow {
+			transition: none;
+		}
+	}
+</style>

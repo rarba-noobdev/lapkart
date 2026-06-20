@@ -105,7 +105,9 @@
 		Boolean(navigating.to && navigating.to.url.pathname === resolve('/products'))
 	);
 	const hasNonCanonicalFilters = $derived(
-		Boolean(q || brand || minPrice || maxPrice || inStock || minRating || activeSort !== 'relevance')
+		Boolean(
+			q || brand || minPrice || maxPrice || inStock || minRating || activeSort !== 'relevance'
+		)
 	);
 	const shouldNoIndex = $derived(hasNonCanonicalFilters);
 	const canonicalPath = $derived.by(() => {
@@ -125,7 +127,9 @@
 			breadcrumbListJsonLd(page.url.origin, [
 				{ name: 'Home', path: '/' },
 				{ name: 'Catalog', path: '/products' },
-				...(category ? [{ name: categoryName(category), path: `/products?category=${category}` }] : [])
+				...(category
+					? [{ name: categoryName(category), path: `/products?category=${category}` }]
+					: [])
 			]),
 			itemListJsonLd(page.url.origin, sorted, resultStart || 1)
 		])
@@ -220,7 +224,7 @@
 
 		<div class="flex items-center justify-between gap-2 sm:mt-4 sm:flex-wrap sm:items-end sm:gap-6">
 			<div class="min-w-0 flex-1">
-				<h1 class="text-[13px] leading-tight font-medium text-foreground sm:text-title-h3">
+				<h1 class="sm:text-title-h3 text-[13px] leading-tight font-medium text-foreground">
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
@@ -228,9 +232,11 @@
 					{:else}
 						All parts
 					{/if}
-					<span class="text-[11px] font-normal text-[var(--black-alpha-48)] sm:hidden">{productTotal}</span>
+					<span class="text-[11px] font-normal text-[var(--black-alpha-48)] sm:hidden"
+						>{productTotal}</span
+					>
 				</h1>
-				<p class="mt-1 hidden text-body-medium text-[var(--black-alpha-56)] sm:block">
+				<p class="text-body-medium mt-1 hidden text-[var(--black-alpha-56)] sm:block">
 					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
 						: ''}
@@ -244,7 +250,7 @@
 
 			<select
 				value={activeSort}
-				class="h-7 rounded-md border border-[var(--border-muted)] bg-white px-1.5 text-[11px] text-foreground sm:h-11 sm:px-3 sm:text-body-medium"
+				class="sm:text-body-medium h-7 rounded-md border border-[var(--border-muted)] bg-white px-1.5 text-[11px] text-foreground sm:h-11 sm:px-3"
 				onchange={(event) =>
 					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
 			>
@@ -329,7 +335,9 @@
 					<SlidersHorizontal class="size-2.5 sm:size-3" />
 					Filters
 					{#if appliedFilters.length > 0}
-						<span class="flex size-4 items-center justify-center rounded-full bg-[var(--heat-100)] text-[8px] font-bold text-white">
+						<span
+							class="flex size-4 items-center justify-center rounded-full bg-[var(--heat-100)] text-[8px] font-bold text-white"
+						>
 							{appliedFilters.length}
 						</span>
 					{/if}
@@ -588,7 +596,7 @@
 		{/if}
 		{#if sorted.length === 0}
 			<div
-				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-8 text-center sm:p-16"
+				class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white px-6 py-10 text-center sm:py-12"
 				in:fly={{ y: 8, duration: 240, easing: cubicOut }}
 			>
 				<p class="text-label-small text-[var(--heat-100)]">No matching parts</p>

@@ -992,7 +992,7 @@
 		</div>
 	{:else if rows.length === 0}
 		<div
-			class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white p-10 text-center"
+			class="rounded-lg border border-dashed border-[var(--border-muted)] bg-white px-6 py-8 text-center sm:py-10"
 		>
 			<Package class="mx-auto size-8 text-[var(--black-alpha-32)]" strokeWidth={1.5} />
 			<p class="mt-3 text-[13px] font-medium text-foreground">Cart is empty</p>
