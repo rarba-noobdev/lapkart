@@ -291,7 +291,7 @@
 </div>
 
 <div
-	class="products-layout container mx-auto grid min-w-0 gap-2 overflow-x-clip px-2 py-2 sm:gap-8 sm:px-4 sm:py-10 lg:grid-cols-[240px_1fr]"
+	class="products-layout container mx-auto grid min-w-0 gap-2 overflow-x-clip px-2 py-2 sm:gap-8 sm:px-4 sm:py-10 lg:grid-cols-[1fr_240px]"
 >
 	<div class="min-w-0 lg:hidden">
 		<div
@@ -446,7 +446,7 @@
 		{/if}
 	</div>
 
-	<aside class="hidden h-fit space-y-7 lg:sticky lg:top-24 lg:block">
+	<aside class="hidden h-fit space-y-7 lg:sticky lg:top-24 lg:order-2 lg:block">
 		<h3
 			class="text-mono-x-small mb-4 flex items-center gap-2 tracking-[0.18em] text-[var(--black-alpha-48)] uppercase"
 		>
@@ -585,7 +585,7 @@
 		</section>
 	</aside>
 
-	<main class="relative w-full min-w-0" aria-busy={isRefreshing}>
+	<main class="relative w-full min-w-0 lg:order-1" aria-busy={isRefreshing}>
 		{#if isRefreshing}
 			<p class="sr-only" role="status">Updating products</p>
 			<div
