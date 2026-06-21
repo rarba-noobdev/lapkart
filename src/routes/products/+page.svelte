@@ -222,9 +222,11 @@
 			{/if}
 		</nav>
 
-		<div class="flex items-center justify-between gap-2 sm:mt-4 sm:flex-wrap sm:items-end sm:gap-6">
+		<div class="flex items-center justify-between gap-3 sm:mt-4 sm:flex-wrap sm:items-end sm:gap-6">
 			<div class="min-w-0 flex-1">
-				<h1 class="sm:text-title-h3 text-[15px] leading-tight font-medium text-foreground">
+				<h1
+					class="sm:text-title-h3 truncate text-[18px] leading-tight font-semibold text-foreground"
+				>
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
@@ -232,10 +234,10 @@
 					{:else}
 						All parts
 					{/if}
-					<span class="text-[11px] font-normal text-[var(--black-alpha-48)] sm:hidden"
-						>{productTotal}</span
-					>
 				</h1>
+				<p class="mt-0.5 text-[12px] text-[var(--black-alpha-56)] sm:hidden">
+					{productTotal.toLocaleString('en-IN')} parts
+				</p>
 				<p class="text-body-medium mt-1 hidden text-[var(--black-alpha-56)] sm:block">
 					<span class="font-medium text-foreground">{productTotal}</span> products{category
 						? ` in ${currentCategory?.name.toLowerCase()}`
@@ -251,7 +253,7 @@
 			<select
 				value={activeSort}
 				aria-label="Sort products"
-				class="sm:text-body-medium h-9 shrink-0 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground transition-colors hover:border-[var(--heat-100)] focus-visible:border-[var(--heat-100)] sm:h-11 sm:px-3"
+				class="sm:text-body-medium h-10 shrink-0 rounded-md border border-[var(--border-muted)] bg-white px-2.5 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] focus-visible:border-[var(--heat-100)] sm:h-11 sm:px-3"
 				onchange={(event) =>
 					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
 			>
@@ -295,12 +297,12 @@
 >
 	<div class="min-w-0 lg:hidden">
 		<div
-			class="scrollbar-hide -mx-2 flex snap-x snap-mandatory gap-1 overflow-x-auto px-2 sm:-mx-4 sm:gap-2 sm:px-4 sm:pb-2"
+			class="scrollbar-hide -mx-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-2 pb-1 sm:-mx-4 sm:px-4 sm:pb-2"
 		>
 			<a
 				href={resolve(q ? `/products?q=${encodeURIComponent(q)}` : '/products')}
 				aria-current={!category ? 'page' : undefined}
-				class={`shrink-0 snap-start rounded-full border px-2 py-1 text-[10px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
+				class={`inline-flex h-9 shrink-0 snap-start items-center rounded-full border px-3.5 text-[13px] font-medium transition-colors ${
 					!category
 						? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 						: 'border-[var(--border-muted)] bg-white text-foreground'
@@ -316,7 +318,7 @@
 							: `/products?category=${item.slug}`
 					)}
 					aria-current={category === item.slug ? 'page' : undefined}
-					class={`shrink-0 snap-start rounded-full border px-2 py-1 text-[10px] font-medium transition-colors sm:px-4 sm:py-2 sm:text-[13px] ${
+					class={`inline-flex h-9 shrink-0 snap-start items-center rounded-full border px-3.5 text-[13px] font-medium transition-colors ${
 						category === item.slug
 							? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
 							: 'border-[var(--border-muted)] bg-white text-foreground'
@@ -328,21 +330,19 @@
 
 			<button
 				type="button"
-				class="shrink-0 snap-start rounded-full border border-[var(--border-muted)] bg-white px-2 py-1 text-[10px] font-medium text-[var(--black-alpha-56)] transition-colors sm:px-4 sm:py-2 sm:text-[13px]"
+				class="inline-flex h-9 shrink-0 snap-start items-center gap-1.5 rounded-full border border-[var(--border-muted)] bg-white px-3.5 text-[13px] font-medium text-[var(--black-alpha-56)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
 				onclick={() => (mobileFiltersOpen = !mobileFiltersOpen)}
 				aria-expanded={mobileFiltersOpen}
 			>
-				<span class="flex items-center gap-1">
-					<SlidersHorizontal class="size-2.5 sm:size-3" />
-					Filters
-					{#if appliedFilters.length > 0}
-						<span
-							class="flex size-4 items-center justify-center rounded-full bg-[var(--heat-100)] text-[8px] font-bold text-white"
-						>
-							{appliedFilters.length}
-						</span>
-					{/if}
-				</span>
+				<SlidersHorizontal class="size-3.5" />
+				Filters
+				{#if appliedFilters.length > 0}
+					<span
+						class="flex size-4 items-center justify-center rounded-full bg-[var(--heat-100)] text-[9px] font-bold text-white"
+					>
+						{appliedFilters.length}
+					</span>
+				{/if}
 			</button>
 		</div>
 
