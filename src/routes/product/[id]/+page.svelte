@@ -23,6 +23,7 @@
 	import { flip } from 'svelte/animate';
 	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
+	import ProductSpecValue from '$lib/components/ProductSpecValue.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
 	import NativeShareButton from '$lib/components/NativeShareButton.svelte';
@@ -1101,7 +1102,7 @@
 					class="grid grid-cols-[90px_1fr] gap-3 px-4 py-2.5 sm:grid-cols-[140px_1fr] sm:gap-4 sm:px-6 sm:py-3 md:px-8"
 				>
 					<span class="text-body-small text-[var(--black-alpha-48)]">{spec.label}</span>
-					<span class="text-body-small text-foreground">{spec.value}</span>
+					<ProductSpecValue value={spec.value} />
 				</div>
 			{/each}
 		</div>
