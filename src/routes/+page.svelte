@@ -318,7 +318,6 @@
 				>
 					<div class="category-tile-image" aria-hidden="true"></div>
 					<div>
-						<p>{category.count} listed</p>
 						<h3>{category.name}</h3>
 						<span>Browse parts <ArrowRight class="size-3.5" /></span>
 					</div>
@@ -833,12 +832,6 @@
 		right: 16px;
 		bottom: 16px;
 		left: 16px;
-	}
-
-	.category-tile p {
-		color: rgba(255, 255, 255, 0.64);
-		font-size: 12px;
-		font-weight: 650;
 	}
 
 	.category-tile h3 {

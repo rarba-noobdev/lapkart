@@ -19,29 +19,6 @@
 	aria-label={`${product.title} by ${product.brand}`}
 	class="product-card group relative flex w-full overflow-hidden rounded-md border border-[var(--border-faint)] bg-white sm:flex-col sm:rounded-lg"
 >
-	{#if discount >= 30}
-		<span
-			class="absolute top-1.5 left-1.5 z-10 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white sm:top-3 sm:left-3 sm:px-2 sm:text-[11px]"
-			style="background:var(--heat-100);box-shadow:0 2px 8px 0 var(--heat-40)"
-		>
-			-{discount}%
-		</span>
-	{/if}
-
-	{#if outOfStock}
-		<span
-			class="absolute top-1.5 right-1.5 z-10 rounded-sm bg-[var(--black-alpha-72)] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white uppercase sm:top-3 sm:right-3 sm:text-[10px]"
-		>
-			Sold out
-		</span>
-	{:else if lowStock}
-		<span
-			class="absolute top-1.5 right-1.5 z-10 rounded-sm bg-[var(--accent-crimson)] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white sm:top-3 sm:right-3 sm:text-[10px]"
-		>
-			{product.stock} left
-		</span>
-	{/if}
-
 	<div class="product-card-media">
 		<img
 			src={product.images?.[0] ?? product.image}
@@ -54,6 +31,30 @@
 			decoding="async"
 		/>
 	</div>
+
+	<!-- Badges render after the media so they always paint above it. -->
+	{#if discount >= 30}
+		<span
+			class="absolute top-1.5 left-1.5 z-20 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white sm:top-3 sm:left-3 sm:px-2 sm:text-[11px]"
+			style="background:var(--heat-100);box-shadow:0 2px 8px 0 var(--heat-40)"
+		>
+			-{discount}%
+		</span>
+	{/if}
+
+	{#if outOfStock}
+		<span
+			class="absolute top-1.5 right-1.5 z-20 rounded-sm bg-[var(--black-alpha-72)] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white uppercase sm:top-3 sm:right-3 sm:text-[10px]"
+		>
+			Sold out
+		</span>
+	{:else if lowStock}
+		<span
+			class="absolute top-1.5 right-1.5 z-20 rounded-sm bg-[var(--accent-crimson)] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white sm:top-3 sm:right-3 sm:text-[10px]"
+		>
+			{product.stock} left
+		</span>
+	{/if}
 
 	<div class="flex flex-1 flex-col justify-center px-2.5 py-2 sm:px-4 sm:py-3">
 		<p
