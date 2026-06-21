@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { ChevronLeft, ChevronRight, X, ZoomIn } from '@lucide/svelte';
 	import { fade } from 'svelte/transition';
 
@@ -12,14 +13,45 @@
 		discount?: number;
 	} = $props();
 
+	const ZOOM = 2.6;
+	const PANEL_W = 460;
+
 	let index = $state(0);
 	let lightbox = $state(false);
-	let zoomed = $state(false);
-	let origin = $state('50% 50%');
-	let track = $state<HTMLDivElement | undefined>();
+	let lbZoomed = $state(false);
+	let canHoverZoom = $state(false);
+
+	let mainWrap = $state<HTMLDivElement>();
+	let mainImg = $state<HTMLImageElement>();
+	let track = $state<HTMLDivElement>();
+
+	type ZoomState = {
+		show: boolean;
+		lensX: number;
+		lensY: number;
+		lensW: number;
+		lensH: number;
+		panelTop: number;
+		panelH: number;
+		bgSize: string;
+		bgPos: string;
+	};
+	let zoom = $state<ZoomState>({
+		show: false,
+		lensX: 0,
+		lensY: 0,
+		lensW: 0,
+		lensH: 0,
+		panelTop: 0,
+		panelH: 0,
+		bgSize: '0px 0px',
+		bgPos: '0% 0%'
+	});
 
 	const current = $derived(images[index] ?? images[0]);
 	const hasMany = $derived(images.length > 1);
+
+	const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 	function select(i: number) {
 		index = ((i % images.length) + images.length) % images.length;
@@ -27,14 +59,13 @@
 
 	function openLightbox(i: number) {
 		select(i);
-		zoomed = false;
-		origin = '50% 50%';
+		lbZoomed = false;
 		lightbox = true;
 	}
 
 	function closeLightbox() {
 		lightbox = false;
-		zoomed = false;
+		lbZoomed = false;
 	}
 
 	function onTrackScroll(event: Event) {
@@ -43,13 +74,49 @@
 		index = Math.round(el.scrollLeft / w);
 	}
 
-	function moveZoom(event: PointerEvent) {
-		if (!zoomed) return;
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-		const x = ((event.clientX - rect.left) / rect.width) * 100;
-		const y = ((event.clientY - rect.top) / rect.height) * 100;
-		origin = `${Math.min(100, Math.max(0, x))}% ${Math.min(100, Math.max(0, y))}%`;
+	// ── Desktop hover zoom (Amazon-style lens + side magnifier) ──
+	function onMainMove(event: PointerEvent) {
+		if (!canHoverZoom || !mainImg || !mainWrap) return;
+		const r = mainImg.getBoundingClientRect();
+		const wrap = mainWrap.getBoundingClientRect();
+		if (r.width === 0 || r.height === 0) return;
+
+		const panelH = r.height;
+		const lensW = PANEL_W / ZOOM;
+		const lensH = panelH / ZOOM;
+
+		const cx = clamp((event.clientX - r.left) / r.width, 0, 1);
+		const cy = clamp((event.clientY - r.top) / r.height, 0, 1);
+
+		const maxLx = Math.max(0, r.width - lensW);
+		const maxLy = Math.max(0, r.height - lensH);
+		const lx = clamp(cx * r.width - lensW / 2, 0, maxLx);
+		const ly = clamp(cy * r.height - lensH / 2, 0, maxLy);
+
+		zoom = {
+			show: true,
+			lensX: r.left - wrap.left + lx,
+			lensY: r.top - wrap.top + ly,
+			lensW,
+			lensH,
+			panelTop: r.top - wrap.top,
+			panelH,
+			bgSize: `${r.width * ZOOM}px ${r.height * ZOOM}px`,
+			bgPos: `${maxLx ? (lx / maxLx) * 100 : 0}% ${maxLy ? (ly / maxLy) * 100 : 0}%`
+		};
 	}
+
+	function endHoverZoom() {
+		zoom = { ...zoom, show: false };
+	}
+
+	onMount(() => {
+		const mq = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+		const update = () => (canHoverZoom = mq.matches);
+		update();
+		mq.addEventListener('change', update);
+		return () => mq.removeEventListener('change', update);
+	});
 
 	// Body scroll lock + keyboard nav while the lightbox is open.
 	$effect(() => {
@@ -96,13 +163,61 @@
 		</div>
 	{/if}
 
-	<!-- Desktop: single main image with click-to-zoom -->
-	<button type="button" class="d-main" aria-label="Zoom image" onclick={() => openLightbox(index)}>
-		{#key current}
-			<img src={current} {alt} fetchpriority="high" decoding="async" in:fade={{ duration: 160 }} />
-		{/key}
-		<span class="zoom-hint"><ZoomIn class="size-3.5" strokeWidth={2} /> Click to zoom</span>
-	</button>
+	<!-- Desktop: main image with hover lens zoom + side magnifier panel -->
+	<div class="d-zone">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="d-main"
+			bind:this={mainWrap}
+			onpointermove={onMainMove}
+			onpointerleave={endHoverZoom}
+			onclick={() => openLightbox(index)}
+			role="button"
+			tabindex="0"
+			aria-label="Zoom image"
+			onkeydown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					openLightbox(index);
+				}
+			}}
+		>
+			{#key current}
+				<img
+					bind:this={mainImg}
+					src={current}
+					{alt}
+					fetchpriority="high"
+					decoding="async"
+					draggable="false"
+					in:fade={{ duration: 160 }}
+				/>
+			{/key}
+
+			{#if zoom.show}
+				<span
+					class="zoom-lens"
+					style:left="{zoom.lensX}px"
+					style:top="{zoom.lensY}px"
+					style:width="{zoom.lensW}px"
+					style:height="{zoom.lensH}px"
+				></span>
+			{:else}
+				<span class="zoom-hint"><ZoomIn class="size-3.5" strokeWidth={2} /> Hover to zoom</span>
+			{/if}
+		</div>
+
+		{#if zoom.show}
+			<div
+				class="zoom-panel"
+				style:top="{zoom.panelTop}px"
+				style:height="{zoom.panelH}px"
+				style:background-image="url('{current}')"
+				style:background-size={zoom.bgSize}
+				style:background-position={zoom.bgPos}
+			></div>
+		{/if}
+	</div>
 
 	{#if hasMany}
 		<div class="thumbs">
@@ -113,6 +228,7 @@
 					class:is-active={i === index}
 					aria-label="Show image {i + 1}"
 					aria-pressed={i === index}
+					onmouseenter={() => select(i)}
 					onclick={() => select(i)}
 				>
 					<img src={image} alt="" loading="lazy" decoding="async" />
@@ -123,31 +239,39 @@
 </div>
 
 {#if lightbox}
-	<div class="lb" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<div
+		class="lb"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Image viewer"
+		in:fade={{ duration: 160 }}
+	>
+		<!-- Scroll + click-to-close surface. Clicking anywhere except the image closes. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div
-			class="lb-backdrop"
-			onclick={closeLightbox}
-			role="presentation"
-			in:fade={{ duration: 160 }}
-		></div>
-
-		<button type="button" class="lb-close" aria-label="Close" onclick={closeLightbox}>
-			<X class="size-5" />
-		</button>
-
-		<div class="lb-stage" in:fade={{ duration: 160 }}>
+			class="lb-scroll"
+			class:is-zoomed={lbZoomed}
+			onclick={(e) => {
+				if (e.target === e.currentTarget) closeLightbox();
+			}}
+		>
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
 			<img
 				src={current}
 				{alt}
 				class="lb-img"
-				class:is-zoomed={zoomed}
-				style:transform-origin={origin}
-				onclick={() => (zoomed = !zoomed)}
-				onpointermove={moveZoom}
+				class:is-zoomed={lbZoomed}
 				draggable="false"
+				onclick={(e) => {
+					e.stopPropagation();
+					lbZoomed = !lbZoomed;
+				}}
 			/>
 		</div>
+
+		<button type="button" class="lb-close" aria-label="Close" onclick={closeLightbox}>
+			<X class="size-5" />
+		</button>
 
 		{#if hasMany}
 			<button
@@ -187,7 +311,7 @@
 		position: absolute;
 		top: 14px;
 		left: 14px;
-		z-index: 3;
+		z-index: 4;
 		display: inline-flex;
 		align-items: center;
 		border-radius: 4px;
@@ -253,7 +377,7 @@
 	}
 
 	/* ── Desktop main + thumbs ── */
-	.d-main {
+	.d-zone {
 		display: none;
 	}
 
@@ -267,19 +391,25 @@
 			display: none;
 		}
 
+		.d-zone {
+			position: relative;
+			display: block;
+		}
+
 		.d-main {
 			position: relative;
 			display: grid;
 			width: 100%;
 			height: clamp(300px, 34vw, 420px);
 			place-items: center;
-			cursor: zoom-in;
+			cursor: crosshair;
 		}
 
 		.d-main img {
 			max-height: 100%;
 			max-width: 100%;
 			object-fit: contain;
+			user-select: none;
 		}
 
 		.zoom-hint {
@@ -297,10 +427,34 @@
 			color: #fff;
 			opacity: 0;
 			transition: opacity 160ms var(--motion-ease);
+			pointer-events: none;
 		}
 
 		.d-main:hover .zoom-hint {
 			opacity: 1;
+		}
+
+		.zoom-lens {
+			position: absolute;
+			z-index: 3;
+			border: 1px solid var(--heat-100);
+			background: var(--heat-12);
+			pointer-events: none;
+		}
+
+		/* Magnifier panel overlays the info column to the right, like Amazon. */
+		.zoom-panel {
+			position: absolute;
+			left: calc(100% + 16px);
+			z-index: 30;
+			width: 460px;
+			max-width: 46vw;
+			border: 1px solid var(--border-faint);
+			border-radius: 10px;
+			background-color: #fff;
+			background-repeat: no-repeat;
+			box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.3);
+			pointer-events: none;
 		}
 
 		.thumbs {
@@ -349,27 +503,27 @@
 		position: fixed;
 		inset: 0;
 		z-index: 90;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.lb-backdrop {
-		position: absolute;
-		inset: 0;
 		background: rgba(10, 10, 10, 0.92);
 		backdrop-filter: blur(2px);
 	}
 
-	.lb-stage {
-		position: relative;
-		z-index: 1;
-		display: grid;
-		place-items: center;
-		width: 100%;
-		height: 100%;
-		padding: max(16px, env(safe-area-inset-top)) 16px 16px;
-		overflow: hidden;
+	/* Full-surface scroll container: empty-space clicks close, image clicks zoom. */
+	.lb-scroll {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: auto;
+		padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior: contain;
+		cursor: zoom-out;
+	}
+
+	.lb-scroll.is-zoomed {
+		align-items: flex-start;
+		justify-content: flex-start;
 	}
 
 	.lb-img {
@@ -377,13 +531,16 @@
 		max-height: 86vh;
 		object-fit: contain;
 		cursor: zoom-in;
-		transition: transform 200ms var(--motion-ease-out);
-		touch-action: none;
 		user-select: none;
+		transition: transform 200ms var(--motion-ease-out);
 	}
 
+	/* Zoomed: grow past the viewport so the scroll container lets you pan. */
 	.lb-img.is-zoomed {
-		transform: scale(2.4);
+		max-width: none;
+		max-height: none;
+		width: min(190vw, 1800px);
+		height: auto;
 		cursor: zoom-out;
 	}
 
@@ -407,7 +564,7 @@
 	}
 
 	.lb-nav {
-		position: absolute;
+		position: fixed;
 		top: 50%;
 		z-index: 2;
 		display: grid;
@@ -434,7 +591,7 @@
 	}
 
 	.lb-count {
-		position: absolute;
+		position: fixed;
 		bottom: max(14px, env(safe-area-inset-bottom));
 		left: 50%;
 		z-index: 2;
