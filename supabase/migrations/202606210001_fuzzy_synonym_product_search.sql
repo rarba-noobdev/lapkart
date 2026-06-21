@@ -11,9 +11,21 @@ begin;
 
 create extension if not exists pg_trgm with schema extensions;
 
--- Trigram index so the fuzzy (typo) branch stays fast on the full catalog.
+-- Trigram indexes for fast fuzzy matching. The fuzzy branch matches on a short
+-- title+brand expression (word_similarity over the full search_document blob is
+-- too slow), so the expression index below is what the <% operator uses.
 create index if not exists products_search_document_trgm
   on public.products using gin (search_document extensions.gin_trgm_ops);
+
+create index if not exists products_title_brand_trgm
+  on public.products using gin ((title || ' ' || coalesce(brand, '')) extensions.gin_trgm_ops);
+
+-- NOTE: the <% operator uses pg_trgm.word_similarity_threshold (default 0.6).
+-- Supabase blocks setting that GUC (function config, ALTER ROLE, and SET all
+-- return 42501 for non-superusers), so the typo bar stays at 0.6. That catches
+-- most single-character typos (chargr, batery, keybord); very heavy typos
+-- (transpositions like "keyborad", or "lenvo") fall just under and are missed.
+-- Lowering it needs Supabase to grant the param, or a dedicated search engine.
 
 -- ── Synonym table ──────────────────────────────────────────────────────────
 create table if not exists public.search_synonyms (
@@ -229,7 +241,9 @@ as $$
       and (p_max_price is null or p.price <= p_max_price)
       and (p_min_rating is null or p.rating >= p_min_rating)
       and (p_in_stock is distinct from true or p.stock > 0)
-      and search_input.query_text <% p.search_document
+      -- Typo tolerance: index-assisted word similarity on title+brand via the
+      -- <% operator (uses products_title_brand_trgm; threshold from role GUC).
+      and search_input.query_text <% (p.title || ' ' || coalesce(p.brand, ''))
   ),
   matched as (
     select
@@ -279,7 +293,7 @@ as $$
       -- Fuzzy similarity contributes a small boost so exact/FTS hits still win.
       + case
           when search_input.query_text is not null and not search_input.strict_display_phrase
-          then word_similarity(search_input.query_text, p.search_document) * 2
+          then word_similarity(search_input.query_text, p.title || ' ' || coalesce(p.brand, '')) * 2
           else 0
         end as search_rank,
       count(*) over () as total_count
