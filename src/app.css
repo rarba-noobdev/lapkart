@@ -302,7 +302,9 @@
 		font-family: var(--font-sans);
 		font-feature-settings: 'ss01', 'cv11';
 		line-height: 1.5;
-		overflow-x: hidden;
+		/* clip (not hidden): prevents horizontal scroll without turning body into a
+		   scroll container, which would break position: sticky on descendants. */
+		overflow-x: clip;
 		overflow-anchor: none;
 		overscroll-behavior-y: none;
 	}
