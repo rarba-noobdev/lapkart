@@ -23,6 +23,7 @@
 	import { flip } from 'svelte/animate';
 	import { fade, fly } from 'svelte/transition';
 	import ProductCard from '$lib/components/ProductCard.svelte';
+	import ProductGallery from '$lib/components/ProductGallery.svelte';
 	import ProductSpecValue from '$lib/components/ProductSpecValue.svelte';
 	import ProductStickyBar from '$lib/components/ProductStickyBar.svelte';
 	import DispatchCountdown from '$lib/components/DispatchCountdown.svelte';
@@ -67,7 +68,6 @@
 	let related = $derived(data.related);
 	let qty = $state(1);
 	let added = $state(false);
-	let selectedImage = $state<string | null>(null);
 	let adminEditorOpen = $state(false);
 	let adminSaving = $state(false);
 	let adminMessage = $state('');
@@ -277,11 +277,6 @@
 
 	const galleryImages = $derived(
 		Array.from(new Set([product.image, ...(product.images ?? [])].filter(Boolean)))
-	);
-	const activeImage = $derived(
-		selectedImage && galleryImages.includes(selectedImage)
-			? selectedImage
-			: (galleryImages[0] ?? product.image)
 	);
 	const discount = $derived(discountPct(product));
 	const highlights = $derived(
@@ -568,57 +563,8 @@
 			<div
 				class="relative border-b border-[var(--border-faint)] bg-[var(--background-lighter)] lg:border-r lg:border-b-0"
 			>
-				<div class="sticky top-10 p-2 sm:p-6 md:top-20 md:p-8">
-					<!-- Discount badge -->
-					{#if discount >= 10}
-						<span
-							class="text-mono-x-small absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-sm bg-[var(--heat-100)] px-2.5 py-1 font-medium tracking-wide text-white shadow-[0_2px_8px_0_var(--heat-40)] sm:top-6 sm:left-6"
-						>
-							-{discount}% off
-						</span>
-					{/if}
-
-					<!-- Main image -->
-					<div class="flex aspect-square items-center justify-center sm:aspect-[5/4]">
-						{#key activeImage}
-							<img
-								src={activeImage}
-								alt={product.title}
-								class="max-h-full max-w-full object-contain"
-								fetchpriority="high"
-								decoding="async"
-								in:fade={{ duration: 160 }}
-							/>
-						{/key}
-					</div>
-
-					<!-- Thumbnail row -->
-					{#if galleryImages.length > 1}
-						<div
-							class="mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mt-4 sm:justify-center sm:gap-2 sm:px-0"
-						>
-							{#each galleryImages as image, index (image)}
-								<button
-									type="button"
-									aria-label="Show product image {index + 1}"
-									aria-pressed={activeImage === image}
-									class="size-12 shrink-0 overflow-hidden rounded-md border-2 bg-white p-0.5 transition-[border-color,opacity,box-shadow] duration-200 sm:size-14 sm:rounded-lg sm:p-1
-										{activeImage === image
-										? 'border-[var(--heat-100)] shadow-[0_0_0_2px_var(--heat-8)]'
-										: 'border-[var(--border-faint)] opacity-50 hover:opacity-100'}"
-									onclick={() => (selectedImage = image)}
-								>
-									<img
-										src={image}
-										alt=""
-										class="size-full object-contain"
-										loading="lazy"
-										decoding="async"
-									/>
-								</button>
-							{/each}
-						</div>
-					{/if}
+				<div class="sticky top-10 md:top-20">
+					<ProductGallery images={galleryImages} alt={product.title} {discount} />
 				</div>
 			</div>
 
