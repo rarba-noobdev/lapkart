@@ -113,7 +113,7 @@
 	<form onsubmit={submitSearch} role="search">
 		<label
 			class={[
-				'group flex items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] transition-[border-color,background-color,box-shadow] focus-within:border-[var(--heat-100)] focus-within:bg-white focus-within:shadow-[0_0_0_3px_var(--heat-12)]',
+				'group flex items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] transition-[border-color,background-color,box-shadow] focus-within:border-[var(--black-alpha-24)] focus-within:bg-white focus-within:shadow-[0_0_0_3px_var(--black-alpha-4)]',
 				size === 'lg' ? 'h-11' : 'h-10'
 			]}
 		>
@@ -126,7 +126,7 @@
 				{:else}
 					<span class="absolute inset-0" in:fade={{ duration: 120 }}>
 						<Search
-							class="size-[15px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--heat-100)]"
+							class="size-[15px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--black-alpha-56)]"
 						/>
 					</span>
 				{/if}

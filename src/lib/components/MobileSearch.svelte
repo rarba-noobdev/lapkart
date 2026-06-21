@@ -428,8 +428,8 @@
 
 	.search-trigger:active {
 		transform: scale(0.99);
-		border-color: var(--heat-100);
-		box-shadow: 0 0 0 3px var(--heat-8);
+		border-color: var(--black-alpha-24);
+		box-shadow: 0 0 0 3px var(--black-alpha-4);
 	}
 
 	.search-trigger :global(.trigger-icon) {
