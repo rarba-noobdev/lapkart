@@ -207,7 +207,7 @@
 </svelte:head>
 
 <div class="border-b border-[var(--border-faint)] bg-white">
-	<div class="container mx-auto px-3 py-1.5 sm:px-4 sm:py-10">
+	<div class="container mx-auto px-3 py-3 sm:px-4 sm:py-10">
 		<nav
 			class="text-mono-x-small hidden tracking-[0.18em] text-[var(--black-alpha-48)] uppercase sm:block"
 		>
@@ -224,7 +224,7 @@
 
 		<div class="flex items-center justify-between gap-2 sm:mt-4 sm:flex-wrap sm:items-end sm:gap-6">
 			<div class="min-w-0 flex-1">
-				<h1 class="sm:text-title-h3 text-[13px] leading-tight font-medium text-foreground">
+				<h1 class="sm:text-title-h3 text-[15px] leading-tight font-medium text-foreground">
 					{#if currentCategory}
 						{currentCategory.name}
 					{:else if q}
@@ -250,7 +250,8 @@
 
 			<select
 				value={activeSort}
-				class="sm:text-body-medium h-7 rounded-md border border-[var(--border-muted)] bg-white px-1.5 text-[11px] text-foreground sm:h-11 sm:px-3"
+				aria-label="Sort products"
+				class="sm:text-body-medium h-9 shrink-0 rounded-md border border-[var(--border-muted)] bg-white px-2 text-[12px] text-foreground transition-colors hover:border-[var(--heat-100)] focus-visible:border-[var(--heat-100)] sm:h-11 sm:px-3"
 				onchange={(event) =>
 					updateSearch({ sort: (event.currentTarget as HTMLSelectElement).value })}
 			>
@@ -269,7 +270,7 @@
 					<button
 						type="button"
 						aria-label={`Remove ${filter.label} filter`}
-						class="text-label-small inline-flex h-6 items-center gap-1 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-2 text-[10px] text-[var(--heat-100)] sm:h-8 sm:gap-2 sm:px-3 sm:text-[13px]"
+						class="text-label-small inline-flex h-7 items-center gap-1 rounded-full border border-[var(--heat-20)] bg-[var(--heat-4)] px-2.5 text-[10px] text-[var(--heat-100)] transition-colors hover:bg-[var(--heat-8)] sm:h-8 sm:gap-2 sm:px-3 sm:text-[13px]"
 						onclick={() => updateSearch({ [filter.key]: undefined })}
 					>
 						{filter.label}
@@ -279,7 +280,7 @@
 				<button
 					type="button"
 					aria-label="Clear all product filters"
-					class="text-label-small inline-flex h-6 items-center rounded-full border border-[var(--border-muted)] bg-white px-2 text-[10px] text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:h-8 sm:px-3 sm:text-[13px]"
+					class="text-label-small inline-flex h-7 items-center rounded-full border border-[var(--border-muted)] bg-white px-2.5 text-[10px] text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] sm:h-8 sm:px-3 sm:text-[13px]"
 					onclick={clearFilters}
 				>
 					Clear all
@@ -290,7 +291,7 @@
 </div>
 
 <div
-	class="products-layout container mx-auto grid min-w-0 gap-2 overflow-hidden px-2 py-2 sm:gap-8 sm:px-4 sm:py-10 lg:grid-cols-[240px_1fr]"
+	class="products-layout container mx-auto grid min-w-0 gap-2 overflow-x-clip px-2 py-2 sm:gap-8 sm:px-4 sm:py-10 lg:grid-cols-[240px_1fr]"
 >
 	<div class="min-w-0 lg:hidden">
 		<div
@@ -709,5 +710,13 @@
 
 	.catalog-loading-bar {
 		animation: catalog-loading 900ms ease-in-out infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.catalog-loading-bar {
+			animation: none;
+			width: 100%;
+			opacity: 0.6;
+		}
 	}
 </style>
