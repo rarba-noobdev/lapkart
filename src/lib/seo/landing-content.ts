@@ -1120,6 +1120,47 @@ export const landings: Landing[] = [
 		relatedClusters: ['laptop-keyboard'],
 		relatedGuideSlugs: [],
 		brands: []
+	},
+	{
+		slug: 'laptop-display-cable',
+		name: 'Laptop Display Cable',
+		category: 'flex_cables',
+		h1: 'Laptop Display Cable & Flex Cable Replacements (LVDS / eDP)',
+		title: 'Laptop Display Cable Replacement (LVDS / eDP Flex Cable)',
+		metaDescription:
+			'Replacement laptop display cables and flex cables (LVDS/eDP) for HP, Dell, Lenovo, Asus and Acer. Fix flicker and screen lines caused by a worn cable. Match by model. Warranty, COD.',
+		keywords: [
+			'laptop display cable',
+			'laptop lcd cable',
+			'laptop flex cable',
+			'laptop lvds cable',
+			'laptop screen cable replacement'
+		],
+		intro: [
+			'When a laptop screen flickers, shows lines that change as you move the lid, or goes blank at certain hinge angles, the display cable (the LVDS/eDP flex cable running through the hinge) is often the cause — not the panel. The cable is far cheaper than a screen, so it is worth ruling in before replacing the display.',
+			'LapKart stocks display/flex cables for HP, Dell, Lenovo, Asus and Acer. Cables differ by model, screen resolution (an FHD cable can differ from an HD cable for the same laptop), and connector, so match your laptop model and screen variant before ordering.',
+			'Each cable lists the fit and warranty, with COD at checkout and Tamil Nadu delivery from Rs 50 (free over Rs 2,000).'
+		],
+		faqs: [
+			{
+				question: 'How do I know it is the cable and not the screen?',
+				answer:
+					'If the lines or flicker change when you gently flex the lid on its hinge, or the picture cuts at certain angles, the display cable is the likely fault. Fixed lines that do not change usually mean the panel. An external monitor that looks clean confirms the fault is in the laptop’s panel or cable.'
+			},
+			{
+				question: 'Does the display cable depend on my screen resolution?',
+				answer:
+					'Often yes. The same laptop model can use a different cable for HD vs FHD panels, and touch vs non-touch. Match the cable to your laptop model and screen variant.'
+			},
+			{
+				question: 'Is the display cable easy to replace?',
+				answer:
+					'It runs from the motherboard, through the hinge, to the panel. Replacing it needs the screen bezel and panel removed, so it is a moderate repair — straightforward for a technician.'
+			}
+		],
+		relatedClusters: ['laptop-screen'],
+		relatedGuideSlugs: ['laptop-display-cable-replacement', 'laptop-screen-vertical-lines'],
+		brands: []
 	}
 ];
 

@@ -6,7 +6,27 @@ pages), **Batch 2** (Asus/Acer + screen/cooling brand pages, RAM/SSD landing, 7 
 plus full planning and Review Queue decisions. No SEO traffic outcomes are claimed —
 implementation work only.
 
-## Batch 3 additions (this update)
+## Batch 4 additions (this update)
+
+Totals after Batch 4: **42 landing pages** and **16 blog/guide articles** live.
+
+- New category landing `/parts/laptop-display-cable` — backed by **258 active flex/display
+  cables** (LVDS/eDP). Strong internal link with the screen vertical-lines / flickering blogs
+  (cable vs panel diagnosis).
+- New blog `laptop-display-cable-replacement`.
+
+**Not done (and why):** stocking-dependent surfaces — RAM/SSD, laptop hinge, motherboard,
+trackpad/touchpad — were **not** populated with products. Inserting fake sellable inventory
+into the live catalog is unsafe (customers could order unfulfillable items), so those remain
+owner/admin actions. Their landings either already exist and auto-fill (RAM/SSD) or are held
+until real stock exists. Remaining work is genuine long-tail (more low-volume model/brand
+pages) with diminishing returns versus the 42 pages now live.
+
+Validation after Batch 4: `npm run check` 0 errors/0 warnings; `npm run build` success.
+
+---
+
+## Batch 3 additions
 
 Totals after Batch 3: **41 landing pages** and **15 blog/guide articles** live.
 

@@ -1427,6 +1427,69 @@ export const screenGuides: ScreenGuide[] = [
 			}
 		],
 		relatedGuideSlugs: ['laptop-keyboard-replacement-guide', 'how-to-find-laptop-model-number']
+	},
+	{
+		slug: 'laptop-display-cable-replacement',
+		title: 'Laptop Display Cable (Flex Cable): When It Causes Flicker & Lines',
+		shortTitle: 'Display cable replacement',
+		description:
+			'How a worn laptop display cable causes flicker, lines and blank screens at certain hinge angles, and how to confirm it before replacing the panel.',
+		eyebrow: 'Screen diagnosis',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop display cable',
+		keywords: [
+			'laptop display cable',
+			'laptop lcd cable',
+			'laptop flex cable',
+			'laptop screen cable flicker',
+			'laptop lvds cable'
+		],
+		productQuery: 'display cable flex',
+		productCategory: 'flex_cables',
+		productCtaLabel: 'Browse display cables',
+		summary: [
+			'A worn display cable causes flicker, lines, or blanking that change with the lid angle.',
+			'It runs through the hinge, so it wears where it bends.',
+			'Replacing the cable is far cheaper than the panel — rule it in first.'
+		],
+		sections: [
+			{
+				title: 'Symptoms that point to the cable',
+				body: [
+					'The display cable carries the video signal from the motherboard through the hinge to the panel. Because it flexes every time you open and close the lid, it wears at the bend. Tell-tale signs: flicker or lines that change as you move the lid, the picture cutting out at certain angles, or a screen that works only partly open.'
+				],
+				checklist: [
+					'Lines/flicker change with lid angle → cable',
+					'Picture cuts at certain angles → cable',
+					'Fixed lines that never change → panel',
+					'External monitor clean → panel or cable'
+				]
+			},
+			{
+				title: 'Confirm before you buy',
+				body: [
+					'Connect an external monitor: a clean external picture means the fault is in the laptop panel or its cable. Then flex the lid gently — if the fault changes, order the cable, not the panel. The same laptop can use different cables for HD vs FHD and touch vs non-touch screens, so match your model and screen variant.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Can a bad display cable cause screen lines?',
+				answer:
+					'Yes. A worn or pinched display cable causes lines, flicker, or blanking, usually changing as you move the lid. If the fault changes with the hinge, replace the cable before the panel.'
+			},
+			{
+				question: 'Which display cable do I need?',
+				answer:
+					'Match your laptop model and screen variant — HD vs FHD and touch vs non-touch can use different cables for the same model.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-screen-vertical-lines',
+			'laptop-screen-flickering',
+			'how-to-find-laptop-screen-part-number'
+		]
 	}
 ];
 
