@@ -51,13 +51,14 @@
 				]
 			: [
 					{
-						title: 'Shop',
+						title: 'Shop parts',
 						items: [
-							{ label: 'All components', to: '/products' },
-							{ label: 'Laptop screens', to: '/products?category=displays' },
-							{ label: 'Cart', to: '/cart' },
-							{ label: 'Rewards', to: '/rewards' },
-							{ label: 'Account', to: '/profile' }
+							{ label: 'All laptop parts', to: '/parts' },
+							{ label: 'Laptop batteries', to: '/parts/laptop-battery' },
+							{ label: 'Laptop chargers', to: '/parts/laptop-charger' },
+							{ label: 'Laptop keyboards', to: '/parts/laptop-keyboard' },
+							{ label: 'Laptop screens', to: '/parts/laptop-screen' },
+							{ label: 'Full catalogue', to: '/products' }
 						]
 					},
 					{

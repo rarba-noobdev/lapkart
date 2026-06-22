@@ -1,11 +1,18 @@
 import type { RequestHandler } from './$types';
 import { guideRoutes } from '$lib/guides';
+import { landingPaths } from '$lib/seo/landing-content';
 import { absoluteUrl } from '$lib/seo';
 import { XML_HEADERS, sitemapXml } from '$lib/server/sitemap';
 
 const STATIC_ROUTES = [
 	{ path: '/', priority: '1.0', changefreq: 'daily' },
 	{ path: '/products', priority: '0.9', changefreq: 'daily' },
+	{ path: '/parts', priority: '0.8', changefreq: 'weekly' },
+	...landingPaths().map((path) => ({
+		path,
+		priority: '0.8' as const,
+		changefreq: 'weekly' as const
+	})),
 	{ path: '/guides', priority: '0.7', changefreq: 'weekly' },
 	...guideRoutes.map((path) => ({ path, priority: '0.7' as const, changefreq: 'weekly' as const })),
 	{ path: '/about', priority: '0.5', changefreq: 'monthly' },

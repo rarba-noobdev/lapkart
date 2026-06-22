@@ -26,6 +26,10 @@ export type ScreenGuide = {
 	primaryKeyword: string;
 	keywords: string[];
 	productQuery: string;
+	// Catalog category for the related-products block + CTA links.
+	// Omit to default to 'displays' (legacy screen guides); use '' for an all-catalog CTA.
+	productCategory?: string;
+	productCtaLabel?: string;
 	summary: string[];
 	sections: GuideSection[];
 	faqs: GuideFaq[];
@@ -389,6 +393,460 @@ export const screenGuides: ScreenGuide[] = [
 			'how-to-find-laptop-screen-part-number',
 			'30-pin-vs-40-pin-laptop-screen',
 			'laptop-screen-resolution-guide'
+		]
+	},
+	{
+		slug: 'laptop-battery-price-india',
+		title: 'Laptop Battery Price in India: Original vs Compatible, Warranty & Model Matching',
+		shortTitle: 'Laptop battery price guide',
+		description:
+			'What decides laptop battery price in India, the real difference between original and compatible batteries, and how to match the exact battery for your HP, Dell or Lenovo laptop.',
+		eyebrow: 'Battery buying guide',
+		updatedAt: UPDATED_AT,
+		readTime: '6 min read',
+		primaryKeyword: 'laptop battery price',
+		keywords: [
+			'laptop battery price',
+			'hp laptop battery price',
+			'dell laptop battery price',
+			'lenovo laptop battery price',
+			'original vs compatible laptop battery',
+			'laptop battery replacement cost'
+		],
+		productQuery: 'battery',
+		productCategory: 'batteries',
+		productCtaLabel: 'Browse batteries',
+		summary: [
+			'Laptop battery price depends on capacity (Wh), cell quality, brand, and whether it is original or compatible, not just the laptop brand.',
+			'A compatible battery with the correct voltage and part number is a safe, lower-cost alternative to an original.',
+			'Match the part number and voltage from your old battery before buying, regardless of price.'
+		],
+		sections: [
+			{
+				title: 'What actually decides laptop battery price',
+				body: [
+					'Two batteries for the same laptop can have very different prices because of capacity and cell quality. Higher watt-hour (Wh) ratings store more charge and cost more. Original (OEM) batteries carry the manufacturer brand and usually cost the most; compatible batteries built to the same specification cost less.',
+					'In India, you will typically see a wide range for the same model because sellers mix original, compatible, and refurbished stock. The cheapest listing is not always comparable: check the Wh rating and whether it is new, not the price alone.'
+				],
+				checklist: [
+					'Capacity in Wh (higher = longer runtime)',
+					'Original vs compatible vs refurbished',
+					'New cell condition, not old stock',
+					'Warranty length and return support'
+				]
+			},
+			{
+				title: 'Original vs compatible: which should you buy?',
+				body: [
+					'An original battery is made or branded by the laptop manufacturer. A compatible battery is a third-party battery built to the same voltage, capacity, connector and shape. For most everyday users, a good compatible battery with the correct voltage and a warranty is the better value.',
+					'What matters far more than the original-vs-compatible label is the match: the voltage must be identical to your old battery, and the part number should correspond to your laptop. A “cheap” battery with the wrong voltage is the most expensive mistake because it will not work or can be unsafe.'
+				]
+			},
+			{
+				title: 'How to match the exact battery before paying',
+				body: [
+					'Remove the old battery (or check the bottom panel for the part number on internal batteries) and read the part number and the voltage/capacity printed on the label. Match the part number first, then confirm the voltage is the same and the capacity is equal or higher.',
+					'If you only have the laptop model number from the bottom sticker, that helps narrow it down, but the battery part number is the safest identifier because one laptop model can ship with more than one battery variant.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Why is the same laptop battery priced so differently?',
+				answer:
+					'Because listings mix original, compatible and refurbished batteries with different Wh capacities and cell quality. Compare the watt-hour rating and condition, not just the price.'
+			},
+			{
+				question: 'Is a compatible laptop battery worth it?',
+				answer:
+					'Yes, for most users. A compatible battery with the correct voltage, a matching part number and a warranty performs like the original at a lower price.'
+			},
+			{
+				question: 'Does a higher mAh battery cost more and last longer?',
+				answer:
+					'A higher capacity (mAh/Wh) at the same voltage lasts longer per charge and usually costs a little more. Never change the voltage to get more capacity.'
+			},
+			{
+				question: 'How much does laptop battery replacement cost in India?',
+				answer:
+					'It varies by model and capacity. Compatible batteries are typically the most affordable; original batteries cost more. Check the live price on the battery page for your model.'
+			}
+		],
+		relatedGuideSlugs: [
+			'how-to-find-laptop-model-number',
+			'laptop-not-turning-on',
+			'laptop-charger-buying-guide'
+		]
+	},
+	{
+		slug: 'laptop-charger-buying-guide',
+		title: 'How to Choose the Correct Laptop Charger: Wattage, Pin Size & Type-C',
+		shortTitle: 'Laptop charger buying guide',
+		description:
+			'Pick the right replacement laptop charger by matching wattage, output voltage, pin/connector type and Type-C Power Delivery, with safety warnings for wrong adapters.',
+		eyebrow: 'Charger buying guide',
+		updatedAt: UPDATED_AT,
+		readTime: '6 min read',
+		primaryKeyword: 'laptop charger',
+		keywords: [
+			'laptop charger',
+			'laptop charger price',
+			'how to choose laptop charger',
+			'65w laptop charger',
+			'type c laptop charger',
+			'laptop adapter wattage'
+		],
+		productQuery: 'charger adapter',
+		productCategory: 'chargers',
+		productCtaLabel: 'Browse chargers',
+		summary: [
+			'A replacement charger must match wattage (equal or higher), output voltage (exact), and the pin/connector type.',
+			'Barrel-pin and USB-C Power Delivery chargers are not interchangeable.',
+			'A lower-wattage or wrong-voltage charger can slow charging or harm the laptop.'
+		],
+		sections: [
+			{
+				title: 'Read the original adapter label first',
+				body: [
+					'Every laptop charger prints its output on the label, for example “19.5V 3.34A”. Multiply volts by amps to get wattage (19.5 × 3.34 ≈ 65W). The replacement must use the same output voltage, the same or higher wattage, and the same connector.',
+					'Buying a higher-wattage charger of the same voltage and connector is safe — the laptop only draws what it needs. Going below the original wattage is the common mistake that causes “plugged in, not charging” or charging only when the laptop is off.'
+				],
+				checklist: [
+					'Output voltage must match exactly',
+					'Wattage equal or higher, never lower',
+					'Pin/connector type and size must fit',
+					'Type-C needs the right PD wattage'
+				]
+			},
+			{
+				title: 'Barrel pin vs Type-C Power Delivery',
+				body: [
+					'Older and many budget laptops use a round barrel pin in a specific diameter (and brands like Dell and HP use a centre signal pin). Newer thin laptops charge over USB-C Power Delivery (PD). These two systems are not interchangeable.',
+					'If your laptop charges from a USB-C port, buy a PD charger rated for at least the original wattage. A low-watt phone USB-C charger may keep a laptop alive at idle but will not charge it properly under load.'
+				]
+			},
+			{
+				title: 'Brand connector notes (HP, Dell, Lenovo)',
+				body: [
+					'HP uses a blue “smart pin” on many models and USB-C on others. Dell uses a 4.5mm barrel with a centre pin and will warn “adapter cannot be determined” if the pin signal is wrong. Lenovo uses a rectangular slim tip, an older round pin, or USB-C. Match your brand’s exact connector, not just the wattage.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Can I use a higher-wattage charger on my laptop?',
+				answer:
+					'Yes, if the voltage and connector match. A 90W charger safely runs a laptop that came with 65W. Avoid chargers rated below the original wattage.'
+			},
+			{
+				question: 'Will any Type-C charger charge my USB-C laptop?',
+				answer:
+					'Only if it supports Power Delivery at the required wattage. A low-watt USB-C phone charger will not properly charge a laptop under load.'
+			},
+			{
+				question: 'My laptop shows “plugged in, not charging” — is it the charger?',
+				answer:
+					'Often yes, especially with a wrong-wattage or failing adapter. It can also be the battery or DC jack. Test with a correctly rated, known-good charger first.'
+			},
+			{
+				question: 'How do I know the pin size of my laptop charger?',
+				answer:
+					'Match it to your original adapter and your laptop brand’s connector type. If unsure, send us your laptop model and we will confirm the correct charger.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-not-turning-on',
+			'laptop-battery-price-india',
+			'how-to-find-laptop-model-number'
+		]
+	},
+	{
+		slug: 'laptop-screen-vertical-lines',
+		title: 'Vertical Lines on a Laptop Screen: Cable, Panel, or Replacement?',
+		shortTitle: 'Vertical lines on screen',
+		description:
+			'Diagnose vertical lines on a laptop screen, tell a display-cable fault from a failed panel, and choose the correct replacement screen by size, resolution and connector.',
+		eyebrow: 'Screen diagnosis',
+		updatedAt: UPDATED_AT,
+		readTime: '6 min read',
+		primaryKeyword: 'vertical lines on laptop screen',
+		keywords: [
+			'vertical lines on laptop screen',
+			'laptop screen problems vertical lines',
+			'laptop screen lines fix',
+			'laptop display problem',
+			'laptop screen replacement'
+		],
+		productQuery: 'screen display panel',
+		productCategory: 'displays',
+		productCtaLabel: 'Browse screens',
+		summary: [
+			'Connect an external monitor first: a clean external picture means the fault is in the laptop panel or its cable.',
+			'Lines that change when you flex the lid point to the display cable; fixed lines usually mean the panel itself.',
+			'Match size, resolution, pin count and connector position before ordering a replacement screen.'
+		],
+		sections: [
+			{
+				title: 'Step 1: rule out the graphics with an external monitor',
+				body: [
+					'Plug the laptop into a TV or monitor via HDMI. If the external screen is perfectly clean, the graphics chip and drivers are fine and the fault is in the laptop’s own panel or display cable. If the external screen also shows lines, the problem is deeper (GPU/board) and a new panel will not fix it.'
+				],
+				checklist: [
+					'External picture clean → panel or cable fault',
+					'External picture also faulty → board/GPU issue',
+					'Lines change when lid flexes → suspect cable',
+					'Lines fixed regardless → suspect panel'
+				]
+			},
+			{
+				title: 'Step 2: cable fault vs panel fault',
+				body: [
+					'Gently move the screen on its hinge while the laptop is on. If the lines flicker, change, or briefly disappear, the display (LVDS/eDP) cable is likely pinched or worn — a cheaper fix. If the lines stay exactly the same, the panel’s internal traces have failed and the screen needs replacing.'
+				]
+			},
+			{
+				title: 'Step 3: order the correct replacement screen',
+				body: [
+					'Read the panel part number on the back of the old screen and match five things: size (e.g. 15.6"), resolution (HD 1366×768 vs FHD 1920×1080), connector pin count (commonly 30-pin or 40-pin), connector position, and the mounting/bracket style. Buying by laptop model alone is risky because one model can ship several different panels.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Are vertical lines on a laptop screen fixable without replacing it?',
+				answer:
+					'Sometimes. If the lines come from a worn or loose display cable (they change when you flex the lid), replacing the cable can fix it. If the panel’s internal traces have failed, the screen must be replaced.'
+			},
+			{
+				question: 'How do I know if it is the screen or the graphics card?',
+				answer:
+					'Connect an external monitor. If the external display is clean, the laptop panel/cable is at fault. If the external display also shows lines, the graphics chip or board is the problem.'
+			},
+			{
+				question: 'What screen specs must match for a replacement?',
+				answer:
+					'Size, resolution, connector pin count (30-pin vs 40-pin), connector position and mounting type. The panel part number on the old screen confirms all of these.'
+			}
+		],
+		relatedGuideSlugs: [
+			'how-to-find-laptop-screen-part-number',
+			'30-pin-vs-40-pin-laptop-screen',
+			'laptop-not-turning-on'
+		]
+	},
+	{
+		slug: 'laptop-keyboard-replacement-guide',
+		title: 'Laptop Keyboard Replacement: Layout, Frame & Backlight Compatibility',
+		shortTitle: 'Keyboard replacement guide',
+		description:
+			'When to replace a laptop keyboard instead of repairing keys, and how to match the correct variant — backlit vs non-backlit, with or without frame and power button.',
+		eyebrow: 'Keyboard buying guide',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop keyboard replacement',
+		keywords: [
+			'laptop keyboard replacement',
+			'laptop keyboard not working',
+			'backlit laptop keyboard',
+			'hp laptop keyboard',
+			'dell laptop keyboard',
+			'laptop keyboard keys not working'
+		],
+		productQuery: 'keyboard',
+		productCategory: 'keyboards',
+		productCtaLabel: 'Browse keyboards',
+		summary: [
+			'If several keys fail, stick, or repeat, replacing the whole keyboard is more reliable than fixing single keys.',
+			'Match three things: backlit vs non-backlit, with or without frame, and connector/layout.',
+			'A non-backlit replacement will never light up even if it physically fits.'
+		],
+		sections: [
+			{
+				title: 'Repair keys or replace the keyboard?',
+				body: [
+					'A single popped keycap can sometimes be refitted. But when multiple keys stop working, repeat, or stick — especially after a liquid spill — the membrane or ribbon underneath is usually damaged. Replacing the whole keyboard fixes every key at once and is the lasting solution.'
+				],
+				checklist: [
+					'Multiple dead/stuck keys → replace',
+					'Liquid spill → replace, do not just dry',
+					'One loose keycap → refit may work',
+					'Backlight dead but keys work → check ribbon/variant'
+				]
+			},
+			{
+				title: 'Match the right keyboard variant',
+				body: [
+					'One laptop model can have several keyboard variants. Confirm whether your keyboard is backlit (does it light up via an Fn shortcut?), whether it includes the surrounding frame/palmrest, and whether the power button is built into the keyboard. A backlit keyboard has an extra ribbon, so a non-backlit replacement will fit but never light up.'
+				]
+			},
+			{
+				title: 'Layout and connector',
+				body: [
+					'Most laptops sold in India use a US/English layout. Check that the key arrangement (especially the Enter key shape and any extra keys) matches your current keyboard, and that the ribbon connector is the same. If unsure, send your laptop model and we will confirm the variant.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Why are some of my laptop keyboard keys not working?',
+				answer:
+					'A few dead keys usually mean a damaged membrane or ribbon, common after spills or wear. Replacing the whole keyboard restores all keys reliably.'
+			},
+			{
+				question: 'How do I know if I need a backlit keyboard?',
+				answer:
+					'If your current keyboard lights up (often via Fn + space or an Fn key), order a backlit replacement. A non-backlit keyboard will fit but will not light up.'
+			},
+			{
+				question: 'Does the replacement keyboard include the frame and power button?',
+				answer:
+					'It depends on the variant. Some ship as a bare keyboard, others include the frame/palmrest and power button. The product page states what is included.'
+			}
+		],
+		relatedGuideSlugs: ['how-to-find-laptop-model-number', 'laptop-not-turning-on']
+	},
+	{
+		slug: 'how-to-find-laptop-model-number',
+		title: 'How to Find Your Laptop Model Number Before Buying Spare Parts',
+		shortTitle: 'Find your laptop model',
+		description:
+			'Find your exact laptop model number and part numbers from the bottom sticker, BIOS and system info, so you order the correct compatible battery, charger, keyboard or screen.',
+		eyebrow: 'Compatibility basics',
+		updatedAt: UPDATED_AT,
+		readTime: '4 min read',
+		primaryKeyword: 'how to find laptop model number',
+		keywords: [
+			'how to find laptop model number',
+			'laptop model number',
+			'compatible laptop parts',
+			'laptop part number',
+			'find laptop battery model number'
+		],
+		productQuery: '',
+		productCategory: '',
+		productCtaLabel: 'Browse all parts',
+		summary: [
+			'The bottom sticker, BIOS, and system info all reveal your laptop model number.',
+			'For parts, the part number on the component itself is even more precise than the model name.',
+			'Send us the model and part number and we will confirm compatibility before dispatch.'
+		],
+		sections: [
+			{
+				title: 'Where the laptop model number lives',
+				body: [
+					'The fastest source is the sticker on the bottom of the laptop, which lists the model name and often a product/serial number. If the sticker is worn, the model also appears in the BIOS/UEFI setup screen and in the operating system: on Windows, open System Information (msinfo32) or run “wmic csproduct get name” in Command Prompt.',
+					'Write down the full model string, including any suffix (for example “15-da0326tu” rather than just “HP 15”). Small suffix differences often mean different parts.'
+				],
+				checklist: [
+					'Bottom sticker model + serial',
+					'BIOS/UEFI system information',
+					'Windows System Information (msinfo32)',
+					'Note the full model suffix'
+				]
+			},
+			{
+				title: 'Why the part number beats the model name',
+				body: [
+					'For batteries, screens and keyboards, the part number printed on the component is the safest identifier because one laptop model can ship with several variants. Read the battery part number on its label, the panel code on the back of the screen, or the keyboard variant details, and match that.',
+					'When you have both the laptop model and the component part number, ordering the correct compatible part is straightforward — and you can send both to us to confirm before we dispatch.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Where is my laptop model number?',
+				answer:
+					'On the bottom sticker, in the BIOS/UEFI screen, or in Windows System Information (run msinfo32). Note the full model including any suffix.'
+			},
+			{
+				question: 'Is the model number enough to buy the right part?',
+				answer:
+					'It is a good start, but the part number on the component (battery, screen, keyboard) is more precise because one model can use several variants. Use both where possible.'
+			},
+			{
+				question: 'What if my bottom sticker is worn off?',
+				answer:
+					'Check the BIOS/UEFI setup screen or Windows System Information for the model, and read the part number directly off the component you are replacing.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-battery-price-india',
+			'laptop-keyboard-replacement-guide',
+			'how-to-find-laptop-screen-part-number'
+		]
+	},
+	{
+		slug: 'laptop-not-turning-on',
+		title: 'Laptop Not Turning On? Check Charger, Battery, RAM and Screen',
+		shortTitle: 'Laptop won’t turn on',
+		description:
+			'A step-by-step check for a laptop that will not turn on — charger, battery, RAM and display — so you can find the failed part and order the right replacement.',
+		eyebrow: 'Troubleshooting',
+		updatedAt: UPDATED_AT,
+		readTime: '6 min read',
+		primaryKeyword: 'laptop not turning on',
+		keywords: [
+			'laptop not turning on',
+			'why is my laptop not turning on',
+			'laptop screen not turning on',
+			'laptop wont turn on',
+			'laptop black screen'
+		],
+		productQuery: '',
+		productCategory: '',
+		productCtaLabel: 'Browse all parts',
+		summary: [
+			'Work from the simplest cause outward: power, then battery, then display, then RAM.',
+			'A power light with a black screen often means a display or RAM issue, not a dead laptop.',
+			'Each symptom points to a specific replaceable part.'
+		],
+		sections: [
+			{
+				title: 'Step 1: is it getting power?',
+				body: [
+					'Check the charger light and the laptop’s charge LED. If nothing lights up, suspect the charger or DC jack first — test with a known-good charger of the correct rating. A laptop that runs only while plugged in usually has a failed battery.'
+				],
+				checklist: [
+					'No lights at all → charger or DC jack',
+					'Runs only on AC → battery',
+					'Lights on, black screen → display or RAM',
+					'Fans spin, no display → RAM or panel'
+				]
+			},
+			{
+				title: 'Step 2: power but black screen',
+				body: [
+					'If the power light and fans come on but the screen stays black, connect an external monitor. A working external picture means the laptop is running and the laptop panel (or its cable) has failed. No picture on either screen points to RAM or the board.'
+				]
+			},
+			{
+				title: 'Step 3: reseat or replace RAM',
+				body: [
+					'A laptop that powers on with no display and no beeps can have a loose or failed RAM module. If you are comfortable opening the back panel, reseat the RAM; if a module has failed, replacing it can bring the laptop back. If reseating and a known-good charger do not help and the external monitor is also blank, the issue is likely on the board.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'My laptop has power but the screen is black — what is wrong?',
+				answer:
+					'Connect an external monitor. If it shows a picture, the laptop panel or display cable has failed. If both screens are blank, suspect RAM or the motherboard.'
+			},
+			{
+				question: 'How do I know if it is the charger or the battery?',
+				answer:
+					'No lights at all points to the charger or DC jack — test with a known-good charger. A laptop that runs only while plugged in usually needs a new battery.'
+			},
+			{
+				question: 'Can bad RAM stop a laptop from turning on?',
+				answer:
+					'Yes. A loose or failed RAM module can cause power-on with no display and no beeps. Reseating or replacing the RAM can fix it.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-charger-buying-guide',
+			'laptop-battery-price-india',
+			'laptop-screen-vertical-lines'
 		]
 	}
 ];

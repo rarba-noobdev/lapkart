@@ -13,6 +13,7 @@
 	import {
 		absoluteUrl,
 		breadcrumbListJsonLd,
+		categoryName,
 		itemListJsonLd,
 		safeJsonLd,
 		SITE_NAME
@@ -26,9 +27,23 @@
 	const relatedProducts = $derived(data.relatedProducts);
 	const canonicalUrl = $derived(absoluteUrl(page.url.origin, `/guides/${guide.slug}`));
 	const seoTitle = $derived(`${guide.title} - ${SITE_NAME}`);
-	const productSearchHref = $derived(
-		`/products?category=displays&q=${encodeURIComponent(guide.primaryKeyword)}` as `/products?category=displays&q=${string}`
+	// '' = all-catalog CTA; undefined = legacy 'displays' default.
+	const searchCategory = $derived(
+		guide.productCategory === '' ? '' : (guide.productCategory ?? 'displays')
 	);
+	const ctaNoun = $derived(
+		guide.productCtaLabel ?? (searchCategory ? categoryName(searchCategory) : 'Parts')
+	);
+	const productSearchHref = $derived(
+		searchCategory
+			? `/products?category=${searchCategory}&q=${encodeURIComponent(guide.primaryKeyword)}`
+			: `/products?q=${encodeURIComponent(guide.primaryKeyword)}`
+	);
+	function keywordHref(keyword: string) {
+		return searchCategory
+			? `/products?category=${searchCategory}&q=${encodeURIComponent(keyword)}`
+			: `/products?q=${encodeURIComponent(keyword)}`;
+	}
 	const jsonLd = $derived.by(() => {
 		const schemas: unknown[] = [
 			breadcrumbListJsonLd(page.url.origin, [
@@ -133,11 +148,11 @@
 				</p>
 				<p class="text-title-h5 mt-2 text-foreground">{guide.primaryKeyword}</p>
 				<a
-					href={resolve(productSearchHref)}
+					href={productSearchHref}
 					class="button button-primary text-label-medium mt-5 inline-flex h-10 items-center gap-2 rounded-md px-4"
 				>
 					<Search class="size-4" />
-					Search displays
+					{ctaNoun.toLowerCase().startsWith('browse') ? ctaNoun : `Search ${ctaNoun.toLowerCase()}`}
 				</a>
 			</div>
 		</div>
@@ -205,12 +220,12 @@
 				<div class="flex flex-wrap items-end justify-between gap-4">
 					<div>
 						<p class="text-mono-x-small tracking-[0.18em] text-[var(--heat-100)] uppercase">
-							Related displays
+							Related parts
 						</p>
-						<h2 class="text-title-h4 mt-2 text-foreground">Browse matching screen parts</h2>
+						<h2 class="text-title-h4 mt-2 text-foreground">Browse matching replacement parts</h2>
 					</div>
 					<a
-						href={resolve(productSearchHref)}
+						href={productSearchHref}
 						class="text-label-medium inline-flex items-center gap-2 text-[var(--heat-100)]"
 					>
 						View all
@@ -235,7 +250,7 @@
 			<div class="mt-4 flex flex-wrap gap-2">
 				{#each guide.keywords as keyword (keyword)}
 					<a
-						href={resolve(`/products?category=displays&q=${encodeURIComponent(keyword)}`)}
+						href={keywordHref(keyword)}
 						class="text-label-small rounded-full border border-[var(--border-muted)] bg-white px-3 py-1.5 text-[var(--black-alpha-64)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
 					>
 						{keyword}

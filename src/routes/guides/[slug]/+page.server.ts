@@ -13,10 +13,14 @@ export const load: PageServerLoad = async ({ locals, params, setHeaders }) => {
 		error(404, 'Guide not found');
 	}
 
+	// '' means "all catalog" (no category filter); undefined keeps the legacy
+	// screen-guide default of 'displays'.
+	const category = guide.productCategory === '' ? undefined : (guide.productCategory ?? 'displays');
+
 	const result = await searchProducts(
 		{
-			category: 'displays',
-			query: guide.productQuery,
+			category,
+			query: guide.productQuery || undefined,
 			inStock: true,
 			sort: 'relevance',
 			limit: 8,
