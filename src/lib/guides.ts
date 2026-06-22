@@ -848,6 +848,468 @@ export const screenGuides: ScreenGuide[] = [
 			'laptop-battery-price-india',
 			'laptop-screen-vertical-lines'
 		]
+	},
+	{
+		slug: 'laptop-cooling-fan-replacement',
+		title: 'Laptop Cooling Fan Replacement: Noise, Overheating & Model Matching',
+		shortTitle: 'Cooling fan replacement',
+		description:
+			'When to replace a laptop cooling fan instead of just cleaning it, and how to match the correct fan or fan+heatsink assembly for your model.',
+		eyebrow: 'Cooling guide',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop cooling fan',
+		keywords: [
+			'laptop cooling fan',
+			'laptop fan replacement',
+			'laptop overheating',
+			'laptop fan noise',
+			'hp laptop fan'
+		],
+		productQuery: 'fan',
+		productCategory: 'cooling',
+		productCtaLabel: 'Browse cooling fans',
+		summary: [
+			'Clean the dust and repaste first; if noise or high temperatures continue, replace the fan.',
+			'Fans differ by model, connector, and whether they include the heatsink.',
+			'A failing fan bearing rattles, and the laptop throttles or shuts down under load.'
+		],
+		sections: [
+			{
+				title: 'Clean first, then decide',
+				body: [
+					'Most overheating and noise starts with dust clogging the fan and heatsink. Blow out the vents and, if you are comfortable opening the base, clean the fan and reapply thermal paste. If temperatures and noise stay high after that, or the fan rattles or does not spin, the bearing is worn and the fan should be replaced.'
+				],
+				checklist: [
+					'Loud rattle/whir → worn bearing',
+					'Shutdowns under load → replace',
+					'Fan does not spin → replace',
+					'Quiet after cleaning → keep'
+				]
+			},
+			{
+				title: 'Match the correct fan',
+				body: [
+					'Laptop fans differ by model, connector pin count, and whether they ship bare or attached to the heatsink. Some models also use two fans (left and right) with different parts. Match your laptop model and the existing fan’s connector and side before ordering.'
+				]
+			},
+			{
+				title: 'After replacing',
+				body: [
+					'Seat the fan flat, route the cable clear of the blades, and reapply fresh thermal paste on the heatsink contact. Good airflow plus a healthy fan brings temperatures back to normal and stops throttling.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Is my laptop fan failing or does it just need cleaning?',
+				answer:
+					'Try cleaning the dust and repasting first. If the fan still rattles, does not spin, or the laptop overheats and shuts down, the fan needs replacing.'
+			},
+			{
+				question: 'Does the replacement fan include the heatsink?',
+				answer:
+					'It varies by model. Some are bare fans, some are fan+heatsink assemblies. The product page states which; match your laptop.'
+			},
+			{
+				question: 'My laptop has two fans — which do I replace?',
+				answer:
+					'Dual-fan models use separate left and right fans with different connectors. Identify the failing side and match that exact part.'
+			}
+		],
+		relatedGuideSlugs: ['laptop-not-turning-on', 'how-to-find-laptop-model-number']
+	},
+	{
+		slug: 'best-ssd-for-laptop',
+		title: 'Best SSD for a Laptop Upgrade: SATA vs NVMe, 256GB vs 1TB',
+		shortTitle: 'Best SSD for laptop',
+		description:
+			'Choose the right laptop SSD upgrade: SATA vs NVMe, M.2 slot keys, and the capacity that makes sense, with compatibility checks before you buy.',
+		eyebrow: 'Storage upgrade',
+		updatedAt: UPDATED_AT,
+		readTime: '6 min read',
+		primaryKeyword: 'best ssd for laptop',
+		keywords: [
+			'best ssd for laptop',
+			'ssd for laptop',
+			'nvme ssd laptop',
+			'sata ssd laptop',
+			'laptop ssd upgrade'
+		],
+		productQuery: '',
+		productCategory: 'ssd',
+		productCtaLabel: 'Browse SSDs',
+		summary: [
+			'An SSD is the single biggest speed upgrade for an older laptop.',
+			'Check whether your laptop takes 2.5" SATA, M.2 SATA, or M.2 NVMe — they are not all interchangeable.',
+			'For most users 512GB is the value sweet spot; 256GB is tight, 1TB if you store a lot.'
+		],
+		sections: [
+			{
+				title: 'SATA vs NVMe: what your laptop accepts',
+				body: [
+					'There are three common laptop SSD types. A 2.5" SATA SSD fits the old hard-disk bay. An M.2 SATA SSD fits a small M.2 slot but runs at SATA speed. An M.2 NVMe SSD fits an M.2 slot and is several times faster. The M.2 types look alike but depend on the slot’s key and protocol, so confirm what your laptop supports before buying.'
+				],
+				checklist: [
+					'2.5" bay → SATA SSD',
+					'M.2 slot → M.2 SATA or NVMe',
+					'Check M.2 key (B/M) + protocol',
+					'NVMe needs slot + BIOS support'
+				]
+			},
+			{
+				title: 'How much capacity do you need?',
+				body: [
+					'256GB fills up fast once Windows and apps are installed. 512GB is the practical sweet spot for most users. Choose 1TB if you keep large media or many games. Capacity does not change speed much; the SATA-vs-NVMe choice does.'
+				]
+			},
+			{
+				title: 'Keep the old drive?',
+				body: [
+					'Many laptops have both an M.2 slot and a 2.5" bay, so you can add an NVMe SSD for the system and keep the old hard disk for storage. Some laptops support a caddy in the optical-drive bay. Confirm the available slots for your model.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Is NVMe worth it over SATA for a laptop?',
+				answer:
+					'NVMe is much faster for large file transfers and boot, but both feel dramatically quicker than a hard disk. If your laptop supports NVMe, choose it; otherwise SATA is still a big upgrade.'
+			},
+			{
+				question: 'How do I know which SSD my laptop supports?',
+				answer:
+					'Check the laptop specs or the existing drive and slot. A 2.5" bay takes SATA; an M.2 slot may take M.2 SATA or NVMe depending on the key and protocol. Send us your model if unsure.'
+			},
+			{
+				question: 'What size SSD should I buy?',
+				answer:
+					'512GB suits most users. Pick 256GB only for light use, or 1TB if you store a lot of media or games.'
+			}
+		],
+		relatedGuideSlugs: ['laptop-ram-upgrade-guide', 'how-to-find-laptop-model-number']
+	},
+	{
+		slug: 'laptop-ram-upgrade-guide',
+		title: 'Laptop RAM Upgrade Guide: DDR4 SODIMM, Speed & Capacity',
+		shortTitle: 'Laptop RAM upgrade',
+		description:
+			'Upgrade laptop RAM correctly: match DDR generation and SODIMM form factor, check speed and maximum capacity, and avoid mixing incompatible modules.',
+		eyebrow: 'Memory upgrade',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop ram upgrade',
+		keywords: [
+			'laptop ram upgrade',
+			'8gb ddr4 laptop ram',
+			'16gb ddr4 laptop ram',
+			'laptop memory upgrade',
+			'sodimm ram'
+		],
+		productQuery: '',
+		productCategory: '',
+		productCtaLabel: 'Browse all parts',
+		summary: [
+			'More RAM stops slowdowns when many apps or browser tabs are open.',
+			'Match the DDR generation (DDR4 vs DDR5 are not interchangeable) and use SODIMM laptop modules.',
+			'Check your laptop’s maximum supported capacity and number of slots.'
+		],
+		sections: [
+			{
+				title: 'Match generation and form factor',
+				body: [
+					'Laptop memory uses the small SODIMM form factor, not the larger desktop DIMM. The generation must match your laptop: DDR4 and DDR5 are physically and electrically different and cannot be mixed. Most laptops from recent years use DDR4 SODIMM.'
+				],
+				checklist: [
+					'SODIMM (laptop), not DIMM',
+					'DDR4 vs DDR5 must match',
+					'Same or higher speed (MHz)',
+					'Check max capacity + slots'
+				]
+			},
+			{
+				title: 'Speed, capacity and slots',
+				body: [
+					'Use modules at the same or higher rated speed; the system runs at the lowest installed speed. Check how many slots your laptop has and its maximum supported capacity — some laptops have one slot plus soldered memory, others have two slots. Going from 8GB to 16GB is the most common worthwhile jump.'
+				]
+			},
+			{
+				title: 'Fitting it',
+				body: [
+					'On laptops with an accessible panel, RAM sits in angled slots — press the module in at an angle and push down until the clips latch. If your laptop has no service panel or only soldered RAM, an upgrade may not be possible; check your model first.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Can I mix different RAM sizes or brands?',
+				answer:
+					'You can usually mix sizes (e.g. 8GB + 4GB) of the same DDR generation, but matched pairs run best. Never mix DDR4 and DDR5.'
+			},
+			{
+				question: 'How much RAM can my laptop take?',
+				answer:
+					'It depends on the model and number of slots. Check your laptop’s maximum supported capacity; many support 16GB or 32GB. Send us the model if unsure.'
+			},
+			{
+				question: 'Is more RAM or an SSD the better upgrade?',
+				answer:
+					'If your laptop still uses a hard disk, the SSD is the bigger speed jump. If you already have an SSD but run out of memory with many tabs/apps, add RAM.'
+			}
+		],
+		relatedGuideSlugs: ['best-ssd-for-laptop', 'how-to-find-laptop-model-number']
+	},
+	{
+		slug: 'laptop-screen-flickering',
+		title: 'Laptop Screen Flickering: Driver, Cable, or Screen Replacement?',
+		shortTitle: 'Screen flickering',
+		description:
+			'Diagnose laptop screen flickering — refresh-rate and driver settings, a worn display cable, or a failing panel — and know when a screen replacement is the fix.',
+		eyebrow: 'Screen diagnosis',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop screen flickering',
+		keywords: [
+			'laptop screen flickering',
+			'why is my laptop screen flickering',
+			'laptop display flickering',
+			'laptop screen flicker fix'
+		],
+		productQuery: 'screen display panel',
+		productCategory: 'displays',
+		productCtaLabel: 'Browse screens',
+		summary: [
+			'Rule out software first: refresh rate, graphics driver, and a stuck app.',
+			'Connect an external monitor — clean external output points to the panel or its cable.',
+			'Flicker that changes when you flex the lid is usually the display cable.'
+		],
+		sections: [
+			{
+				title: 'Step 1: rule out software',
+				body: [
+					'Before assuming hardware, check the display refresh rate is set correctly, update or roll back the graphics driver, and close any app that may be flashing. If the flicker only happens in one app, it is software, not the panel.'
+				],
+				checklist: [
+					'Set correct refresh rate',
+					'Update/roll back GPU driver',
+					'Test in safe mode',
+					'Then check hardware'
+				]
+			},
+			{
+				title: 'Step 2: external monitor + hinge test',
+				body: [
+					'Connect an external monitor. If the external picture is steady, the laptop panel or its cable is the problem. Gently flex the lid on its hinge: if the flicker changes or appears, the display cable is worn or pinched — a cheaper fix than the panel.'
+				]
+			},
+			{
+				title: 'Step 3: replace the panel if needed',
+				body: [
+					'If the flicker is constant, software is ruled out, and the cable test does not change it, the panel itself is failing. Match the panel part number, size, resolution and connector pin count from the old screen before ordering a replacement.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Why is my laptop screen flickering?',
+				answer:
+					'Common causes are a wrong refresh rate or graphics driver, a worn display cable, or a failing panel. Rule out software first, then test with an external monitor.'
+			},
+			{
+				question: 'Is flickering a sign I need a new screen?',
+				answer:
+					'Not always. If software and the display cable are fine and the flicker is constant, the panel likely needs replacing. Match its part number and connector.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-screen-vertical-lines',
+			'how-to-find-laptop-screen-part-number',
+			'30-pin-vs-40-pin-laptop-screen'
+		]
+	},
+	{
+		slug: 'laptop-screen-price-india',
+		title: 'Laptop Screen Price in India: Size, Pin Type, Resolution & Brand',
+		shortTitle: 'Laptop screen price',
+		description:
+			'What decides laptop screen price in India — size, resolution, pin count, panel type and brand — and how to match the exact replacement display for your laptop.',
+		eyebrow: 'Screen buying guide',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop screen price',
+		keywords: [
+			'laptop screen price',
+			'laptop display price',
+			'hp laptop display price',
+			'dell laptop screen price',
+			'laptop screen replacement cost'
+		],
+		productQuery: 'screen display panel',
+		productCategory: 'displays',
+		productCtaLabel: 'Browse screens',
+		summary: [
+			'Price depends on size, resolution (HD vs FHD), panel type (TN vs IPS), pin count and brand.',
+			'The cheapest listing is not comparable if it is a lower resolution or TN panel.',
+			'Match the panel part number, not just the laptop model, to avoid wrong orders.'
+		],
+		sections: [
+			{
+				title: 'What changes the price',
+				body: [
+					'A 15.6" HD (1366×768) TN panel costs less than an FHD (1920×1080) IPS panel of the same size. Touch panels and high-refresh gaming panels cost more again. So two “laptop screens” for the same model can be priced very differently because they are different panels.'
+				],
+				checklist: [
+					'Size (14" / 15.6" etc.)',
+					'Resolution: HD vs FHD',
+					'Panel: TN vs IPS',
+					'Touch / high-refresh add cost'
+				]
+			},
+			{
+				title: 'Match before you compare price',
+				body: [
+					'Read the panel part number on the back of the old screen and match size, resolution, pin count (30 vs 40), connector position and mounting. Comparing prices only makes sense between panels that actually fit your laptop — a cheap panel that does not match is no saving.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Why do laptop screen prices vary so much?',
+				answer:
+					'Because listings cover different panels: HD vs FHD, TN vs IPS, touch vs non-touch, standard vs high-refresh. Compare only panels that match your laptop’s specs.'
+			},
+			{
+				question: 'How do I get the right screen for my model?',
+				answer:
+					'Match the panel part number on the old screen plus size, resolution, pin count and connector position. The laptop model alone is not enough because one model can use several panels.'
+			}
+		],
+		relatedGuideSlugs: [
+			'how-to-find-laptop-screen-part-number',
+			'laptop-screen-vertical-lines',
+			'laptop-screen-resolution-guide'
+		]
+	},
+	{
+		slug: 'type-c-laptop-charger-guide',
+		title: 'Type-C Laptop Charger Guide: Wattage, Power Delivery & Safety',
+		shortTitle: 'Type-C charger guide',
+		description:
+			'Choose a USB-C laptop charger correctly: Power Delivery wattage, what your laptop needs, and why a phone USB-C charger may not power a laptop.',
+		eyebrow: 'Charger guide',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'type c laptop charger',
+		keywords: [
+			'type c laptop charger',
+			'usb c laptop charger',
+			'usb c power delivery laptop',
+			'type c laptop charger dell'
+		],
+		productQuery: 'type c usb-c charger',
+		productCategory: 'chargers',
+		productCtaLabel: 'Browse chargers',
+		summary: [
+			'USB-C laptops charge over Power Delivery (PD) — buy a PD charger of at least the original wattage.',
+			'A low-watt phone USB-C charger may not charge a laptop under load.',
+			'Confirm your laptop actually charges over USB-C (not just data) before buying.'
+		],
+		sections: [
+			{
+				title: 'Does your laptop charge over USB-C?',
+				body: [
+					'Not every USB-C port charges a laptop — some are data/display only. Check that your laptop shipped with a USB-C charger or that the port has a charging/PD marking. If your laptop came with a barrel charger, it does not charge over USB-C.'
+				],
+				checklist: [
+					'Port marked for charging/PD',
+					'Original charger was USB-C',
+					'Match PD wattage (or higher)',
+					'Avoid low-watt phone chargers'
+				]
+			},
+			{
+				title: 'Match the Power Delivery wattage',
+				body: [
+					'USB-C PD chargers come in wattages like 45W, 65W and 100W. Buy at least the wattage your laptop originally used. A 30W phone charger may keep a laptop alive at idle but will not charge it properly while you work, and the battery can still drain under load.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Can any USB-C charger charge my laptop?',
+				answer:
+					'Only USB-C chargers that support Power Delivery at the required wattage. A low-watt phone charger will not properly charge a laptop under load.'
+			},
+			{
+				question: 'How many watts does my USB-C laptop need?',
+				answer:
+					'Match the original charger’s wattage (commonly 45W or 65W). A higher-wattage PD charger is safe; a lower one is not enough.'
+			}
+		],
+		relatedGuideSlugs: [
+			'laptop-charger-buying-guide',
+			'macbook-charger-guide',
+			'laptop-not-turning-on'
+		]
+	},
+	{
+		slug: 'macbook-charger-guide',
+		title: 'MacBook Charger Guide: USB-C, MagSafe and Wattage',
+		shortTitle: 'MacBook charger guide',
+		description:
+			'Choose the right MacBook charger: USB-C vs MagSafe, the correct wattage for MacBook Air and Pro, and safe compatible options.',
+		eyebrow: 'Charger guide',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'macbook charger',
+		keywords: [
+			'macbook charger',
+			'macbook air charger',
+			'macbook pro charger',
+			'macbook charger price',
+			'usb c macbook charger'
+		],
+		productQuery: 'macbook charger',
+		productCategory: 'chargers',
+		productCtaLabel: 'Browse chargers',
+		summary: [
+			'Modern MacBooks charge over USB-C Power Delivery (and newer ones add MagSafe 3).',
+			'Match the wattage to the model: MacBook Air ~30–35W, MacBook Pro 67–96W+.',
+			'A lower-wattage charger charges slowly and may not keep up under load.'
+		],
+		sections: [
+			{
+				title: 'USB-C vs MagSafe',
+				body: [
+					'Recent MacBooks charge via USB-C Power Delivery; newer models also support MagSafe 3 magnetic charging while still accepting USB-C. Either works as long as the wattage is right. Older MacBooks used MagSafe 1/2, which are different connectors.'
+				],
+				checklist: [
+					'MacBook Air: ~30–35W',
+					'MacBook Pro 13/14: 67–96W',
+					'MacBook Pro 16: 96–140W',
+					'USB-C PD works on USB-C models'
+				]
+			},
+			{
+				title: 'Match the wattage',
+				body: [
+					'Use a charger at or above your MacBook’s rated wattage. A 30W charger on a MacBook Pro will charge slowly and may not keep up while you work. A higher-wattage PD charger is safe — the MacBook draws only what it needs.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Can I charge a MacBook with any USB-C charger?',
+				answer:
+					'A USB-C PD charger works if it provides enough wattage for your model. Too little wattage charges slowly or not under load.'
+			},
+			{
+				question: 'What wattage charger does my MacBook need?',
+				answer:
+					'MacBook Air is around 30–35W; MacBook Pro models need 67W to 140W depending on size. Match or exceed the original wattage.'
+			}
+		],
+		relatedGuideSlugs: ['type-c-laptop-charger-guide', 'laptop-charger-buying-guide']
 	}
 ];
 

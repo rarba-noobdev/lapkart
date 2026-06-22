@@ -164,6 +164,56 @@ export const landings: Landing[] = [
 							'Many IdeaPad and ThinkPad models have internal batteries that need the back cover removed. If you are comfortable opening the base and disconnecting the battery connector, replacement is straightforward; otherwise a technician can fit it.'
 					}
 				]
+			},
+			{
+				slug: 'asus',
+				name: 'Asus',
+				brand: 'Asus',
+				h1: 'Asus Laptop Battery Replacements (VivoBook, ZenBook, TUF, ROG)',
+				title: 'Asus Laptop Battery Replacement Online | VivoBook, ZenBook, TUF',
+				metaDescription:
+					'Replacement Asus laptop batteries for VivoBook, ZenBook, TUF and ROG. Match by Asus part number and voltage. Warranty, COD and Tamil Nadu delivery.',
+				intro: [
+					'Asus uses different battery codes across VivoBook, ZenBook, TUF and ROG (codes like B31N1535 or C31N1620). A VivoBook battery will not fit a TUF gaming model just because both are Asus, so match the Asus part number and voltage from your old battery.',
+					'Each Asus battery lists voltage and capacity. Many slim VivoBook and ZenBook models use internal batteries that need the base removed; send the Asus part number or model for a fit check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'Where is the Asus battery part number?',
+						answer:
+							'On the battery label (codes such as B31N1535) or the laptop base. Match that code and the voltage for an Asus replacement.'
+					},
+					{
+						question: 'Do Asus gaming laptops use different batteries?',
+						answer:
+							'Yes. TUF and ROG batteries are higher-capacity and use different codes from VivoBook/ZenBook. Always match the exact Asus part number.'
+					}
+				]
+			},
+			{
+				slug: 'acer',
+				name: 'Acer',
+				brand: 'Acer',
+				h1: 'Acer Laptop Battery Replacements (Aspire, Nitro, Swift, Predator)',
+				title: 'Acer Laptop Battery Replacement Online | Aspire, Nitro, Swift',
+				metaDescription:
+					'Replacement Acer laptop batteries for Aspire, Nitro, Swift and Predator. Match by Acer part number and voltage. Warranty, COD and Tamil Nadu delivery.',
+				intro: [
+					'Acer battery codes vary across Aspire, Nitro, Swift and Predator (codes like AP18C8K, AC14B8K or AP16M5J). Match the Acer part number and voltage on the old battery rather than the series name alone.',
+					'Listings show voltage and capacity. Many slim Aspire and Swift models have internal batteries; share the Acer part number or model for a compatibility check before we ship.'
+				],
+				faqs: [
+					{
+						question: 'How do I find my Acer battery code?',
+						answer:
+							'Read the label on the old Acer battery (for example AP18C8K) or the laptop base, and match that code and voltage.'
+					},
+					{
+						question: 'Are Aspire and Nitro batteries the same?',
+						answer:
+							'No. Nitro gaming models use higher-capacity batteries with different codes from Aspire. Match the exact Acer part number for your model.'
+					}
+				]
 			}
 		]
 	},
@@ -294,6 +344,56 @@ export const landings: Landing[] = [
 							'Many newer ThinkPad and Yoga models charge via USB-C Power Delivery. If your laptop has no barrel port and charges from a USB-C port, use a PD charger of the correct wattage.'
 					}
 				]
+			},
+			{
+				slug: 'asus',
+				name: 'Asus',
+				brand: 'Asus',
+				h1: 'Asus Laptop Chargers & Adapters (45W, 65W, 120W, Type-C)',
+				title: 'Asus Laptop Charger Replacement | 45W, 65W, Barrel & Type-C',
+				metaDescription:
+					'Replacement Asus laptop chargers in 45W, 65W and higher, barrel-pin and USB-C, for VivoBook, ZenBook, TUF and ROG. Match wattage and pin. Warranty, COD, delivery.',
+				intro: [
+					'Asus uses a small barrel pin on many VivoBook and ZenBook models, USB-C on slimmer ones, and high-wattage barrel adapters on TUF/ROG gaming laptops. Gaming models need much higher wattage, so match the exact Asus adapter rating and connector from your old charger.',
+					'Each Asus charger lists wattage, output and connector. A low-watt charger on a TUF/ROG model will not keep up under load, so confirm the rating before buying.'
+				],
+				faqs: [
+					{
+						question: 'Why does my Asus gaming laptop need a high-wattage charger?',
+						answer:
+							'TUF and ROG laptops draw far more power than VivoBook/ZenBook. Use the original high-wattage Asus adapter rating; a 65W charger will not properly power a gaming model.'
+					},
+					{
+						question: 'Does my Asus charge over USB-C?',
+						answer:
+							'Many slim VivoBook and ZenBook models support USB-C Power Delivery. If your Asus has no barrel port, use a PD charger of at least the original wattage.'
+					}
+				]
+			},
+			{
+				slug: 'acer',
+				name: 'Acer',
+				brand: 'Acer',
+				h1: 'Acer Laptop Chargers & Adapters (45W, 65W, 135W, Type-C)',
+				title: 'Acer Laptop Charger Replacement | 45W, 65W, Barrel & Type-C',
+				metaDescription:
+					'Replacement Acer laptop chargers in 45W, 65W and higher, barrel-pin and USB-C, for Aspire, Swift and Nitro. Match wattage and pin size. Warranty, COD, delivery.',
+				intro: [
+					'Acer uses a barrel pin on most Aspire and Swift models, USB-C on some slim ones, and higher-wattage adapters on Nitro/Predator gaming laptops. Match the Acer adapter wattage and the barrel size from your original charger.',
+					'Listings show wattage, output and connector. A Nitro gaming laptop needs its higher-wattage adapter; a lower-watt charger will throttle or fail to charge under load.'
+				],
+				faqs: [
+					{
+						question: 'What wattage Acer charger do I need?',
+						answer:
+							'Match the original Acer adapter label. Aspire/Swift are commonly 45W or 65W; Nitro/Predator need higher wattage. Same or higher wattage, same voltage and pin.'
+					},
+					{
+						question: 'Does my Acer charge over USB-C?',
+						answer:
+							'Some slim Swift and Spin models charge via USB-C PD. If there is no barrel port, use a PD charger of at least the original wattage.'
+					}
+				]
 			}
 		]
 	},
@@ -397,6 +497,56 @@ export const landings: Landing[] = [
 							'Often yes, and some include a pointing stick (trackpoint). Match the exact Latitude variant and connector to your laptop.'
 					}
 				]
+			},
+			{
+				slug: 'asus',
+				name: 'Asus',
+				brand: 'Asus',
+				h1: 'Asus Laptop Keyboard Replacements (VivoBook Backlit, TUF, ROG)',
+				title: 'Asus Laptop Keyboard Replacement | VivoBook Backlit, TUF, ROG',
+				metaDescription:
+					'Replacement Asus laptop keyboards for VivoBook, ZenBook, TUF and ROG: backlit and non-backlit, with or without frame. Match the Asus model and connector. Warranty, COD.',
+				intro: [
+					'Asus keyboards vary a lot by backlight: many VivoBook models are backlit, gaming TUF/ROG keyboards use RGB or single-colour backlighting with different connectors, and some budget VivoBooks are non-backlit. Confirm whether your current keyboard lights up and whether the frame is included.',
+					'These Asus keyboards mark layout and backlight. Send your Asus model (for example VivoBook 15 X512) to confirm the backlit variant before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'Does my Asus VivoBook have a backlit keyboard?',
+						answer:
+							'Some VivoBook variants are backlit and some are not. If yours lights up via an Fn shortcut, order a backlit replacement; a non-backlit keyboard will fit but never light up.'
+					},
+					{
+						question: 'Are TUF/ROG gaming keyboards different?',
+						answer:
+							'Yes. Gaming keyboards use different backlighting and connectors from VivoBook/ZenBook. Match the exact Asus model and keyboard variant.'
+					}
+				]
+			},
+			{
+				slug: 'acer',
+				name: 'Acer',
+				brand: 'Acer',
+				h1: 'Acer Laptop Keyboard Replacements (Aspire, Nitro, Swift)',
+				title: 'Acer Laptop Keyboard Replacement | Aspire, Nitro, Swift, Backlit',
+				metaDescription:
+					'Replacement Acer laptop keyboards for Aspire, Nitro and Swift: backlit and non-backlit variants. Match the Acer model and connector. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'Acer keyboards differ by backlight across Aspire, Nitro and Swift, and Nitro gaming models use a different backlit keyboard from standard Aspire units. Confirm whether your keyboard lights up and whether the frame is part of the unit.',
+					'Listings mark layout and backlight. Share your Acer model (for example Aspire 5 A515) to confirm the variant before we ship.'
+				],
+				faqs: [
+					{
+						question: 'Which Acer laptops have a backlit keyboard?',
+						answer:
+							'Many Nitro and higher Aspire/Swift models are backlit; entry Aspire units often are not. If yours lights up, order a backlit replacement.'
+					},
+					{
+						question: 'Why are some keys on my Acer not working?',
+						answer:
+							'Multiple dead keys usually mean a damaged membrane or ribbon. Replacing the whole Acer keyboard restores all keys reliably.'
+					}
+				]
 			}
 		]
 	},
@@ -455,7 +605,108 @@ export const landings: Landing[] = [
 			'how-to-find-laptop-screen-part-number',
 			'30-pin-vs-40-pin-laptop-screen'
 		],
-		brands: []
+		brands: [
+			{
+				slug: 'hp',
+				name: 'HP',
+				brand: 'HP',
+				h1: 'HP Laptop Screen & Display Replacements (HD, FHD, 30/40-pin)',
+				title: 'HP Laptop Screen Replacement | Pavilion, 15s, Omen, HD/FHD',
+				metaDescription:
+					'Replacement HP laptop screens for Pavilion, 15s and Omen: HD and FHD panels in 30-pin and 40-pin. Match by panel part number, size and connector. Warranty, COD.',
+				intro: [
+					'HP laptops ship with several panel variants even within one model line, so an HP 15s can use different HD or FHD panels with 30-pin or 40-pin connectors. Match the panel part number on the back of the old screen, plus size, resolution and connector position.',
+					'These HP displays list size, resolution and pin count. Send your HP model and panel code for a fit check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'Can I upgrade my HP from HD to FHD?',
+						answer:
+							'Sometimes, if the connector, size and mounting match and the board supports it. Confirm the panel part number and pin count first; it is not guaranteed across all HP models.'
+					}
+				]
+			},
+			{
+				slug: 'dell',
+				name: 'Dell',
+				brand: 'Dell',
+				h1: 'Dell Laptop Screen & Display Replacements (Inspiron, Latitude)',
+				title: 'Dell Laptop Screen Replacement | Inspiron, Latitude, Vostro, FHD',
+				metaDescription:
+					'Replacement Dell laptop screens for Inspiron, Latitude and Vostro: HD and FHD panels, 30-pin and 40-pin. Match by panel part number and connector. Warranty, COD.',
+				intro: [
+					'Dell Inspiron, Latitude and Vostro models use a range of panels, including touch variants that change the connector. Match the Dell panel part number, size, resolution and pin count from the old screen, and note whether your laptop is touch.',
+					'Each Dell display lists its specs. Share your Dell model or service tag for a compatibility check before we ship.'
+				],
+				faqs: [
+					{
+						question: 'How do I know if my Dell screen is touch?',
+						answer:
+							'Touch panels have a glass digitiser and a different connector. Check whether your current screen responds to touch and match a touch or non-touch Dell panel accordingly.'
+					}
+				]
+			},
+			{
+				slug: 'lenovo',
+				name: 'Lenovo',
+				brand: 'Lenovo',
+				h1: 'Lenovo Laptop Screen & Display Replacements (IdeaPad, ThinkPad)',
+				title: 'Lenovo Laptop Screen Replacement | IdeaPad, ThinkPad, HD/FHD',
+				metaDescription:
+					'Replacement Lenovo laptop screens for IdeaPad and ThinkPad: HD and FHD panels, 30-pin and 40-pin. Match by panel part number and connector. Warranty, COD, delivery.',
+				intro: [
+					'Lenovo IdeaPad and ThinkPad models use several panel variants, and vertical lines on Lenovo screens are a common replacement trigger. Match the Lenovo panel part number, size, resolution and connector position from the old screen.',
+					'Listings show size, resolution and pin count. Send your Lenovo model and panel code for a fit check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'My Lenovo screen has vertical lines — replace the panel?',
+						answer:
+							'Test with an external monitor first. If the external picture is clean and the lines are fixed, the Lenovo panel needs replacing; match its part number and connector.'
+					}
+				]
+			},
+			{
+				slug: 'asus',
+				name: 'Asus',
+				brand: 'Asus',
+				h1: 'Asus Laptop Screen & Display Replacements (VivoBook, TUF, FHD)',
+				title: 'Asus Laptop Screen Replacement | VivoBook, ZenBook, TUF, FHD',
+				metaDescription:
+					'Replacement Asus laptop screens for VivoBook, ZenBook and TUF: FHD IPS and higher-refresh panels, 30-pin and 40-pin. Match by panel part number. Warranty, COD.',
+				intro: [
+					'Asus VivoBook and ZenBook models mostly use FHD IPS panels, while TUF/ROG gaming models use higher-refresh panels with 40-pin connectors. Match the Asus panel part number, size, resolution, refresh rate and pin count from the old screen.',
+					'Each Asus display lists its specs. Gaming panels are not interchangeable with standard ones, so confirm the connector before buying.'
+				],
+				faqs: [
+					{
+						question: 'Do Asus gaming laptops use a different screen?',
+						answer:
+							'Yes. TUF/ROG high-refresh panels (120Hz+) use different connectors and pin counts from standard 60Hz panels. Match the exact Asus panel part number.'
+					}
+				]
+			},
+			{
+				slug: 'acer',
+				name: 'Acer',
+				brand: 'Acer',
+				h1: 'Acer Laptop Screen & Display Replacements (Aspire, Nitro, FHD)',
+				title: 'Acer Laptop Screen Replacement | Aspire, Nitro, Swift, FHD',
+				metaDescription:
+					'Replacement Acer laptop screens for Aspire, Nitro and Swift: FHD IPS and high-refresh panels, 30-pin and 40-pin. Match by panel part number. Warranty, COD, delivery.',
+				intro: [
+					'Acer Aspire and Swift models use HD/FHD panels, while Nitro/Predator gaming models use high-refresh panels with different connectors. Match the Acer panel part number, size, resolution, refresh rate and pin count from the old screen.',
+					'Listings show the panel specs. Confirm the connector and refresh rate for gaming models before ordering.'
+				],
+				faqs: [
+					{
+						question: 'What specs must match for an Acer screen?',
+						answer:
+							'Size, resolution, refresh rate, pin count (30 vs 40) and connector position. The panel part number on the old Acer screen confirms all of these.'
+					}
+				]
+			}
+		]
 	},
 	{
 		slug: 'laptop-cooling-fan',
@@ -495,7 +746,95 @@ export const landings: Landing[] = [
 			}
 		],
 		relatedClusters: ['laptop-battery'],
-		relatedGuideSlugs: ['laptop-not-turning-on'],
+		relatedGuideSlugs: ['laptop-cooling-fan-replacement', 'laptop-not-turning-on'],
+		brands: [
+			{
+				slug: 'hp',
+				name: 'HP',
+				brand: 'HP',
+				h1: 'HP Laptop Cooling Fan & Heatsink Replacements',
+				title: 'HP Laptop Cooling Fan Replacement | Pavilion, 15s, Omen',
+				metaDescription:
+					'Replacement HP laptop cooling fans and fan+heatsink assemblies for Pavilion, 15s and Omen. Fix overheating and loud fan noise. Match by model. Warranty, COD.',
+				intro: [
+					'HP cooling fans differ by model and by whether they come bare or attached to the heatsink. Pavilion, 15s and Omen units use different fans, so match your HP model and the existing fan connector before ordering.',
+					'These HP fans list the fit. If cleaning dust has not fixed noise or overheating on your HP, the fan bearing is likely worn and the fan should be replaced.'
+				],
+				faqs: [
+					{
+						question: 'Does the HP fan come with the heatsink?',
+						answer:
+							'It varies by model — some HP units are bare fans, some are fan+heatsink assemblies. The product page states which; match it to your laptop.'
+					}
+				]
+			},
+			{
+				slug: 'dell',
+				name: 'Dell',
+				brand: 'Dell',
+				h1: 'Dell Laptop Cooling Fan & Heatsink Replacements',
+				title: 'Dell Laptop Cooling Fan Replacement | Inspiron, Latitude, Vostro',
+				metaDescription:
+					'Replacement Dell laptop cooling fans and fan+heatsink assemblies for Inspiron, Latitude and Vostro. Fix overheating and noise. Match by model. Warranty, COD.',
+				intro: [
+					'Dell cooling fans vary across Inspiron, Latitude and Vostro, and some dual-fan models need the correct left/right unit. Match your Dell model and the existing fan connector and side before ordering.',
+					'Listings show the fit. If your Dell still overheats or is loud after cleaning and repasting, replace the fan.'
+				],
+				faqs: [
+					{
+						question: 'My Dell has two fans — which one do I need?',
+						answer:
+							'Dual-fan Dell models use separate left and right fans with different connectors. Identify the failing side and match that exact part.'
+					}
+				]
+			}
+		]
+	},
+	{
+		slug: 'laptop-ram-ssd',
+		name: 'Laptop RAM & SSD',
+		category: 'ssd',
+		h1: 'Laptop RAM & SSD Upgrades (DDR4 SODIMM, SATA & NVMe)',
+		title: 'Laptop RAM & SSD Upgrade Online (DDR4 SODIMM, SATA, NVMe)',
+		metaDescription:
+			'Upgrade your laptop with the correct RAM and SSD: DDR4 SODIMM memory and SATA or NVMe M.2 SSDs. Check slot type and compatibility before buying. Warranty, COD, delivery.',
+		keywords: [
+			'laptop ssd',
+			'laptop ram',
+			'ssd for laptop',
+			'8gb ddr4 laptop ram',
+			'nvme ssd laptop',
+			'laptop ram upgrade'
+		],
+		intro: [
+			'A RAM and SSD upgrade is the cheapest way to make an old laptop feel new: more RAM stops slowdowns when many tabs or apps are open, and an SSD makes the laptop boot and load far faster than a hard disk. Both must match your laptop, so check the slot type before buying.',
+			'For RAM, match the generation and form factor — most laptops use DDR4 SODIMM, and the speed should match or exceed the existing module. For storage, check whether your laptop takes a 2.5" SATA SSD, an M.2 SATA, or an M.2 NVMe drive; the M.2 types look similar but are not always interchangeable.',
+			'Browse available SSDs below. If you are unsure which RAM or SSD your laptop supports, send us the laptop model and we will confirm the correct type before dispatch.'
+		],
+		faqs: [
+			{
+				question: 'How do I know if my laptop takes SATA or NVMe SSD?',
+				answer:
+					'Check the laptop specs or the existing drive: a 2.5" bay takes a SATA SSD, while a small M.2 slot may take M.2 SATA or M.2 NVMe. Some laptops support only one type, so confirm the M.2 key and protocol before buying.'
+			},
+			{
+				question: 'What RAM does my laptop need?',
+				answer:
+					'Most laptops use DDR4 SODIMM. Match the generation (DDR4 vs DDR5 — they are not interchangeable) and use the same or higher speed. Check the maximum supported capacity for your model.'
+			},
+			{
+				question: 'Will adding an SSD or more RAM void my warranty?',
+				answer:
+					'On most laptops with an accessible service panel, upgrading RAM or storage is user-serviceable, but check your manufacturer’s policy. A technician can fit it if you prefer.'
+			},
+			{
+				question: 'Can I add an SSD and keep my old hard disk?',
+				answer:
+					'Often yes, if your laptop has both an M.2 slot and a 2.5" bay, or supports a caddy in the optical bay. Confirm the available slots for your model.'
+			}
+		],
+		relatedClusters: ['laptop-battery'],
+		relatedGuideSlugs: ['best-ssd-for-laptop', 'laptop-ram-upgrade-guide'],
 		brands: []
 	}
 ];

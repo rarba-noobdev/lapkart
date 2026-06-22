@@ -1,9 +1,39 @@
 # SEO Keyword Implementation Report — LapKart
 
 Implementation of the cleaned SEO keyword research
-(`lapkart-clean-seo-keywords-research.xlsx`). This report covers **Batch 1** (infrastructure +
-highest-value, inventory-backed pages) plus full planning and Review Queue decisions.
-No SEO traffic outcomes are claimed — implementation work only.
+(`lapkart-clean-seo-keywords-research.xlsx`). Covers **Batch 1** (infra + highest-value
+pages), **Batch 2** (Asus/Acer + screen/cooling brand pages, RAM/SSD landing, 7 more blogs)
+plus full planning and Review Queue decisions. No SEO traffic outcomes are claimed —
+implementation work only.
+
+## Batch 2 additions (this update)
+
+Totals after Batch 2: **27 landing pages** and **13 blog/guide articles** live.
+
+New landing pages (all inventory-verified):
+- Brand battery: `/parts/laptop-battery/asus`, `/acer`
+- Brand charger: `/parts/laptop-charger/asus`, `/acer`
+- Brand keyboard: `/parts/laptop-keyboard/asus`, `/acer`
+- Brand screen: `/parts/laptop-screen/{hp,dell,lenovo,asus,acer}` (screen had no brand pages in Batch 1)
+- Brand cooling: `/parts/laptop-cooling-fan/{hp,dell}`
+- New category landing: `/parts/laptop-ram-ssd` (category `ssd`; lists the 8 in-stock SSDs +
+  RAM/SSD upgrade content). **Inventory caveat:** RAM has 0 active products and SSD only 8 —
+  stocking RAM/SSD is an owner/catalog action; the page is built and ready and will fill as
+  inventory is added.
+
+New blogs:
+- `laptop-cooling-fan-replacement`, `best-ssd-for-laptop`, `laptop-ram-upgrade-guide`,
+  `laptop-screen-flickering`, `laptop-screen-price-india`, `type-c-laptop-charger-guide`,
+  `macbook-charger-guide`.
+
+Validation after Batch 2: `npm run check` 0 errors/0 warnings; `npm run build` success.
+All new brand pages confirmed against live inventory (battery Asus 120 / Acer 58; charger
+Acer 104 / Asus 45; keyboard Asus 53 / Acer 30; screen 700–1,500 per brand; cooling HP 101 /
+Dell 75). Sitemap (`landingPaths()`) and guides auto-include the new URLs.
+
+---
+
+## Batch 1 (original)
 
 ## Counts
 
