@@ -6,7 +6,28 @@ pages), **Batch 2** (Asus/Acer + screen/cooling brand pages, RAM/SSD landing, 7 
 plus full planning and Review Queue decisions. No SEO traffic outcomes are claimed —
 implementation work only.
 
-## Batch 2 additions (this update)
+## Batch 3 additions (this update)
+
+Totals after Batch 3: **41 landing pages** and **15 blog/guide articles** live.
+
+- RAM & SSD landing wired to **both** `ram` + `ssd` categories (multi-category grid merge in
+  the cluster loader). `ram` category already exists in `catalog.ts`; it is unstocked, so the
+  grid currently shows the 8 SSDs and fills automatically as RAM/SSD products are added.
+  **Stocking RAM/SSD remains an owner/catalog action.**
+- New category landings (inventory-backed): `/parts/laptop-dc-jack` (260 DC jacks),
+  `/parts/laptop-speaker` (316 speakers).
+- New brand landings (inventory-verified): battery `toshiba` (32), `apple` (12), `msi` (11),
+  `samsung` (11); charger `apple` (21), `msi` (11); keyboard `apple` (17), `toshiba` (10);
+  screen `samsung` (457), `msi` (19).
+- New blogs: `laptop-dc-jack-charging-port`, `keyboard-keys-not-working`.
+- **Deliberately skipped** (0 active inventory → would be thin): laptop hinge, motherboard,
+  and trackpad/touchpad pages and blogs. Flagged owner-review (stock first).
+
+Validation after Batch 3: `npm run check` 0 errors/0 warnings; `npm run build` success.
+
+---
+
+## Batch 2 additions
 
 Totals after Batch 2: **27 landing pages** and **13 blog/guide articles** live.
 

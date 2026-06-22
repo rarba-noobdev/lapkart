@@ -24,6 +24,7 @@ export type Landing = {
 	slug: string; // cluster url segment, e.g. 'laptop-battery'
 	name: string; // 'Laptop Battery'
 	category?: string; // catalog category slug, e.g. 'batteries' (omitted for the hub)
+	categories?: string[]; // multiple categories merged into the grid (e.g. ['ram','ssd'])
 	productQuery?: string;
 	h1: string;
 	title: string;
@@ -214,6 +215,86 @@ export const landings: Landing[] = [
 							'No. Nitro gaming models use higher-capacity batteries with different codes from Aspire. Match the exact Acer part number for your model.'
 					}
 				]
+			},
+			{
+				slug: 'toshiba',
+				name: 'Toshiba',
+				brand: 'Toshiba',
+				h1: 'Toshiba Laptop Battery Replacements (Satellite, Tecra, Portege)',
+				title: 'Toshiba Laptop Battery Replacement | Satellite, Tecra, Portege',
+				metaDescription:
+					'Replacement Toshiba laptop batteries for Satellite, Tecra and Portege. Match by Toshiba PA-series part number and voltage. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'Toshiba batteries use PA-series codes (for example PA5024U or PA5109U) across Satellite, Tecra and Portege models. Match the Toshiba part number and voltage from the old battery rather than the series name.',
+					'Each Toshiba battery lists voltage and capacity. Send the PA code or laptop model for a compatibility check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'Where is the Toshiba battery part number?',
+						answer:
+							'On the battery label as a PA-series code (e.g. PA5024U-1BRS). Match that code and the voltage for a Toshiba replacement.'
+					}
+				]
+			},
+			{
+				slug: 'apple',
+				name: 'Apple',
+				brand: 'Apple',
+				h1: 'MacBook Battery Replacements (MacBook Air & Pro)',
+				title: 'MacBook Battery Replacement | MacBook Air, MacBook Pro',
+				metaDescription:
+					'Replacement MacBook batteries for MacBook Air and MacBook Pro by model code (A-number). Match the exact model before buying. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'MacBook batteries are matched by the laptop’s model number (the “A” number such as A1466 or A1502) printed on the underside, since each MacBook generation uses a different battery. Confirm the A-number before ordering.',
+					'These MacBook batteries list the models they fit. MacBook battery replacement usually needs the bottom case opened; a technician can fit it if you prefer.'
+				],
+				faqs: [
+					{
+						question: 'How do I find my MacBook model for the battery?',
+						answer:
+							'Read the “Model A####” number on the underside of the MacBook, or check About This Mac. Match that A-number to the battery listing.'
+					}
+				]
+			},
+			{
+				slug: 'msi',
+				name: 'MSI',
+				brand: 'MSI',
+				h1: 'MSI Laptop Battery Replacements (GF, GL, Modern Series)',
+				title: 'MSI Laptop Battery Replacement | GF63, GL63, Modern',
+				metaDescription:
+					'Replacement MSI laptop batteries for GF, GL and Modern gaming/creator series. Match by MSI BTY-series part number and voltage. Warranty, COD, delivery.',
+				intro: [
+					'MSI gaming and creator laptops use BTY-series battery codes (for example BTY-M6K) that vary by model. Match the MSI part number and voltage from the old battery; gaming batteries are higher-capacity.',
+					'Listings show voltage and capacity. Share the BTY code or model for a fit check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'How do I identify my MSI battery?',
+						answer:
+							'Read the BTY-series code on the old MSI battery (e.g. BTY-M6K) and match that code and the voltage.'
+					}
+				]
+			},
+			{
+				slug: 'samsung',
+				name: 'Samsung',
+				brand: 'Samsung',
+				h1: 'Samsung Laptop Battery Replacements (NP Series)',
+				title: 'Samsung Laptop Battery Replacement | NP Series Notebooks',
+				metaDescription:
+					'Replacement Samsung laptop batteries for NP-series notebooks. Match by Samsung part number (AA-series) and voltage. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'Samsung notebook batteries use AA-series codes across the NP range (for example AA-PBVN3AB). Match the Samsung part number and voltage from the old battery, using the NP model as a backup clue.',
+					'Each Samsung battery lists voltage and capacity. Send the part number or NP model for confirmation before we ship.'
+				],
+				faqs: [
+					{
+						question: 'How do I find my Samsung laptop battery code?',
+						answer:
+							'Read the AA-series code on the old battery or the NP model on the base, and match the code and voltage.'
+					}
+				]
 			}
 		]
 	},
@@ -394,6 +475,46 @@ export const landings: Landing[] = [
 							'Some slim Swift and Spin models charge via USB-C PD. If there is no barrel port, use a PD charger of at least the original wattage.'
 					}
 				]
+			},
+			{
+				slug: 'apple',
+				name: 'Apple',
+				brand: 'Apple',
+				h1: 'MacBook Chargers & Adapters (USB-C & MagSafe)',
+				title: 'MacBook Charger Replacement | USB-C, MagSafe, Air & Pro',
+				metaDescription:
+					'Replacement MacBook chargers: USB-C Power Delivery and MagSafe for MacBook Air and Pro. Match the wattage to your model. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'Modern MacBooks charge over USB-C Power Delivery, and newer models add MagSafe 3 while still accepting USB-C. Match the wattage to your model — MacBook Air around 30–35W, MacBook Pro 67W and up. Older MacBooks used MagSafe 1/2 (different connectors).',
+					'These MacBook chargers list wattage and connector. A lower-wattage charger charges slowly and may not keep up under load.'
+				],
+				faqs: [
+					{
+						question: 'What wattage charger does my MacBook need?',
+						answer:
+							'MacBook Air is ~30–35W; MacBook Pro models need 67W to 140W depending on size. Match or exceed the original wattage.'
+					}
+				]
+			},
+			{
+				slug: 'msi',
+				name: 'MSI',
+				brand: 'MSI',
+				h1: 'MSI Laptop Chargers & Adapters (Gaming Wattage)',
+				title: 'MSI Laptop Charger Replacement | GF, GL, Gaming Adapters',
+				metaDescription:
+					'Replacement MSI laptop chargers in the high wattages gaming laptops need, with the correct barrel pin. Match wattage and connector. Warranty, COD, delivery.',
+				intro: [
+					'MSI gaming laptops draw high power, so they ship with high-wattage barrel adapters (often 120W, 150W, 180W or more). Using a lower-wattage charger will throttle the laptop or fail to charge under load, so match the exact MSI adapter rating and pin.',
+					'Each MSI charger lists wattage, output and connector. Confirm the rating on your original adapter before buying.'
+				],
+				faqs: [
+					{
+						question: 'Why does my MSI laptop need such a high-wattage charger?',
+						answer:
+							'Gaming GPUs and CPUs draw a lot of power. Use the original MSI wattage (often 120W+); a lower-watt charger cannot keep up.'
+					}
+				]
 			}
 		]
 	},
@@ -545,6 +666,46 @@ export const landings: Landing[] = [
 						question: 'Why are some keys on my Acer not working?',
 						answer:
 							'Multiple dead keys usually mean a damaged membrane or ribbon. Replacing the whole Acer keyboard restores all keys reliably.'
+					}
+				]
+			},
+			{
+				slug: 'apple',
+				name: 'Apple',
+				brand: 'Apple',
+				h1: 'MacBook Keyboard Replacements (Air & Pro by Model)',
+				title: 'MacBook Keyboard Replacement | MacBook Air, MacBook Pro',
+				metaDescription:
+					'Replacement MacBook keyboards matched by model (A-number) for MacBook Air and Pro. Confirm the exact model before buying. Warranty, COD, Tamil Nadu delivery.',
+				intro: [
+					'MacBook keyboards are matched by the laptop model (the “A” number such as A1466), since layout and fitment change between generations. Many MacBook keyboards are part of the top case, so check whether you need just the keyboard or the assembly.',
+					'These MacBook keyboards list the models they fit. Confirm your A-number before ordering; a technician is recommended for top-case fitment.'
+				],
+				faqs: [
+					{
+						question: 'Is the MacBook keyboard separate or part of the top case?',
+						answer:
+							'On many MacBooks the keyboard is integrated into the top case. The product page states whether it is a standalone keyboard or a top-case assembly for your model.'
+					}
+				]
+			},
+			{
+				slug: 'toshiba',
+				name: 'Toshiba',
+				brand: 'Toshiba',
+				h1: 'Toshiba Laptop Keyboard Replacements (Satellite, Tecra)',
+				title: 'Toshiba Laptop Keyboard Replacement | Satellite, Tecra',
+				metaDescription:
+					'Replacement Toshiba laptop keyboards for Satellite and Tecra: backlit and non-backlit variants. Match the Toshiba model and connector. Warranty, COD, delivery.',
+				intro: [
+					'Toshiba Satellite and Tecra keyboards vary by backlight and connector. Confirm whether your current keyboard lights up and match the Toshiba model and ribbon connector before ordering.',
+					'Listings mark layout and backlight. Share your Toshiba model for a variant check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'How do I match a Toshiba keyboard?',
+						answer:
+							'Use the Toshiba model number and confirm backlight and connector against your current keyboard. Multiple dead keys usually mean the whole keyboard needs replacing.'
 					}
 				]
 			}
@@ -705,6 +866,46 @@ export const landings: Landing[] = [
 							'Size, resolution, refresh rate, pin count (30 vs 40) and connector position. The panel part number on the old Acer screen confirms all of these.'
 					}
 				]
+			},
+			{
+				slug: 'samsung',
+				name: 'Samsung',
+				brand: 'Samsung',
+				h1: 'Samsung Laptop Screen & Display Replacements',
+				title: 'Samsung Laptop Screen Replacement | NP Series, HD/FHD',
+				metaDescription:
+					'Replacement Samsung laptop screens for NP-series notebooks: HD and FHD panels in 30-pin and 40-pin. Match by panel part number and connector. Warranty, COD.',
+				intro: [
+					'Samsung notebook panels (and the panels Samsung manufactures for other brands) come in HD and FHD with different connectors. Match the panel part number, size, resolution and pin count from the back of the old screen.',
+					'Listings show the panel specs. Send your Samsung model or panel code for a fit check before dispatch.'
+				],
+				faqs: [
+					{
+						question: 'How do I match a Samsung laptop screen?',
+						answer:
+							'Read the panel part number on the back of the old screen and match size, resolution, pin count and connector position. The NP model is a backup clue.'
+					}
+				]
+			},
+			{
+				slug: 'msi',
+				name: 'MSI',
+				brand: 'MSI',
+				h1: 'MSI Laptop Screen & Display Replacements (Gaming Panels)',
+				title: 'MSI Laptop Screen Replacement | FHD, 120Hz+ Gaming Panels',
+				metaDescription:
+					'Replacement MSI laptop screens: FHD and high-refresh gaming panels with 40-pin connectors. Match by panel part number and refresh rate. Warranty, COD, delivery.',
+				intro: [
+					'MSI gaming laptops mostly use FHD high-refresh panels (120Hz and above) with 40-pin connectors. A standard 60Hz panel will not match a high-refresh model, so match the MSI panel part number, refresh rate and pin count from the old screen.',
+					'Each MSI display lists resolution, refresh rate and connector. Confirm the refresh rate before ordering.'
+				],
+				faqs: [
+					{
+						question: 'Can I put a 60Hz panel in a 120Hz MSI laptop?',
+						answer:
+							'Not reliably — high-refresh models use different panels and connectors. Match the MSI panel part number, refresh rate and pin count.'
+					}
+				]
 			}
 		]
 	},
@@ -794,6 +995,7 @@ export const landings: Landing[] = [
 		slug: 'laptop-ram-ssd',
 		name: 'Laptop RAM & SSD',
 		category: 'ssd',
+		categories: ['ram', 'ssd'],
 		h1: 'Laptop RAM & SSD Upgrades (DDR4 SODIMM, SATA & NVMe)',
 		title: 'Laptop RAM & SSD Upgrade Online (DDR4 SODIMM, SATA, NVMe)',
 		metaDescription:
@@ -835,6 +1037,88 @@ export const landings: Landing[] = [
 		],
 		relatedClusters: ['laptop-battery'],
 		relatedGuideSlugs: ['best-ssd-for-laptop', 'laptop-ram-upgrade-guide'],
+		brands: []
+	},
+	{
+		slug: 'laptop-dc-jack',
+		name: 'Laptop DC Jack',
+		category: 'dc_jacks',
+		h1: 'Laptop DC Jack & Charging Port Replacements',
+		title: 'Laptop DC Jack / Charging Port Replacement (HP, Dell, Lenovo, Acer)',
+		metaDescription:
+			'Replacement laptop DC jacks and charging ports for HP, Dell, Lenovo, Asus and Acer. Fix loose charging and "plugged in, not charging". Match by model. Warranty, COD.',
+		keywords: [
+			'laptop dc jack',
+			'laptop charging port',
+			'dc jack replacement',
+			'laptop power jack',
+			'laptop charging port repair'
+		],
+		intro: [
+			'If your laptop charges only when the cable is held at an angle, the port feels loose, or it stops charging after a knock to the plug, the DC jack (charging port) is usually the fault — not the charger or battery. The jack is a cheap part, though fitting it needs soldering or a connector swap depending on the model.',
+			'LapKart stocks DC jacks and charging-port cables for HP, Dell, Lenovo, Asus and Acer. Some models use a soldered jack on the board, others a jack-on-cable that plugs in. Match your laptop model and the existing jack type before ordering.',
+			'Each DC jack lists the fit and warranty, with COD at checkout and Tamil Nadu delivery from Rs 50 (free over Rs 2,000).'
+		],
+		faqs: [
+			{
+				question: 'How do I know if my DC jack is faulty?',
+				answer:
+					'Tell-tale signs: charging only at a certain cable angle, a wobbly port, sparking or heat at the plug, or intermittent charging that is not fixed by a known-good charger. Those point to the DC jack rather than the adapter.'
+			},
+			{
+				question: 'Is the DC jack soldered or a plug-in cable?',
+				answer:
+					'It depends on the model. Some laptops have a soldered jack on the motherboard; many newer ones use a jack-on-cable that connects to the board. The product page states the type; match it to your laptop.'
+			},
+			{
+				question: 'Can I replace a laptop DC jack myself?',
+				answer:
+					'A jack-on-cable is straightforward if you can open the laptop. A soldered jack needs soldering skills and is best done by a technician.'
+			}
+		],
+		relatedClusters: ['laptop-charger'],
+		relatedGuideSlugs: ['laptop-dc-jack-charging-port', 'laptop-charger-buying-guide'],
+		brands: []
+	},
+	{
+		slug: 'laptop-speaker',
+		name: 'Laptop Speaker',
+		category: 'speakers',
+		h1: 'Laptop Speaker Replacements (HP, Dell, Lenovo, Asus, Acer)',
+		title: 'Laptop Speaker Replacement Online (Left/Right Internal Speakers)',
+		metaDescription:
+			'Replacement internal laptop speakers for HP, Dell, Lenovo, Asus and Acer. Fix crackling, distorted or dead sound. Match by model and side. Warranty, COD, delivery.',
+		keywords: [
+			'laptop speaker',
+			'laptop speaker replacement',
+			'laptop speaker price',
+			'internal laptop speaker',
+			'laptop speaker not working'
+		],
+		intro: [
+			'Crackling, distorted, or completely dead internal sound (when headphones still work) usually means a blown internal speaker. Laptop speakers come as left/right pairs and are model-specific, so match your laptop model and the side you need.',
+			'LapKart stocks internal speaker sets for HP, Dell, Lenovo, Asus and Acer. Speakers differ by model, connector and mounting, so confirm the fit before ordering.',
+			'Each speaker set lists the fit and warranty, with COD at checkout and Tamil Nadu delivery from Rs 50 (free over Rs 2,000).'
+		],
+		faqs: [
+			{
+				question: 'How do I know if my laptop speaker is blown?',
+				answer:
+					'If sound is crackly or distorted at normal volume, or one side is dead, but headphones play cleanly, the internal speaker is the fault rather than the audio chip or drivers.'
+			},
+			{
+				question: 'Do I need both speakers or just one?',
+				answer:
+					'Speakers are usually sold as a left+right set, but some models offer single sides. If only one side is dead, you can often replace just that side — match the model and side.'
+			},
+			{
+				question: 'Is it the speaker or a software/driver problem?',
+				answer:
+					'Test with headphones and check the audio driver and volume mixer first. If headphones are clean and the internal sound is distorted or dead, replace the speaker.'
+			}
+		],
+		relatedClusters: ['laptop-keyboard'],
+		relatedGuideSlugs: [],
 		brands: []
 	}
 ];

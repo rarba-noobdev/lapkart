@@ -1310,6 +1310,123 @@ export const screenGuides: ScreenGuide[] = [
 			}
 		],
 		relatedGuideSlugs: ['type-c-laptop-charger-guide', 'laptop-charger-buying-guide']
+	},
+	{
+		slug: 'laptop-dc-jack-charging-port',
+		title: 'Laptop Charging Port / DC Jack Problems: Symptoms & Replacement',
+		shortTitle: 'DC jack / charging port',
+		description:
+			'Tell a faulty laptop DC jack (charging port) apart from a bad charger or battery, and know what a charging-port replacement involves.',
+		eyebrow: 'Charging diagnosis',
+		updatedAt: UPDATED_AT,
+		readTime: '5 min read',
+		primaryKeyword: 'laptop dc jack',
+		keywords: [
+			'laptop dc jack',
+			'laptop charging port',
+			'laptop charging port repair',
+			'laptop power jack',
+			'laptop not charging port'
+		],
+		productQuery: 'dc jack charging port',
+		productCategory: 'dc_jacks',
+		productCtaLabel: 'Browse DC jacks',
+		summary: [
+			'Charging only at a certain cable angle or a wobbly port points to the DC jack, not the charger.',
+			'Confirm the charger is good first with a known-good adapter.',
+			'Jacks are cheap; fitting may need soldering depending on the model.'
+		],
+		sections: [
+			{
+				title: 'Is it the jack, the charger, or the battery?',
+				body: [
+					'First test with a known-good charger of the correct rating. If charging is still loose or intermittent and the port physically wobbles, the DC jack is the likely fault. A laptop that runs only on AC points to the battery instead, and no lights at all can be the charger.'
+				],
+				checklist: [
+					'Charges only at an angle → DC jack',
+					'Wobbly / hot / sparking port → DC jack',
+					'Runs only on AC → battery',
+					'No lights with known-good charger → charger/jack'
+				]
+			},
+			{
+				title: 'Soldered jack vs jack-on-cable',
+				body: [
+					'Some laptops have the DC jack soldered directly to the motherboard; many newer models use a jack-on-cable that plugs into the board. A jack-on-cable is a straightforward swap once the laptop is open; a soldered jack needs soldering and is best left to a technician. Match your laptop model and the existing jack type before ordering.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'How do I know my laptop charging port is bad?',
+				answer:
+					'Charging only when the cable is held at an angle, a loose or wobbly port, heat or sparking at the plug, or intermittent charging not fixed by a known-good charger all point to the DC jack.'
+			},
+			{
+				question: 'Can a DC jack be replaced without soldering?',
+				answer:
+					'If your laptop uses a jack-on-cable, yes — it unplugs from the board. A soldered jack needs soldering. The product page states which type your model uses.'
+			}
+		],
+		relatedGuideSlugs: ['laptop-charger-buying-guide', 'laptop-not-turning-on']
+	},
+	{
+		slug: 'keyboard-keys-not-working',
+		title: 'Some Laptop Keyboard Keys Not Working? Clean, Repair or Replace',
+		shortTitle: 'Keys not working',
+		description:
+			'Why some laptop keys stop working, quick things to try, and when to replace the whole keyboard instead of fighting individual keys.',
+		eyebrow: 'Keyboard diagnosis',
+		updatedAt: UPDATED_AT,
+		readTime: '4 min read',
+		primaryKeyword: 'laptop keyboard keys not working',
+		keywords: [
+			'laptop keyboard keys not working',
+			'some keys not working on laptop',
+			'laptop keys not working',
+			'few keys not working on laptop'
+		],
+		productQuery: 'keyboard',
+		productCategory: 'keyboards',
+		productCtaLabel: 'Browse keyboards',
+		summary: [
+			'One stuck key can be cleaned; several dead keys usually mean a damaged membrane or ribbon.',
+			'Rule out software (language/filter keys) before assuming hardware.',
+			'After a spill, replacement is more reliable than drying.'
+		],
+		sections: [
+			{
+				title: 'Quick checks first',
+				body: [
+					'Before blaming the hardware, rule out software: check the keyboard language/layout, turn off Filter Keys (Windows), and test in a different app. Restart once. If the same physical keys fail everywhere and in the BIOS screen, it is a hardware fault.'
+				],
+				checklist: [
+					'Check language/layout',
+					'Turn off Filter Keys',
+					'Test in BIOS (pre-Windows)',
+					'Note which keys fail'
+				]
+			},
+			{
+				title: 'Clean, repair, or replace',
+				body: [
+					'A single sticky key can sometimes be cleaned or a keycap refitted. But when several keys fail, repeat, or a row is dead, the membrane or ribbon beneath is usually damaged — common after spills and wear. Replacing the whole keyboard restores every key at once and is the lasting fix. Match the variant (backlit, frame, connector) to your laptop.'
+				]
+			}
+		],
+		faqs: [
+			{
+				question: 'Why did only some of my laptop keys stop working?',
+				answer:
+					'Usually a damaged membrane or ribbon under those keys, often from a spill or wear. Software (Filter Keys, wrong layout) can also disable keys, so rule that out first.'
+			},
+			{
+				question: 'Should I replace the keyboard or just the keys?',
+				answer:
+					'One loose keycap can be refitted, but multiple dead keys mean the keyboard should be replaced for a reliable fix.'
+			}
+		],
+		relatedGuideSlugs: ['laptop-keyboard-replacement-guide', 'how-to-find-laptop-model-number']
 	}
 ];
 

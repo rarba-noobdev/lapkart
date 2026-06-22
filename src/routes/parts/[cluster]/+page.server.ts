@@ -9,21 +9,35 @@ export const load: PageServerLoad = async ({ locals, params, setHeaders }) => {
 	const landing = getLanding(params.cluster);
 	if (!landing) error(404, 'Page not found');
 
-	const products = landing.category
-		? await searchProducts(
-				{
-					category: landing.category,
-					query: landing.productQuery || undefined,
-					inStock: true,
-					sort: 'relevance',
-					limit: 12,
-					page: 1
-				},
-				locals.supabase
+	// Most landings use a single category; a few (RAM & SSD) merge several.
+	const cats = landing.categories ?? (landing.category ? [landing.category] : []);
+	let products = [] as Awaited<ReturnType<typeof searchProducts>>['products'];
+	if (cats.length) {
+		const results = await Promise.all(
+			cats.map((category) =>
+				searchProducts(
+					{
+						category,
+						query: landing.productQuery || undefined,
+						inStock: true,
+						sort: 'relevance',
+						limit: 12,
+						page: 1
+					},
+					locals.supabase
+				)
+					.then((r) => r.products)
+					.catch(() => [])
 			)
-				.then((r) => r.products)
-				.catch(() => [])
-		: [];
+		);
+		const seen = new Set<string>();
+		for (const p of results.flat()) {
+			if (seen.has(p.id)) continue;
+			seen.add(p.id);
+			products.push(p);
+		}
+		products = products.slice(0, 12);
+	}
 
 	const guides = landing.relatedGuideSlugs
 		.map((slug) => getGuideBySlug(slug))
