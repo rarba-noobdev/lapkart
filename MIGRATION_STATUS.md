@@ -8,7 +8,7 @@ What is in the SvelteKit app:
 - shared design system and Tailwind v4 styles
 - Supabase auth, cart, catalog, order, and admin data access
 - storefront routes: `/`, `/products`, `/product/[id]`, `/cart`
-- checkout with delivery pin capture, courier quoting, coupon preview, COD gating, and Razorpay handoff
+- checkout with delivery pin capture, manual delivery pricing, coupon preview, COD gating, and Razorpay handoff
 - account routes: `/login`, `/dashboard`, `/orders`, `/order/[id]`
 - static content routes
 - admin analytics, catalog CRUD, coupon CRUD, role/profile edits, fulfillment actions, support inbox, order lifecycle updates, returns, and refunds

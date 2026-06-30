@@ -4,14 +4,14 @@ This file tracks missing ecommerce features, why they matter, and implementation
 
 ## Research Summary
 
-LapKart already has the hard foundation: auth, role-based admin, catalog CRUD, Razorpay checkout, Ola Maps delivery selection, Shiprocket shipment creation, order tracking, and Supabase Realtime. The gaps are now mostly ecommerce trust, self-service, discovery, and admin workflow features.
+LapKart already has the hard foundation: auth, role-based admin, catalog CRUD, Razorpay checkout, Ola Maps delivery selection, manual fulfillment shipment creation, order tracking, and Supabase Realtime. The gaps are now mostly ecommerce trust, self-service, discovery, and admin workflow features.
 
 Research-backed priorities:
 
 - Product discovery must have faceted filters, visible applied filters, counts, and sorting. Baymard notes that filtering is foundational for helping users narrow large catalogs and that weak filters cause abandonment.
 - Checkout and post-order flows must make costs, delivery dates, cancellation rules, return rules, and refund state clear before and after payment.
 - Cancellation should be state-aware. Shopify's order management docs distinguish cancellation from archive/delete and tie cancellation behavior to fulfillment/payment state.
-- Returns should be a workflow, not just a label. Shiprocket describes return processing as buyer request, seller decision, reverse shipment, pickup, tracking, warehouse acknowledgement, refund, and restock.
+- Returns are a workflow: buyer request, staff decision, reverse shipment, pickup, receipt, refund, and restock.
 - Refunds need gateway integration. Razorpay refunds can be created only for captured payments and may be full or partial.
 - Product pages should expose shipping and return policy data clearly. Google Search Central recommends product structured data and ecommerce policy data such as shipping details and merchant return policy.
 
@@ -21,7 +21,6 @@ Sources:
 - Baymard checkout UX: https://baymard.com/learn/checkout-flow-ux-optimization
 - Shopify canceling orders: https://help.shopify.com/en/manual/fulfillment/managing-orders/canceling-orders
 - Shopify refunding orders: https://help.shopify.com/en/manual/fulfillment/managing-orders/refunding-orders
-- Shiprocket returns FAQ/support: https://www.shiprocket.in/faq/ and https://support.shiprocket.in/support/solutions/articles/152000000719-how-does-the-return-process-work-
 - Razorpay refunds API: https://razorpay.com/docs/api/refunds
 - Google product structured data: https://developers.google.com/search/docs/appearance/structured-data/product
 
@@ -31,7 +30,7 @@ Sources:
 | -------- | ---------------------------------------------- | --------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
 | P0       | Product filters and sort                       | Finds the right part faster                         | Fewer support questions                        | Shipped                                                          |
 | P0       | Order cancellation request flow                | Self-service cancellation before shipment           | Admin approve/reject and stop fulfillment      | Shipped                                                          |
-| P0       | Return request flow                            | Clear post-delivery return path                     | Admin decision, reverse pickup, refund/restock | Shipped with Shiprocket reverse pickup creation                  |
+| P0       | Return request flow                            | Clear post-delivery return path                     | Admin decision, reverse pickup, refund/restock | Shipped with manual reverse pickup creation                     |
 | P0       | Refund records and Razorpay refund action      | Transparent refund status                           | Safer refund audit trail                       | Shipped                                                          |
 | P1       | Public policy pages                            | Trust and Razorpay review readiness                 | Lower compliance friction                      | Shipped                                                          |
 | P1       | Product structured data                        | Better SEO/merchant eligibility                     | Cleaner catalog metadata                       | Shipped                                                          |
@@ -78,7 +77,7 @@ Minimum scope:
 - Customer can request cancellation only for paid orders that are not shipped/delivered/cancelled.
 - Admin can approve or reject.
 - Approval sets order status to `cancelled`, blocks shipment creation, and creates/refers to refund workflow.
-- If shipment already exists, admin must cancel Shiprocket shipment or reject with reason.
+- If a shipment already exists, admin must cancel it or reject with reason.
 
 Shipped:
 
@@ -95,7 +94,7 @@ Minimum scope:
 - Customer can request return only after delivery and inside policy window.
 - Capture reason, photos, selected items, condition notes.
 - Admin can approve/reject.
-- Approval creates reverse shipment flow through Shiprocket when available.
+- Approval creates a manual reverse-shipment flow.
 - Warehouse receipt marks item received, then refund/restock decision is recorded.
 
 Shipped:
@@ -103,7 +102,7 @@ Shipped:
 - Supabase `return_requests` and `return_request_items` with RLS and Realtime.
 - Customer order detail can request returns for delivered orders inside the policy window.
 - Admin order workflow can approve/reject/mark received and trigger refund.
-- Admin order workflow can create a Shiprocket reverse pickup for approved returns using Shiprocket's return-order API.
+- Admin order workflow can create a manual reverse pickup for approved returns.
 - Reverse shipments are stored separately from outbound shipments so customer delivery tracking does not get overwritten by return logistics.
 
 ### Refunds
@@ -196,7 +195,7 @@ Pending:
 
 Shipped:
 
-- Checkout summary receives a backend delivery promise based on the selected Shiprocket Quick or standard courier estimate.
+- Checkout summary receives a backend delivery promise based on the selected quick or standard estimate.
 - Paid and COD orders store `delivery_promise_snapshot` with source, selected courier, route estimate, single-origin dispatch queue, stock status, and customer-facing promise text.
 - The app does not show hub-level promises because no delivery hubs exist yet.
 
@@ -210,12 +209,12 @@ Shipped:
 
 - Admin fulfillment queue supports selecting multiple outbound shipments.
 - Bulk AWB assignment, pickup scheduling, label generation, and tracking refresh are handled by the backend and logged in `shipping_batches` / `shipping_batch_items`.
-- Shiprocket live tracking refresh can be run per shipment or in bulk, and webhook tracking events continue to update `shipment_events` in realtime.
+- Manual tracking refresh can be run per shipment or in bulk, with status history stored in `shipment_events`.
 
 ## Rerun Inputs
 
 workflow: firecrawl-deep-research
-topic: ecommerce missing features for LapKart, a laptop-parts ecommerce app with Supabase, Razorpay, Shiprocket, and Ola Maps
+topic: ecommerce missing features for LapKart, a laptop-parts ecommerce app with Supabase, Razorpay, manual logistics, and Ola Maps
 depth: quick due Firecrawl hosted search credit error, with browser search fallback
 output: markdown tracker plus incremental implementation
 

@@ -1674,9 +1674,9 @@ export type Database = {
 					shipping_charge: number | null;
 					shipping_direction: string;
 					shipping_service_type: string;
-					shiprocket_channel_order_id: string | null;
-					shiprocket_order_id: number | null;
-					shiprocket_shipment_id: number | null;
+					provider_order_id: number | null;
+					provider_reference_id: string | null;
+					provider_shipment_id: number | null;
 					status: string;
 					tracking_url: string | null;
 					updated_at: string;
@@ -1712,9 +1712,9 @@ export type Database = {
 					shipping_charge?: number | null;
 					shipping_direction?: string;
 					shipping_service_type?: string;
-					shiprocket_channel_order_id?: string | null;
-					shiprocket_order_id?: number | null;
-					shiprocket_shipment_id?: number | null;
+					provider_order_id?: number | null;
+					provider_reference_id?: string | null;
+					provider_shipment_id?: number | null;
 					status?: string;
 					tracking_url?: string | null;
 					updated_at?: string;
@@ -1750,9 +1750,9 @@ export type Database = {
 					shipping_charge?: number | null;
 					shipping_direction?: string;
 					shipping_service_type?: string;
-					shiprocket_channel_order_id?: string | null;
-					shiprocket_order_id?: number | null;
-					shiprocket_shipment_id?: number | null;
+					provider_order_id?: number | null;
+					provider_reference_id?: string | null;
+					provider_shipment_id?: number | null;
 					status?: string;
 					tracking_url?: string | null;
 					updated_at?: string;

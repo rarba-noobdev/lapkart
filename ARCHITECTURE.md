@@ -10,10 +10,10 @@ LapKart is a Vite React e-commerce frontend with a Node/Express API and Supabase
 
 ## Backend
 
-- `api/src/server.ts` exposes commerce API contracts for Razorpay orders, Razorpay signature verification, Ola Maps address lookup and routes, Shiprocket standard and Quick quotes, Shiprocket shipment administration, storage uploads, fraud-risk scoring, and admin analytics.
+- `supabase/functions/api/index.ts` exposes commerce contracts for Razorpay, Ola Maps, delivery estimates, manual shipment administration, storage uploads, fraud-risk scoring, and admin analytics.
 - `api/src/payments.ts` centralizes Razorpay order creation and verification.
 - `api/src/ola-maps.ts` centralizes Ola Maps OAuth, autocomplete, reverse geocoding, and route estimates.
-- `api/src/shiprocket.ts` centralizes Shiprocket authentication, standard courier quotes, Quick hyperlocal quotes, and shipment payloads.
+- Manual shipment records and staff actions are handled directly by the Edge Function and Postgres.
 - `api/src/risk.ts` contains deterministic payment risk scoring.
 
 ## Supabase
@@ -27,8 +27,8 @@ LapKart is a Vite React e-commerce frontend with a Node/Express API and Supabase
 ## Delivery
 
 - Ola Maps resolves the checkout address and estimates driving distance and time.
-- Shiprocket standard courier estimates and Shiprocket Quick hyperlocal estimates are requested before payment.
-- Quick estimates use Shiprocket's documented hyperlocal serviceability parameters, including pickup and drop coordinates.
+- Delivery estimates are calculated from the configured dispatch point and Ola Maps route data.
+- Standard and quick delivery choices are stored as order estimates; staff dispatch remains manual.
 - The selected delivery type is persisted as `standard` or `quick` on the order and shipment.
 
 ## Deployment
@@ -51,10 +51,11 @@ Edge Function:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
-- `SHIPROCKET_EMAIL`
-- `SHIPROCKET_PASSWORD`
-- `SHIPROCKET_PICKUP_LOCATION`
-- `SHIPROCKET_WEBHOOK_TOKEN`
+- `MANUAL_PICKUP_LOCATION`
+- `MANUAL_DEFAULT_WEIGHT_KG`
+- `MANUAL_DEFAULT_LENGTH_CM`
+- `MANUAL_DEFAULT_BREADTH_CM`
+- `MANUAL_DEFAULT_HEIGHT_CM`
 - `LAPKART_DISPATCH_PINCODE`
 - `LAPKART_DISPATCH_LATITUDE`
 - `LAPKART_DISPATCH_LONGITUDE`

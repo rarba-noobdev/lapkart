@@ -1,7 +1,7 @@
 -- admin_cancel_order() inserts admin_order_events rows with
 -- event_type = 'admin_cancelled_order', but the check constraint only allowed
 -- the manual editor's event types. Every admin cancellation therefore rolled
--- back with a constraint violation while the Shiprocket shipment (cancelled
+-- back with a constraint violation while the manual shipment (cancelled
 -- outside the transaction) was already gone. Widen the constraint to cover the
 -- RPC's event type.
 

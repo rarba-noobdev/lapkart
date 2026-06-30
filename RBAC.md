@@ -1,4 +1,4 @@
-# LapKart Roles & Permissions Specification
+﻿# LapKart Roles & Permissions Specification
 
 ## Customer (User) Interaction Flow
 
@@ -22,9 +22,9 @@
    - ✅ _User can_ enter their delivery address or pick a location via the Ola Maps interface. The system should reverse-geocode and validate the address.
    - ❌ _User cannot_ enter an invalid or unsupported address (the map/address fields must validate input). Users cannot skip providing a delivery address when required.
 
-6. **Fetch Courier Options:**
-   - ✅ _System automatically_ fetches available courier and shipping options (via Shiprocket/Ola Maps) for the given delivery address before payment. The user can then select a shipping option.
-   - ❌ _User cannot_ bypass courier selection; cannot choose a courier service that isn’t offered for their location.
+6. **Fetch Delivery Options:**
+   - ✅ _System automatically_ calculates manual delivery options using dispatch rules and Ola Maps route data before payment.
+   - ❌ _User cannot_ bypass delivery selection; cannot choose a delivery option that isn’t offered for their location.
 
 7. **Checkout & Payment (`/checkout`):**
    - ✅ _User can_ review the order summary (items, totals, shipping), apply a coupon code, and select a payment method (Razorpay or eligible COD).
@@ -50,7 +50,7 @@
     - ❌ _User cannot_ see anyone else’s orders or their details.
 
 13. **View Order Details (`/order/[id]`):**
-    - ✅ _User can_ view details of their own order (items, price breakdown, shipping address, current status, tracking info from Shiprocket).
+    - ✅ _User can_ view details of their own order, including current shipment status and tracking history.
     - ❌ _User cannot_ edit any order information here. They also cannot cancel or return the order unless the order status allows it (see below).
 
 14. **Order Cancellation (User):**
@@ -124,8 +124,8 @@
    - ✅ _Admin can_ initiate and process returns for delivered orders, marking items as returned and issuing refunds as needed.
    - ❌ _Admin should not_ delete orders from the database in normal operation (except for test or import-only cases).
 
-10. **Shiprocket Fulfillment:**
-    - ✅ _Admin can_ create shipments via Shiprocket for orders (generate airway bills, labels, schedule pickups).
+10. **Manual Fulfillment:**
+    - ✅ _Admin can_ create shipments for orders, assign airway bills, and schedule pickups.
     - ✅ _Admin can_ update tracking numbers and shipment statuses (by fetching updates or manually entering data).
     - ❌ _Admin cannot_ create multiple shipments for the same order lines (no duplicate fulfillment).
     - ❌ _Admin cannot_ create a shipment for a canceled or already delivered order.
@@ -203,8 +203,8 @@ LapKart uses strict RBAC: permissions are granted by role, not per user. We have
   - ❌ _Admin cannot_ cancel or refund an order once it is shipped/delivered. The **Cancel** action should be disabled in the admin UI for such orders. Backend must enforce this (reject the request if state is already shipped).
   - ❌ _Admin cannot_ modify order contents (items, quantities, original price, shipping address, or payment method) after order creation. Order data is immutable.
 
-- **Shiprocket Fulfillment:**
-  - ✅ _Admin can_ create shipments via Shiprocket (AWB, labels, pickup) and update tracking info.
+- **Manual Fulfillment:**
+  - ✅ _Admin can_ create shipments, manage AWBs and pickups, and update tracking information.
   - ❌ _Admin cannot_ create multiple shipments for the same order lines or for already completed orders. Cannot void or reuse a label incorrectly.
 
 - **Support & Notifications:**

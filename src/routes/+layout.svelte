@@ -11,6 +11,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import MobileTabBar from '$lib/components/MobileTabBar.svelte';
 	import NavigationLoader from '$lib/components/NavigationLoader.svelte';
+	import NativeOnboarding from '$lib/components/NativeOnboarding.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import RouteSkeleton from '$lib/components/RouteSkeleton.svelte';
 	import CookieConsent from '$lib/components/CookieConsent.svelte';
@@ -157,6 +158,8 @@
 </svelte:head>
 
 <NavigationLoader />
+
+<NativeOnboarding />
 
 <OfflineBanner />
 

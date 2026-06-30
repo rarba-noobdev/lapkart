@@ -12,7 +12,7 @@ export type FulfillmentShipment = {
 	id: string;
 	shippingServiceType: 'standard' | 'quick';
 	status: string;
-	shiprocketShipmentId: number | null;
+	providerReferenceId: string | null;
 	awbCode: string | null;
 	courierName: string | null;
 	pickupScheduledDate: string | null;
@@ -44,8 +44,8 @@ export type FulfillmentOrder = {
 	shipment: FulfillmentShipment | null;
 };
 
-export type ShiprocketAccount = {
-	walletBalance: number;
+export type ManualFulfillmentAccount = {
+	mode: 'manual';
 	configuredPickupLocation: string;
 	pickupLocationVerified: boolean;
 	pickupLocations: Array<{

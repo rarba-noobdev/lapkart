@@ -70,8 +70,7 @@ insert into public.feature_flags (key, enabled, description)
 values
   ('razorpay_payments', true, 'Allow Razorpay payment order creation and completion'),
   ('cod', true, 'Allow cash-on-delivery checkout'),
-  ('coupons', true, 'Allow coupon validation and redemption during checkout'),
-  ('shiprocket', true, 'Allow Shiprocket courier quotes and shipment creation'),
+	('coupons', true, 'Allow coupon validation and redemption during checkout'),
   ('new_checkout', true, 'Allow the current checkout flow'),
   ('maintenance_mode', false, 'Block checkout and admin mutations during emergency maintenance')
 on conflict (key) do nothing;

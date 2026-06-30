@@ -45,7 +45,7 @@ Date: 2026-06-07
   - Checkout/map component fetches remain client-side because they depend on cart state, user-entered address, browser geolocation, and deliberate checkout actions.
   - Address and estimate fetches are now bounded, abortable where appropriate, and cached by stable keys.
 - Security/browser fetches:
-  - Razorpay payment order, COD order, checkout completion, Ola autocomplete/reverse geocode, and Shiprocket delivery estimate flows still go through backend endpoints.
+  - Razorpay payment order, COD order, checkout completion, Ola autocomplete/reverse geocode, and manual fulfillment delivery estimate flows still go through backend endpoints.
   - No service-role key is used in browser code.
   - Razorpay Checkout script remains client-side by design because it is the provider UI.
 - Query optimizations:
@@ -81,4 +81,4 @@ Date: 2026-06-07
   - `rg -F "select('*')" src supabase` / `rg -F 'select("*")' src supabase`: no `src` matches; remaining matches are backend `supabase/functions/api/index.ts` internals listed above.
   - `rg "\.channel\(|\.subscribe\(" src`: subscriptions are present in root profile, admin shell, order detail, cart store, and lazy admin section managers; all realtime channels added/modified in this pass have cleanup.
   - `rg "supabase\.from\(|supabase\.rpc\(|fetch\(" src/routes src/lib src/lib/components supabase/functions/api`: reviewed; remaining client fetches are deliberate user/action/location/provider flows.
-  - `rg "Razorpay|Shiprocket|OLA|Ola|service_role|SERVICE_ROLE" src supabase api`: reviewed; service-role values remain server-side config/migrations, provider calls remain backend except Razorpay Checkout UI and public Ola static-map key usage.
+  - `rg "Razorpay|manual fulfillment|OLA|Ola|service_role|SERVICE_ROLE" src supabase api`: reviewed; service-role values remain server-side config/migrations, provider calls remain backend except Razorpay Checkout UI and public Ola static-map key usage.

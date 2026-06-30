@@ -1,4 +1,4 @@
--- Shiprocket/logistics schema for multi-order fulfillment.
+-- Manual fulfillment/logistics schema for multi-order fulfillment.
 -- Credentials stay in backend environment variables, not in database tables.
 
 create or replace function public.set_updated_at()
@@ -42,7 +42,7 @@ alter table public.products
 
 create table if not exists public.shipping_pickup_locations (
   id uuid primary key default gen_random_uuid(),
-  provider text not null default 'shiprocket',
+  provider text not null default 'manual',
   provider_location_id text,
   pickup_location text not null,
   contact_name text,
@@ -60,7 +60,7 @@ create table if not exists public.shipping_pickup_locations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  constraint shipping_pickup_locations_provider_chk check (provider in ('shiprocket')),
+  constraint shipping_pickup_locations_provider_chk check (provider in ('manual')),
   constraint shipping_pickup_locations_pincode_chk check (pincode ~ '^[0-9]{6}$'),
   constraint shipping_pickup_locations_unique_name unique (provider, pickup_location)
 );
@@ -72,14 +72,14 @@ create unique index if not exists shipping_pickup_locations_one_default_idx
 create table if not exists public.shipments (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
-  provider text not null default 'shiprocket',
+  provider text not null default 'manual',
   pickup_location_id uuid references public.shipping_pickup_locations(id) on delete set null,
   shipment_number integer not null default 1,
 
   status text not null default 'pending',
-  shiprocket_order_id bigint,
-  shiprocket_shipment_id bigint,
-  shiprocket_channel_order_id text,
+  provider_order_id bigint,
+  provider_shipment_id bigint,
+  provider_reference_id text,
   awb_code text,
   courier_company_id integer,
   courier_name text,
@@ -110,7 +110,7 @@ create table if not exists public.shipments (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  constraint shipments_provider_chk check (provider in ('shiprocket')),
+  constraint shipments_provider_chk check (provider in ('manual')),
   constraint shipments_number_chk check (shipment_number > 0),
   constraint shipments_status_chk check (status in (
     'pending',
@@ -139,13 +139,13 @@ create table if not exists public.shipments (
   constraint shipments_unique_order_number unique (order_id, shipment_number)
 );
 
-create unique index if not exists shipments_shiprocket_order_id_idx
-  on public.shipments(provider, shiprocket_order_id)
-  where shiprocket_order_id is not null;
+create unique index if not exists shipments_provider_order_id_idx
+  on public.shipments(provider, provider_order_id)
+  where provider_order_id is not null;
 
-create unique index if not exists shipments_shiprocket_shipment_id_idx
-  on public.shipments(provider, shiprocket_shipment_id)
-  where shiprocket_shipment_id is not null;
+create unique index if not exists shipments_provider_shipment_id_idx
+  on public.shipments(provider, provider_shipment_id)
+  where provider_shipment_id is not null;
 
 create unique index if not exists shipments_awb_code_idx
   on public.shipments(provider, awb_code)
@@ -184,7 +184,7 @@ create index if not exists shipment_packages_shipment_id_idx on public.shipment_
 create table if not exists public.shipment_events (
   id uuid primary key default gen_random_uuid(),
   shipment_id uuid references public.shipments(id) on delete cascade,
-  provider text not null default 'shiprocket',
+  provider text not null default 'manual',
   awb_code text,
   status text not null,
   status_code integer,
@@ -194,7 +194,7 @@ create table if not exists public.shipment_events (
   raw_payload jsonb not null default '{}'::jsonb,
   received_at timestamptz not null default now(),
 
-  constraint shipment_events_provider_chk check (provider in ('shiprocket'))
+  constraint shipment_events_provider_chk check (provider in ('manual'))
 );
 
 create index if not exists shipment_events_shipment_id_idx on public.shipment_events(shipment_id, received_at desc);
@@ -203,7 +203,7 @@ create index if not exists shipment_events_status_code_idx on public.shipment_ev
 
 create table if not exists public.shipping_batches (
   id uuid primary key default gen_random_uuid(),
-  provider text not null default 'shiprocket',
+  provider text not null default 'manual',
   batch_type text not null,
   status text not null default 'pending',
   requested_by uuid references auth.users(id) on delete set null,
@@ -221,7 +221,7 @@ create table if not exists public.shipping_batches (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  constraint shipping_batches_provider_chk check (provider in ('shiprocket')),
+  constraint shipping_batches_provider_chk check (provider in ('manual')),
   constraint shipping_batches_type_chk check (batch_type in (
     'create_orders',
     'assign_awb',
@@ -367,9 +367,9 @@ create policy "admins manage shipping batch items"
   using (public.has_role(auth.uid(), 'admin'::public.app_role))
   with check (public.has_role(auth.uid(), 'admin'::public.app_role));
 
-comment on table public.shipping_pickup_locations is 'Shiprocket pickup locations configured by admins. Does not store API credentials.';
-comment on table public.shipments is 'Provider shipment records linked to LapKart orders. Stores Shiprocket IDs, AWB, courier, labels, and status.';
-comment on table public.shipment_packages is 'Package dimensions and declared value used when creating Shiprocket shipments.';
-comment on table public.shipment_events is 'Tracking and webhook events from logistics providers.';
+comment on table public.shipping_pickup_locations is 'Manual fulfillment pickup locations configured by admins. Does not store API credentials.';
+comment on table public.shipments is 'Provider shipment records linked to LapKart orders. Stores Manual fulfillment IDs, AWB, courier, labels, and status.';
+comment on table public.shipment_packages is 'Package dimensions and declared value used when creating Manual fulfillment shipments.';
+comment on table public.shipment_events is 'Manual shipment status events recorded by LapKart operations.';
 comment on table public.shipping_batches is 'Admin bulk fulfillment jobs for multiple orders or shipments.';
 comment on table public.shipping_batch_items is 'Per-order/per-shipment result rows for a bulk fulfillment job.';

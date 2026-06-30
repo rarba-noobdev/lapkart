@@ -12,13 +12,13 @@
 		toneClasses,
 		statusTone,
 		type FulfillmentOrder,
-		type ShiprocketAccount
+		type ManualFulfillmentAccount
 	} from '$lib/admin';
 
 	const auth = getAuthContext();
 
 	let orders = $state<FulfillmentOrder[]>([]);
-	let account = $state<ShiprocketAccount | null>(null);
+	let account = $state<ManualFulfillmentAccount | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let activeAction = $state<string | null>(null);
@@ -65,7 +65,7 @@
 			if (showLoading) loading = true;
 			error = null;
 			const [accountResponse, queueResponse] = await Promise.allSettled([
-				requestAdmin<ShiprocketAccount>('/shiprocket/account'),
+				requestAdmin<ManualFulfillmentAccount>('/manual-fulfillment/account'),
 				requestAdmin<{ orders: FulfillmentOrder[] }>('/admin/fulfillment/orders')
 			]);
 			if (queueResponse.status === 'rejected') throw queueResponse.reason;
@@ -149,7 +149,7 @@
 
 		await runAction(
 			'bulk:create_orders',
-			'/shipments/shiprocket/bulk',
+			'/shipments/manual/bulk',
 			postJson({ action: 'create_orders', orderIds: creatableOrderIds })
 		);
 		selectedOrderIds = [];
@@ -165,7 +165,7 @@
 
 		await runAction(
 			`bulk:${action}`,
-			'/shipments/shiprocket/bulk',
+			'/shipments/manual/bulk',
 			postJson({ action, shipmentIds: selectedShipmentIds })
 		);
 		selectedOrderIds = [];
@@ -282,7 +282,7 @@
 			<div class="fq-stat">
 				<span class="fq-stat-label">Provider</span>
 				<span class="fq-stat-value">
-					{account ? `Shiprocket ${formatINR(account.walletBalance)}` : 'Manual'}
+					Manual
 				</span>
 			</div>
 			<div class="fq-stat">
@@ -516,7 +516,7 @@
 										onclick={() =>
 											void runAction(
 												createKey,
-												'/shipments/shiprocket/create',
+											'/shipments/manual/create',
 												postJson({ orderId: order.id })
 											)}
 									>
@@ -532,7 +532,7 @@
 										onclick={() =>
 											void runAction(
 												awbKey,
-												'/shipments/shiprocket/assign-awb',
+											'/shipments/manual/assign-awb',
 												postJson({ shipmentId: shipment.id })
 											)}
 									>
@@ -552,7 +552,7 @@
 										onclick={() =>
 											void runAction(
 												pickupKey,
-												'/shipments/shiprocket/pickup',
+											'/shipments/manual/pickup',
 												postJson({ shipmentId: shipment.id })
 											)}
 									>
@@ -560,13 +560,13 @@
 									</button>
 								{/if}
 
-								{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
+								{#if shipment && !shipmentCancelled}
 									<button
 										type="button"
 										class="fq-btn fq-btn-sm"
 										disabled={busy}
 										onclick={() =>
-											void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
+											void runAction(trackingKey, `/shipments/manual/${shipment.id}/tracking`)}
 									>
 										{activeAction === trackingKey ? 'Refreshing...' : 'Tracking'}
 									</button>
@@ -731,7 +731,7 @@
 							onclick={() =>
 								void runAction(
 									createKey,
-									'/shipments/shiprocket/create',
+									'/shipments/manual/create',
 									postJson({ orderId: detailOrder.id })
 								)}
 						>
@@ -746,7 +746,7 @@
 							onclick={() =>
 								void runAction(
 									awbKey,
-									'/shipments/shiprocket/assign-awb',
+									'/shipments/manual/assign-awb',
 									postJson({ shipmentId: shipment.id })
 								)}
 						>
@@ -765,20 +765,20 @@
 							onclick={() =>
 								void runAction(
 									pickupKey,
-									'/shipments/shiprocket/pickup',
+									'/shipments/manual/pickup',
 									postJson({ shipmentId: shipment.id })
 								)}
 						>
 							{activeAction === pickupKey ? 'Scheduling...' : 'Schedule pickup'}
 						</button>
 					{/if}
-					{#if shipment?.shiprocketShipmentId && !shipmentCancelled}
+					{#if shipment && !shipmentCancelled}
 						<button
 							type="button"
 							class="fq-btn"
 							disabled={busy}
 							onclick={() =>
-								void runAction(trackingKey, `/shipments/shiprocket/${shipment.id}/tracking`)}
+								void runAction(trackingKey, `/shipments/manual/${shipment.id}/tracking`)}
 						>
 							{activeAction === trackingKey ? 'Refreshing...' : 'Refresh tracking'}
 						</button>

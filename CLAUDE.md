@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-LapKart is a SvelteKit 2 ecommerce storefront for laptop replacement parts. It includes a customer-facing catalog with search, cart, checkout (Razorpay + COD), order tracking, and a staff-facing admin dashboard for orders, fulfillment (Shiprocket), catalog, and support. Mobile builds use Capacitor for Android.
+LapKart is a SvelteKit 2 ecommerce storefront for laptop replacement parts. It includes a customer-facing catalog with search, cart, checkout (Razorpay + COD), order tracking, and a staff-facing admin dashboard for orders, fulfillment (manual fulfillment), catalog, and support. Mobile builds use Capacitor for Android.
 
 ## Commands
 
@@ -28,7 +28,7 @@ No test suite exists. No vitest or playwright config.
 - **Auth:** Supabase Auth (email/password), server-side session via cookies
 - **Search:** Supabase PostgreSQL full-text/trigram search with basic query fallback
 - **Payments:** Razorpay (client-side SDK loaded on `window.Razorpay`)
-- **Logistics:** Shiprocket integration for shipments/tracking
+- **Logistics:** manual fulfillment integration for shipments/tracking
 - **Maps:** Ola Maps for address picker and delivery estimates
 - **Deploy:** Vercel (adapter-vercel when `VERCEL` env set, adapter-auto otherwise)
 - **Mobile:** Capacitor Android app in `android/`, app ID `com.lapkart.store`.
@@ -66,7 +66,7 @@ No external search service is required. Catalog edits are immediately searchable
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `$lib/products.ts` | Product queries: list, get, search, related items. `normalizeProductRow()` converts DB rows to `Product` type.                  |
 | `$lib/orders.ts`   | Customer order queries: list (paginated), get by ID. Joins order_items, shipments, payments.                                    |
-| `$lib/admin.ts`    | Admin operations: order management, fulfillment (Shiprocket), stock/pricing updates, coupon CRUD, role management, support Q&A. |
+| `$lib/admin.ts`    | Admin operations: order management, fulfillment (manual fulfillment), stock/pricing updates, coupon CRUD, role management, support Q&A. |
 | `$lib/cart.ts`     | Client-side cart store (Svelte writable). localStorage-backed with `hydrateCart()` on mount.                                    |
 | `$lib/catalog.ts`  | Static category list (16 categories), `Product` type, `discountPct()`, `formatINR()`.                                           |
 

@@ -63,7 +63,7 @@ That should be enough for a **truthful 2–4 hour promise** across most high-val
 
 On the national backdrop, India quick commerce had already become a **$10B+ GMV market with 30M+ monthly users** by mid-2025, and public executives now openly say the sector is unlikely to sustain as many players as it has today. That matters for LapKart in two ways. First, the model is no longer speculative. Second, a small vertical player should not imitate mass-market quick-commerce economics. The sustainable path is **higher-AOV, lower-SKU, higher-trust, same-city parts fulfillment**, not grocery-style discounting. citeturn39search0turn39news39
 
-One final Chennai-specific caveat is operationally critical: in February 2026, Tamil Nadu authorities moved against app-based platforms using **passenger two-wheelers and autos for goods delivery**, with penalties and seizures threatened for violations. That means LapKart should **not** design its 2–4 hour SLA around a legally shaky bike-delivery assumption. Your fastest reliable architecture is a compliant mix of **goods-carriage partners, mini-cargo EVs/LCVs, or an enterprise dispatch partner with the right vehicle compliance**, with Shiprocket reserved for non-hyperlocal or fallback lanes. citeturn40news39
+One final Chennai-specific caveat is operationally critical: in February 2026, Tamil Nadu authorities moved against app-based platforms using **passenger two-wheelers and autos for goods delivery**, with penalties and seizures threatened for violations. That means LapKart should **not** design its 2–4 hour SLA around a legally shaky bike-delivery assumption. Your fastest reliable architecture is a compliant mix of **goods-carriage partners, mini-cargo EVs/LCVs, or an enterprise dispatch partner with the right vehicle compliance**, with manual fulfillment reserved for non-hyperlocal or fallback lanes. citeturn40news39
 
 ## Competitive Landscape and LapKart's Edge
 
@@ -315,7 +315,7 @@ On COD, the answer is **yes, but narrowly**. Public Indian e-commerce signals st
 
 That gives you trust without importing fashion-level COD losses into a technical category. citeturn38search3turn38search15turn37search2turn37search6turn37search4turn37search5
 
-For live tracking, my recommendation for the first **100 orders/day** is not Shiprocket-only. It is a lightweight hybrid:
+For live tracking, my recommendation for the first **100 orders/day** is not manual fulfillment-only. It is a lightweight hybrid:
 
 - **Dispatch admin:** assign rider, mark pick start, pick complete, out for delivery, delivered
 - **Rider app / PWA:** GPS ping every 10–15 seconds, proof-of-delivery capture
@@ -359,7 +359,7 @@ One non-negotiable note: Chennai’s 2026 regulatory scrutiny around using passe
 | Saved parts + quick reorder | Very high | Low | order-template model | repeat-order time; repeat purchase rate |
 | DOA claim flow | High | Medium | media upload + policy logic | DOA resolution time; claim dispute rate |
 | Promise SLA dashboard | High | Medium | delivery event instrumentation | on-time promise %; late-order % |
-| Split routing logic: local quick vs Shiprocket standard | High | Medium | order-routing service | % Chennai orders using quick lane |
+| Split routing logic: local quick vs manual fulfillment standard | High | Medium | order-routing service | % Chennai orders using quick lane |
 
 ### Sprint three
 

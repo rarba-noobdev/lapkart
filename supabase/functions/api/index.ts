@@ -3,24 +3,6 @@ import { z } from 'npm:zod@3.24.2';
 import { config } from './config.ts';
 import { autocompleteOlaPlaces, getOlaDeliveryRoute, reverseGeocodeOlaPlace } from './ola-maps.ts';
 import { createRazorpayOrder, createRazorpayRefund, verifyRazorpaySignature } from './payments.ts';
-import {
-	assignShiprocketAwb,
-	cancelShiprocketOrder,
-	cancelShiprocketShipment,
-	createShiprocketOrder,
-	createShiprocketReturnOrder,
-	generateShiprocketLabels,
-	generateShiprocketManifest,
-	getShiprocketOrderDetails,
-	getShiprocketPickupLocations,
-	getShiprocketToken,
-	getShiprocketTracking,
-	getShiprocketWalletBalance,
-	requestShiprocketPickup,
-	toShiprocketOrderPayload,
-	toShiprocketReturnOrderPayload,
-	type ShiprocketPickupAddress
-} from './shiprocket.ts';
 
 const supabaseAdmin =
 	config.supabaseUrl && config.supabaseServiceRoleKey
@@ -229,6 +211,7 @@ const manualDeliveryRegion = 'Tamil Nadu';
 const manualDeliveryCutoffHourIst = 17;
 const manualCodFee = 40;
 const manualCodMaxOrderValue = 4000;
+const manualLogisticsProvider = 'manual';
 const istOffsetMs = 5.5 * 60 * 60 * 1000;
 const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -253,7 +236,7 @@ const defaultCommerceSettings: CommerceSettings = {
 	manualDeliveryFreeSubtotal,
 	manualDeliveryRegion,
 	manualDeliveryCutoffHourIst,
-	defaultPackageWeightKg: config.shiprocketDefaultWeightKg,
+	defaultPackageWeightKg: config.manualDefaultWeightKg,
 	codFee: manualCodFee,
 	codMaxOrderValue: manualCodMaxOrderValue
 };
@@ -305,7 +288,7 @@ const fraudScoreSchema = z.object({
 	accountAgeDays: z.number().optional()
 });
 
-const createShiprocketShipmentSchema = z.object({
+const createManualShipmentSchema = z.object({
 	orderId: z.string().uuid(),
 	pickupLocation: z.string().trim().min(1).optional(),
 	package: z
@@ -1152,151 +1135,10 @@ function isRazorpayAuthError(error: unknown) {
 	return statusCode === 401;
 }
 
-function requireLivePaymentEnvironment() {
-	if (config.razorpayKeyId.startsWith('rzp_test_') && !config.allowShiprocketWithTestPayments) {
-		throw new HttpError(
-			409,
-			'Shiprocket fulfillment is blocked while Razorpay is configured in test mode. Switch to live keys or explicitly allow test fulfillment in backend env.'
-		);
-	}
-}
-
-// Shiprocket webhook timestamps arrive as "23 05 2023 11:43:52"
-// (DD MM YYYY HH:mm:ss, IST). Fall back to native Date parsing for the other
-// ISO-ish fields ("2023-05-23 15:40:19").
-function parseShiprocketTimestamp(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) return null;
-	const m = trimmed.match(/^(\d{2}) (\d{2}) (\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
-	if (m) {
-		const date = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}+05:30`);
-		return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-	}
-	const date = new Date(trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T') + '+05:30');
-	return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-}
-
-function normalizeShipmentStatus(status: string) {
-	const value = status.toLowerCase();
-	if (value.includes('delivered') && value.includes('rto')) return 'rto_delivered';
-	if (value.includes('rto')) return 'rto_initiated';
-	if (value.includes('out') && value.includes('delivery')) return 'out_for_delivery';
-	if (value.includes('delivered')) return 'delivered';
-	if (value.includes('cancel')) return 'cancelled';
-	if (value.includes('return')) return 'returned';
-	if (value.includes('lost')) return 'lost';
-	if (value.includes('damage')) return 'damaged';
-	if (value.includes('pickup')) return 'pickup_scheduled';
-	if (value.includes('shipped')) return 'shipped';
-	if (value.includes('transit') || value.includes('manifest') || value.includes('assigned')) {
-		return 'in_transit';
-	}
-	return 'in_transit';
-}
-
-// Maps a normalized shipment status onto the customer-facing order status.
-// Returns null when the shipment status should not move the order forward.
-function orderStatusFromShipmentStatus(shipmentStatus: string): string | null {
-	switch (shipmentStatus) {
-		case 'out_for_delivery':
-			return 'out_for_delivery';
-		case 'delivered':
-			return 'delivered';
-		case 'shipped':
-		case 'in_transit':
-		case 'pickup_scheduled':
-			return 'shipped';
-		case 'cancelled':
-		case 'rto_initiated':
-		case 'rto_delivered':
-		case 'lost':
-		case 'damaged':
-			return 'cancelled';
-		case 'returned':
-			return 'returned';
-		default:
-			return null;
-	}
-}
-
-const TERMINAL_ORDER_STATUSES = ['cancelled', 'returned', 'refunded'];
-
-// Auto-advances the order status from Shiprocket logistics events. Only moves
-// forward through ready_for_delivery -> shipped -> out_for_delivery -> delivered
-// and never overrides a manual/terminal state (cancelled, returned, refunded).
-async function propagateShipmentStatusToOrder(
-	adminDb: ReturnType<typeof getSupabaseAdmin>,
-	orderId: string,
-	normalizedShipmentStatus: string
-) {
-	const nextOrderStatus = orderStatusFromShipmentStatus(normalizedShipmentStatus);
-	if (!nextOrderStatus) return;
-	const { data: order, error } = await adminDb
-		.from('orders')
-		.select('status')
-		.eq('id', orderId)
-		.maybeSingle();
-	if (error || !order) return;
-	const currentStatus = String(order.status ?? '').toLowerCase();
-	// Never override an already-terminal order (avoids double-cancel/refund churn).
-	if (TERMINAL_ORDER_STATUSES.includes(currentStatus)) return;
-	// Terminal shipment outcomes (cancelled/returned) bypass the forward-only
-	// progression gate so a Shiprocket-side cancellation is always reflected.
-	if (TERMINAL_ORDER_STATUSES.includes(nextOrderStatus)) {
-		await adminDb
-			.from('orders')
-			.update({ status: nextOrderStatus, updated_at: new Date().toISOString() })
-			.eq('id', orderId);
-		return;
-	}
-	const progressiveStates = [
-		'pending',
-		'processing',
-		'confirmed',
-		'ready_for_delivery',
-		'shipped',
-		'out_for_delivery',
-		'delivered'
-	];
-	const currentIndex = progressiveStates.indexOf(currentStatus);
-	const nextIndex = progressiveStates.indexOf(nextOrderStatus);
-	if (currentIndex === -1) return;
-	if (nextIndex <= currentIndex) return;
-	await adminDb
-		.from('orders')
-		.update({ status: nextOrderStatus, updated_at: new Date().toISOString() })
-		.eq('id', orderId);
-}
-
-async function sha256Hex(value: string) {
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-	return Array.from(new Uint8Array(digest))
-		.map((byte) => byte.toString(16).padStart(2, '0'))
-		.join('');
-}
-
-// Constant-time secret comparison. Compares SHA-256 digests of both inputs so
-// the loop runs over a fixed length and reveals neither the secret's length nor
-// where a mismatch occurs via timing.
-async function timingSafeEqualSecret(a: string, b: string) {
-	const [da, db] = await Promise.all([sha256Hex(a), sha256Hex(b)]);
-	let diff = 0;
-	for (let i = 0; i < da.length; i += 1) {
-		diff |= da.charCodeAt(i) ^ db.charCodeAt(i);
-	}
-	return diff === 0;
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: {};
-}
-
-function toDateOnly(value: unknown) {
-	if (!value) return null;
-	const date = new Date(String(value));
-	return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
 function firstString(...values: unknown[]) {
@@ -1362,98 +1204,100 @@ async function logMonitoringEvent(input: {
 	}
 }
 
-function getAwbData(response: Record<string, unknown>) {
-	const nestedResponse = asRecord(response.response);
-	return Object.keys(asRecord(nestedResponse.data)).length
-		? asRecord(nestedResponse.data)
-		: nestedResponse;
+function manualPickupLocationName() {
+	return config.manualPickupLocation || 'LapKart dispatch';
 }
 
-// Shiprocket's "already assigned" reply when a shipment already has an AWB, e.g.
-// "AWB is already assigned with awb - 1091390175423 and status - AWB ASSIGNED".
-const SHIPROCKET_ALREADY_ASSIGNED_RE = /already assigned with awb\s*-\s*([A-Za-z0-9]+)/i;
-
-function awbAssignMessage(response: Record<string, unknown>) {
-	return firstString(response.message, asRecord(response.response).message) ?? '';
+function positivePackageNumber(value: unknown, fallback: number) {
+	const parsed = Number(value);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-// /courier/assign/awb returns awb_assign_status: 1 on a fresh assignment. When
-// the shipment already carries an AWB it returns status 0 with the message
-// above — that is NOT a failure, the AWB exists. Treat both as success so a
-// retry (e.g. courier fallback) does not throw away a valid assignment.
-function awbAssignSucceeded(response: Record<string, unknown>) {
-	if (Number(response.awb_assign_status ?? 0) === 1) return true;
-	return SHIPROCKET_ALREADY_ASSIGNED_RE.test(awbAssignMessage(response));
-}
-
-// Pulls the live AWB + courier off a Shiprocket order so the local shipment
-// record never desyncs (the "already assigned" reply carries no courier data).
-async function getShiprocketShipmentFacts(shiprocketOrderId: number) {
-	const details = await getShiprocketOrderDetails(shiprocketOrderId);
-	const data = asRecord(details.data);
-	const shipments = data.shipments;
-	const shipment = Array.isArray(shipments) ? asRecord(shipments[0]) : asRecord(shipments);
-	const courierCompanyId = Number(shipment.courier_company_id ?? shipment.courier_id);
+function manualShipmentPayload(input: {
+	order: Record<string, unknown>;
+	items: OrderItemWithSku[];
+	package?: {
+		weightKg?: number;
+		lengthCm?: number;
+		breadthCm?: number;
+		heightCm?: number;
+	};
+	pickupLocation?: string | null;
+}) {
+	const packageInput = input.package ?? {};
+	const orderItems = input.items.map((item) => ({
+		name: item.title,
+		sku: item.sku ?? item.id,
+		units: Math.max(1, Number(item.qty ?? 1)),
+		selling_price: roundMoney(Number(item.price ?? 0))
+	}));
+	const subTotal = roundMoney(
+		orderItems.reduce((sum, item) => sum + item.units * item.selling_price, 0) ||
+			Number(input.order.total ?? 0)
+	);
 	return {
-		awbCode: firstString(shipment.awb, shipment.awb_code, data.awb_code),
-		courierName: firstString(shipment.courier, shipment.courier_name, data.courier_name),
-		courierCompanyId: Number.isFinite(courierCompanyId) ? courierCompanyId : undefined
+		mode: manualLogisticsProvider,
+		order_id: String(input.order.id ?? ''),
+		pickup_location: input.pickupLocation || manualPickupLocationName(),
+		length: positivePackageNumber(packageInput.lengthCm, config.manualDefaultLengthCm),
+		breadth: positivePackageNumber(packageInput.breadthCm, config.manualDefaultBreadthCm),
+		height: positivePackageNumber(packageInput.heightCm, config.manualDefaultHeightCm),
+		weight: positivePackageNumber(packageInput.weightKg, config.manualDefaultWeightKg),
+		sub_total: subTotal,
+		order_items: orderItems
 	};
 }
 
-// Resolves the assigned AWB/courier from an assign response, falling back to the
-// live Shiprocket order when the response omits them (the "already assigned"
-// case). Returns the shipment's existing values when nothing better is found.
-async function resolveAssignedAwb(
-	response: Record<string, unknown>,
-	shipment: {
-		shiprocket_order_id?: unknown;
-		awb_code?: unknown;
-		courier_name?: unknown;
-		courier_company_id?: unknown;
+async function findManualPickupLocation(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	pickupLocation?: string | null
+) {
+	let query = adminDb
+		.from('shipping_pickup_locations')
+		.select('id,pickup_location')
+		.eq('provider', manualLogisticsProvider)
+		.eq('is_active', true)
+		.order('is_default', { ascending: false })
+		.order('created_at', { ascending: false })
+		.limit(1);
+	if (pickupLocation) query = query.eq('pickup_location', pickupLocation);
+	const { data, error } = await query.maybeSingle();
+	if (error) throw error;
+	return data ?? null;
+}
+
+function manualAwbCode(shipment: Record<string, unknown>) {
+	const existing = firstString(shipment.awb_code);
+	if (existing) return existing;
+	const stableId = String(shipment.id ?? crypto.randomUUID()).replace(/-/g, '').slice(0, 10);
+	return `LK${new Date().getFullYear()}${stableId.toUpperCase()}`;
+}
+
+async function insertManualShipmentEvent(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	input: {
+		shipmentId: string;
+		awbCode?: string | null;
+		status: string;
+		message: string;
+		location?: string | null;
+		payload?: Record<string, unknown>;
 	}
 ) {
-	const awbData = getAwbData(response);
-	let awbCode = firstString(awbData.awb_code);
-	let courierName = firstString(awbData.courier_name);
-	let courierCompanyId = Number(awbData.courier_company_id);
-	if (!awbCode) {
-		const match = awbAssignMessage(response).match(SHIPROCKET_ALREADY_ASSIGNED_RE);
-		if (match) awbCode = match[1];
+	const { error } = await adminDb.from('shipment_events').insert({
+		shipment_id: input.shipmentId,
+		provider: manualLogisticsProvider,
+		awb_code: input.awbCode ?? null,
+		status: input.status,
+		status_time: new Date().toISOString(),
+		location: input.location ?? null,
+		message: input.message,
+		raw_payload: input.payload ?? {}
+	});
+	if (error) {
+		console.warn('Could not write manual shipment event', error.message);
 	}
-	const shiprocketOrderId = Number(shipment.shiprocket_order_id);
-	if ((!awbCode || !courierName) && Number.isFinite(shiprocketOrderId)) {
-		try {
-			const facts = await getShiprocketShipmentFacts(shiprocketOrderId);
-			awbCode = firstString(awbCode, facts.awbCode);
-			courierName = firstString(courierName, facts.courierName);
-			if (!Number.isFinite(courierCompanyId) && facts.courierCompanyId !== undefined) {
-				courierCompanyId = facts.courierCompanyId;
-			}
-		} catch (lookupError) {
-			console.warn(
-				'Could not resolve AWB from Shiprocket order details',
-				lookupError instanceof Error ? lookupError.message : lookupError
-			);
-		}
-	}
-	const existingCourierId = Number(shipment.courier_company_id);
-	return {
-		awbCode: firstString(awbCode, shipment.awb_code),
-		courierName: firstString(courierName, shipment.courier_name),
-		courierCompanyId: Number.isFinite(courierCompanyId)
-			? courierCompanyId
-			: Number.isFinite(existingCourierId)
-				? existingCourierId
-				: null
-	};
 }
-
-function getPickupData(response: Record<string, unknown>) {
-	const nestedResponse = asRecord(response.response);
-	return Object.keys(nestedResponse).length ? nestedResponse : response;
-}
-
 function trackingActivities(payload: unknown) {
 	const trackingData = asRecord(asRecord(payload).tracking_data);
 	const activities = Array.isArray(trackingData.shipment_track_activities)
@@ -1507,51 +1351,34 @@ function groupShipmentEvents(
 	return grouped;
 }
 
-async function refreshShiprocketTracking(shipment: Record<string, unknown>) {
+async function refreshManualTracking(shipment: Record<string, unknown>) {
 	const adminDb = getSupabaseAdmin();
-	const shiprocketShipmentId = Number(shipment.shiprocket_shipment_id);
-	if (!Number.isFinite(shiprocketShipmentId)) {
-		throw new Error('Shipment does not have a Shiprocket shipment id');
-	}
-
-	const response = await getShiprocketTracking(shiprocketShipmentId);
-	const trackingData = asRecord(response.tracking_data);
-	const shipmentTrack = Array.isArray(trackingData.shipment_track)
-		? asRecord(trackingData.shipment_track[0])
-		: {};
-	const currentStatus = firstString(shipmentTrack.current_status, trackingData.current_status);
-	const awbCode = firstString(shipmentTrack.awb_code, shipment.awb_code);
-	const trackingUrl = firstString(trackingData.track_url, shipment.tracking_url);
-	const updates: Record<string, unknown> = {
-		raw_payload: response,
-		last_status_at: new Date().toISOString()
+	const refreshedAt = new Date().toISOString();
+	const tracking = {
+		mode: manualLogisticsProvider,
+		status: String(shipment.status ?? 'created'),
+		awbCode: firstString(shipment.awb_code),
+		refreshedAt
 	};
-	if (currentStatus) updates.status = normalizeShipmentStatus(currentStatus);
-	if (awbCode) updates.awb_code = awbCode;
-	if (trackingUrl) updates.tracking_url = trackingUrl;
-	const expectedDeliveryDate = toDateOnly(shipmentTrack.edd ?? trackingData.etd);
-	if (expectedDeliveryDate) updates.expected_delivery_date = expectedDeliveryDate;
-
 	const { data: updatedShipment, error } = await adminDb
 		.from('shipments')
-		.update(updates)
+		.update({
+			raw_payload: {
+				...asRecord(shipment.raw_payload),
+				lastManualTrackingRefresh: tracking
+			},
+			last_status_at: refreshedAt
+		})
 		.eq('id', String(shipment.id))
 		.select('*')
 		.single();
 	if (error) throw error;
-
-	// Sync the order status when tracking is refreshed so a Shiprocket-side
-	// cancellation/return reflects on the order without waiting for a webhook.
-	if (typeof updates.status === 'string' && updatedShipment?.order_id) {
-		await propagateShipmentStatusToOrder(adminDb, String(updatedShipment.order_id), updates.status);
-	}
-
-	return { shipment: updatedShipment, tracking: response };
+	return { shipment: updatedShipment, tracking };
 }
 
-async function createShiprocketShipmentForOrder(
+async function createManualShipmentForOrder(
 	adminDb: ReturnType<typeof getSupabaseAdmin>,
-	input: z.infer<typeof createShiprocketShipmentSchema>
+	input: z.infer<typeof createManualShipmentSchema>
 ) {
 	const { data: order, error: orderError } = await adminDb
 		.from('orders')
@@ -1573,48 +1400,39 @@ async function createShiprocketShipmentForOrder(
 		.from('shipments')
 		.select('*')
 		.eq('order_id', input.orderId)
-		.eq('provider', 'shiprocket')
+		.eq('provider', manualLogisticsProvider)
 		.eq('shipping_direction', 'outbound')
 		.maybeSingle();
 	if (existingShipmentError) throw existingShipmentError;
 	if (existingShipment) {
-		throw new HttpError(409, 'Shiprocket shipment already exists for this order');
+		throw new HttpError(409, 'A shipment already exists for this order');
 	}
-	const payload = toShiprocketOrderPayload({
+	const payload = manualShipmentPayload({
 		order,
 		items,
 		package: input.package,
 		pickupLocation: input.pickupLocation
 	});
-	const { data: pickupLocation, error: pickupLocationError } = await adminDb
-		.from('shipping_pickup_locations')
-		.select('id')
-		.eq('provider', 'shiprocket')
-		.eq('pickup_location', payload.pickup_location)
-		.eq('is_active', true)
-		.maybeSingle();
-	if (pickupLocationError) throw pickupLocationError;
-	if (!pickupLocation) {
-		throw new HttpError(400, 'Shiprocket pickup location is not synced or active');
-	}
-	const response = await createShiprocketOrder(payload);
-	const shiprocketOrderId = Number(response.order_id ?? response.orderId);
-	const shiprocketShipmentId = Number(response.shipment_id ?? response.shipmentId);
+	const pickupLocation = await findManualPickupLocation(adminDb, payload.pickup_location);
+	const response = {
+		mode: manualLogisticsProvider,
+		createdAt: new Date().toISOString(),
+		orderId: String(order.id),
+		pickupLocation: payload.pickup_location
+	};
 	const { data: shipment, error: shipmentError } = await adminDb
 		.from('shipments')
 		.insert({
 			order_id: input.orderId,
-			provider: 'shiprocket',
-			pickup_location_id: pickupLocation.id,
+			provider: manualLogisticsProvider,
+			pickup_location_id: pickupLocation?.id ?? null,
 			shipping_direction: 'outbound',
 			shipping_service_type: order.shipping_service_type ?? 'standard',
-			status: shiprocketShipmentId ? 'created' : 'pending',
-			shiprocket_order_id: Number.isFinite(shiprocketOrderId) ? shiprocketOrderId : null,
-			shiprocket_shipment_id: Number.isFinite(shiprocketShipmentId) ? shiprocketShipmentId : null,
-			shiprocket_channel_order_id: String(order.id),
+			status: 'created',
+			provider_reference_id: String(order.id),
 			courier_company_id: order.shipping_courier_company_id ?? null,
-			courier_name: order.shipping_courier_name ?? null,
-			shipping_charge: order.shipping_charge_estimate ?? 0,
+			courier_name: order.shipping_courier_name ?? 'LapKart Courier',
+			shipping_charge: order.shipping_charge_estimate ?? order.shipping ?? 0,
 			expected_delivery_date: order.shipping_expected_delivery_date ?? null,
 			request_payload: payload,
 			raw_create_response: response,
@@ -1640,198 +1458,132 @@ async function createShiprocketShipmentForOrder(
 		raw_payload: payload
 	});
 
-	return { shipment, shiprocket: response };
+	await insertManualShipmentEvent(adminDb, {
+		shipmentId: String(shipment.id),
+		status: 'created',
+		message: 'Shipment created for manual fulfillment',
+		location: payload.pickup_location,
+		payload: response
+	});
+
+	return { shipment, manual: response };
 }
 
-// Shiprocket auto-fulfillment is retained behind FULFILLMENT_PROVIDER=shiprocket.
-// The default manual provider leaves orders in confirmed/processing for staff dispatch.
-async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, orderId: string) {
-	if (config.fulfillmentProvider !== 'shiprocket') {
-		void adminDb;
-		void orderId;
-		return;
-	}
-	if (config.razorpayKeyId.startsWith('rzp_test_') && !config.allowShiprocketWithTestPayments) {
-		return;
-	}
-	try {
-		const { shipment } = await createShiprocketShipmentForOrder(adminDb, { orderId });
-		if (!shipment?.shiprocket_shipment_id) {
-			throw new Error('Shiprocket shipment id missing after creation');
-		}
-		const preferredCourierId =
-			typeof shipment.courier_company_id === 'number' ? shipment.courier_company_id : undefined;
-		// Try the courier the customer picked at checkout first. If Shiprocket
-		// rejects it (e.g. "Selected courier not available between <pin> and
-		// <pin>"), retry letting Shiprocket auto-assign its recommended courier so
-		// a transient courier outage does not block the whole shipment.
-		let awbResponse = await assignShiprocketAwb({
-			shipment_id: shipment.shiprocket_shipment_id,
-			courier_id: preferredCourierId
-		});
-		if (!awbAssignSucceeded(awbResponse) && preferredCourierId !== undefined) {
-			awbResponse = await assignShiprocketAwb({ shipment_id: shipment.shiprocket_shipment_id });
-		}
-		if (!awbAssignSucceeded(awbResponse)) {
-			throw new Error(
-				firstString(getAwbData(awbResponse).awb_assign_error, awbResponse.message) ??
-					'Shiprocket AWB assignment failed'
-			);
-		}
-		const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(
-			awbResponse,
-			shipment
-		);
-		await adminDb
-			.from('shipments')
-			.update({
-				status: 'awb_assigned',
-				awb_code: awbCode,
-				courier_company_id: courierCompanyId,
-				courier_name: courierName,
-				raw_awb_response: awbResponse,
-				raw_payload: awbResponse,
-				last_status_at: new Date().toISOString()
-			})
-			.eq('id', shipment.id);
-
-		// Schedule the courier pickup immediately so the order is genuinely ready
-		// for pickup the moment it is placed — no manual "schedule pickup" step.
-		// Pickup requires an assigned AWB (done above). Non-fatal on its own: the
-		// order is still ready_for_delivery and pickup can be retried from the desk.
-		if (awbCode) {
-			try {
-				const pickupResponse = await requestShiprocketPickup(shipment.shiprocket_shipment_id);
-				const pickupData = getPickupData(pickupResponse);
-				await adminDb
-					.from('shipments')
-					.update({
-						status: 'pickup_scheduled',
-						pickup_scheduled_date: toDateOnly(
-							pickupData.pickup_scheduled_date ?? pickupResponse.pickup_scheduled_date
-						),
-						raw_payload: pickupResponse,
-						last_status_at: new Date().toISOString()
-					})
-					.eq('id', shipment.id);
-			} catch (pickupError) {
-				await logMonitoringEvent({
-					source: 'shiprocket.auto_fulfill',
-					severity: 'warning',
-					message: 'Automatic pickup scheduling on order placement failed',
-					requestKey: orderId,
-					metadata: {
-						orderId,
-						error: pickupError instanceof Error ? pickupError.message : String(pickupError)
-					}
-				});
-			}
-		}
-
+async function assignManualAwb(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	shipment: Record<string, unknown>
+) {
+	const awbCode = manualAwbCode(shipment);
+	const quickDelivery = String(shipment.shipping_service_type ?? '') === 'quick';
+	const assignedAt = new Date().toISOString();
+	const response = {
+		mode: manualLogisticsProvider,
+		awbCode,
+		courierName: firstString(shipment.courier_name) ?? 'LapKart Courier',
+		assignedAt
+	};
+	const { data: updatedShipment, error } = await adminDb
+		.from('shipments')
+		.update({
+			status: quickDelivery ? 'pickup_scheduled' : 'awb_assigned',
+			awb_code: awbCode,
+			courier_name: response.courierName,
+			pickup_scheduled_date: quickDelivery ? assignedAt.slice(0, 10) : null,
+			raw_awb_response: response,
+			raw_payload: response,
+			last_status_at: assignedAt
+		})
+		.eq('id', String(shipment.id))
+		.select('*')
+		.single();
+	if (error) throw error;
+	await insertManualShipmentEvent(adminDb, {
+		shipmentId: String(shipment.id),
+		awbCode,
+		status: quickDelivery ? 'pickup_scheduled' : 'awb_assigned',
+		message: quickDelivery ? 'AWB assigned and local dispatch scheduled' : 'AWB assigned',
+		payload: response
+	});
+	if (shipment.order_id) {
 		await adminDb
 			.from('orders')
-			.update({ status: 'ready_for_delivery', updated_at: new Date().toISOString() })
-			.eq('id', orderId);
-	} catch (autoFulfillError) {
-		await logMonitoringEvent({
-			source: 'shiprocket.auto_fulfill',
-			severity: 'warning',
-			message: 'Automatic shipment creation on order placement failed',
-			requestKey: orderId,
-			metadata: {
-				orderId,
-				error:
-					autoFulfillError instanceof Error ? autoFulfillError.message : String(autoFulfillError)
-			}
-		});
+			.update({ status: 'ready_for_delivery', updated_at: assignedAt })
+			.eq('id', String(shipment.order_id));
 	}
+	return { shipment: updatedShipment, manual: response };
 }
 
-// Cancels the live Shiprocket shipment for an order before the DB cancellation
-// runs, so a courier is not dispatched for a cancelled order. Non-fatal: a
-// logistics API failure is logged but does not block the order cancellation.
-async function cancelOrderShipmentOnShiprocket(
+async function scheduleManualPickup(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	shipment: Record<string, unknown>
+) {
+	const awbCode = firstString(shipment.awb_code);
+	if (!awbCode) throw new HttpError(400, 'Assign an AWB before scheduling pickup');
+	const scheduledAt = new Date().toISOString();
+	const response = {
+		mode: manualLogisticsProvider,
+		awbCode,
+		pickupScheduledDate: scheduledAt.slice(0, 10),
+		scheduledAt
+	};
+	const { data: updatedShipment, error } = await adminDb
+		.from('shipments')
+		.update({
+			status: 'pickup_scheduled',
+			pickup_scheduled_date: response.pickupScheduledDate,
+			raw_payload: response,
+			last_status_at: scheduledAt
+		})
+		.eq('id', String(shipment.id))
+		.select('*')
+		.single();
+	if (error) throw error;
+	await insertManualShipmentEvent(adminDb, {
+		shipmentId: String(shipment.id),
+		awbCode,
+		status: 'pickup_scheduled',
+		message: 'Manual pickup scheduled',
+		payload: response
+	});
+	return { shipment: updatedShipment, manual: response };
+}
+
+async function autoFulfillOrder(adminDb: ReturnType<typeof getSupabaseAdmin>, orderId: string) {
+	void adminDb;
+	void orderId;
+}
+
+async function cancelManualOrderShipment(
 	adminDb: ReturnType<typeof getSupabaseAdmin>,
 	orderId: string
 ) {
 	try {
 		const { data: shipment } = await adminDb
 			.from('shipments')
-			.select('id,awb_code,shiprocket_order_id,status')
+			.select('id,awb_code,status')
 			.eq('order_id', orderId)
-			.eq('provider', 'shiprocket')
+			.eq('provider', manualLogisticsProvider)
 			.eq('shipping_direction', 'outbound')
 			.order('created_at', { ascending: false })
 			.limit(1)
 			.maybeSingle();
 		if (!shipment) return;
-		const srOrderId = Number(shipment.shiprocket_order_id);
-		const hasSrOrderId = Number.isFinite(srOrderId);
 
-		// The local awb_code can be missing if an earlier assignment desynced
-		// (Shiprocket assigned an AWB but the response was misread). Recover the
-		// real AWB from the live order so the courier assignment is actually freed.
-		let awbCode = firstString(shipment.awb_code);
-		if (!awbCode && hasSrOrderId) {
-			try {
-				awbCode = (await getShiprocketShipmentFacts(srOrderId)).awbCode;
-			} catch (lookupError) {
-				console.warn(
-					'Could not resolve AWB for cancellation',
-					lookupError instanceof Error ? lookupError.message : lookupError
-				);
-			}
-		}
-
-		// Release the AWB first (frees the courier assignment), then cancel the
-		// Shiprocket order so it leaves the open queue in the panel/app. Each call
-		// is independent: a failure in one must not skip the other or the DB write.
-		if (awbCode) {
-			try {
-				await cancelShiprocketShipment([String(awbCode)]);
-			} catch (awbCancelError) {
-				await logMonitoringEvent({
-					source: 'shiprocket.cancel',
-					severity: 'warning',
-					message: 'Shiprocket AWB cancellation failed during order cancellation',
-					requestKey: orderId,
-					metadata: {
-						orderId,
-						awb: String(awbCode),
-						error: awbCancelError instanceof Error ? awbCancelError.message : String(awbCancelError)
-					}
-				});
-			}
-		}
-		if (hasSrOrderId) {
-			try {
-				await cancelShiprocketOrder([srOrderId]);
-			} catch (orderCancelError) {
-				await logMonitoringEvent({
-					source: 'shiprocket.cancel',
-					severity: 'warning',
-					message: 'Shiprocket order cancellation failed during order cancellation',
-					requestKey: orderId,
-					metadata: {
-						orderId,
-						shiprocketOrderId: srOrderId,
-						error:
-							orderCancelError instanceof Error
-								? orderCancelError.message
-								: String(orderCancelError)
-					}
-				});
-			}
-		}
 		await adminDb
 			.from('shipments')
 			.update({ status: 'cancelled', last_status_at: new Date().toISOString() })
 			.eq('id', shipment.id);
+		await insertManualShipmentEvent(adminDb, {
+			shipmentId: String(shipment.id),
+			awbCode: firstString(shipment.awb_code),
+			status: 'cancelled',
+			message: 'Shipment cancelled by staff'
+		});
 	} catch (cancelError) {
 		await logMonitoringEvent({
-			source: 'shiprocket.cancel',
+			source: 'manual_fulfillment.cancel',
 			severity: 'warning',
-			message: 'Shiprocket shipment cancellation failed during order cancellation',
+			message: 'Manual shipment cancellation failed during order cancellation',
 			requestKey: orderId,
 			metadata: {
 				orderId,
@@ -1841,48 +1593,6 @@ async function cancelOrderShipmentOnShiprocket(
 	}
 }
 
-async function syncShiprocketPickupLocations(addresses: ShiprocketPickupAddress[]) {
-	const adminDb = getSupabaseAdmin();
-	if (!addresses.length) return;
-
-	const primaryIndex = Math.max(
-		0,
-		addresses.findIndex((address) => Number(address.is_primary_location) === 1)
-	);
-	const rows = addresses
-		.filter((address) => String(address.pickup_location ?? '').trim())
-		.map((address, index) => ({
-			provider: 'shiprocket',
-			pickup_location: String(address.pickup_location),
-			provider_location_id: address.id ? String(address.id) : null,
-			contact_name: firstString(address.name, address.contact_name),
-			email: firstString(address.email),
-			phone: firstString(address.phone),
-			address_line1: firstString(address.address, address.address_line1),
-			address_line2: firstString(address.address_2, address.address_line2),
-			city: firstString(address.city),
-			state: firstString(address.state),
-			country: firstString(address.country) ?? 'India',
-			pincode: firstString(address.pin_code, address.pincode) ?? '',
-			latitude: Number.isFinite(Number(address.lat)) ? Number(address.lat) : null,
-			longitude: Number.isFinite(Number(address.long)) ? Number(address.long) : null,
-			is_default: index === primaryIndex,
-			is_active: Number(address.status ?? 1) !== 0,
-			raw_payload: address
-		}));
-
-	if (!rows.length) return;
-	const { error: resetError } = await adminDb
-		.from('shipping_pickup_locations')
-		.update({ is_default: false })
-		.eq('provider', 'shiprocket');
-	if (resetError) throw resetError;
-
-	const { error } = await adminDb
-		.from('shipping_pickup_locations')
-		.upsert(rows, { onConflict: 'provider,pickup_location' });
-	if (error) throw error;
-}
 
 async function getOrderItemsWithSku(orderIds: string[]) {
 	const adminDb = getSupabaseAdmin();
@@ -1931,7 +1641,7 @@ function toFulfillmentShipment(
 		id: shipment.id,
 		shippingServiceType: shipment.shipping_service_type,
 		status: shipment.status,
-		shiprocketShipmentId: shipment.shiprocket_shipment_id,
+		providerReferenceId: shipment.provider_reference_id,
 		awbCode: shipment.awb_code,
 		courierName: shipment.courier_name,
 		pickupScheduledDate: shipment.pickup_scheduled_date,
@@ -2823,7 +2533,7 @@ async function buildCheckoutSummary(
 	} satisfies CheckoutSummary['deliveryPromise'];
 	const deliveryEstimate = {
 		dispatch: {
-			pickupLocation: config.shiprocketPickupLocation || 'LapKart dispatch',
+			pickupLocation: manualPickupLocationName(),
 			pincode: config.lapkartDispatchPincode
 		},
 		route,
@@ -3657,7 +3367,7 @@ async function handle(req: Request) {
 		];
 		return json(req, 200, {
 			dispatch: {
-				pickupLocation: config.shiprocketPickupLocation || 'LapKart dispatch',
+				pickupLocation: manualPickupLocationName(),
 				pincode: config.lapkartDispatchPincode
 			},
 			route,
@@ -3666,47 +3376,43 @@ async function handle(req: Request) {
 		});
 	}
 
-	if (req.method === 'GET' && path === '/shiprocket/status') {
+	if (req.method === 'GET' && path === '/manual-fulfillment/status') {
 		await requireStaff(req, 'manage_fulfillment');
-		const verify = url.searchParams.get('verify');
-		if (verify !== '1' && verify !== 'true') {
-			return json(req, 200, {
-				configured: Boolean(
-					config.shiprocketEmail && config.shiprocketPassword && config.shiprocketPickupLocation
-				),
-				pickupLocationConfigured: Boolean(config.shiprocketPickupLocation)
-			});
-		}
-		await getShiprocketToken({ forceRefresh: true });
-		return json(req, 200, { configured: true, authenticated: true });
+		return json(req, 200, {
+			mode: manualLogisticsProvider,
+			configured: true,
+			pickupLocationConfigured: Boolean(manualPickupLocationName())
+		});
 	}
 
-	if (req.method === 'GET' && path === '/shiprocket/account') {
+	if (req.method === 'GET' && path === '/manual-fulfillment/account') {
+		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		const [walletBalance, pickupResponse] = await Promise.all([
-			getShiprocketWalletBalance(),
-			getShiprocketPickupLocations()
-		]);
-		const pickupLocations = pickupResponse.data?.shipping_address ?? [];
-		await syncShiprocketPickupLocations(pickupLocations);
-		const configuredPickup = pickupLocations.find(
-			(location) => String(location.pickup_location ?? '') === config.shiprocketPickupLocation
+		const { data: pickupLocations, error } = await adminDb
+			.from('shipping_pickup_locations')
+			.select('id,pickup_location,pincode,city,state,latitude,longitude,is_default,is_active')
+			.eq('provider', manualLogisticsProvider)
+			.order('is_default', { ascending: false })
+			.order('created_at', { ascending: false });
+		if (error) throw error;
+		const pickupRows = pickupLocations ?? [];
+		const configuredPickup = pickupRows.find(
+			(location) => String(location.pickup_location ?? '') === manualPickupLocationName()
 		);
 		return json(req, 200, {
-			walletBalance,
-			configuredPickupLocation: config.shiprocketPickupLocation,
+			mode: manualLogisticsProvider,
+			configuredPickupLocation: manualPickupLocationName(),
 			pickupLocationVerified: Boolean(configuredPickup),
-			pickupLocations: pickupLocations.map((location) => ({
+			pickupLocations: pickupRows.map((location) => ({
 				id: location.id ?? null,
 				pickupLocation: location.pickup_location ?? null,
-				pincode: location.pin_code ?? null,
+				pincode: location.pincode ?? null,
 				city: location.city ?? null,
 				state: location.state ?? null,
-				latitude: location.lat ?? null,
-				longitude: location.long ?? null,
-				primary: Number(location.is_primary_location) === 1,
-				active: Number(location.status ?? 1) !== 0
+				latitude: location.latitude ?? null,
+				longitude: location.longitude ?? null,
+				primary: location.is_default === true,
+				active: location.is_active !== false
 			}))
 		});
 	}
@@ -3745,7 +3451,7 @@ async function handle(req: Request) {
 					.from('shipments')
 					.select('*')
 					.in('order_id', orderIds)
-					.eq('provider', 'shiprocket')
+					.eq('provider', manualLogisticsProvider)
 					.eq('shipping_direction', 'outbound')
 			: { data: [], error: null };
 		if (shipmentsError) throw shipmentsError;
@@ -3841,7 +3547,7 @@ async function handle(req: Request) {
 				.from('shipments')
 				.select('*')
 				.eq('order_id', orderId)
-				.eq('provider', 'shiprocket')
+				.eq('provider', manualLogisticsProvider)
 				.eq('shipping_direction', 'outbound')
 				.maybeSingle(),
 			adminDb
@@ -4356,7 +4062,7 @@ async function handle(req: Request) {
 			if (!reason || reason.length < 3) {
 				throw new HttpError(400, 'Add a clear reason before approving cancellation');
 			}
-			await cancelOrderShipmentOnShiprocket(adminDb, currentRequest.order_id);
+			await cancelManualOrderShipment(adminDb, currentRequest.order_id);
 			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
 				p_order_id: currentRequest.order_id,
 				p_admin_user_id: adminUser.id,
@@ -4627,264 +4333,134 @@ async function handle(req: Request) {
 		});
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/create') {
+	if (req.method === 'POST' && path === '/shipments/manual/create') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		requireLivePaymentEnvironment();
-		const input = createShiprocketShipmentSchema.parse(await req.json());
-		const { shipment, shiprocket: response } = await createShiprocketShipmentForOrder(
-			adminDb,
-			input
-		);
-		return json(req, 200, { shipment, shiprocket: response });
+		const input = createManualShipmentSchema.parse(await req.json());
+		return json(req, 200, await createManualShipmentForOrder(adminDb, input));
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/assign-awb') {
+	if (req.method === 'POST' && path === '/shipments/manual/assign-awb') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		requireLivePaymentEnvironment();
 		const input = assignAwbSchema.parse(await req.json());
-		const { data: shipment, error: shipmentError } = await adminDb
+		const { data: shipment, error } = await adminDb
 			.from('shipments')
 			.select('*')
 			.eq('id', input.shipmentId)
+			.eq('provider', manualLogisticsProvider)
 			.maybeSingle();
-		if (shipmentError) throw shipmentError;
-		if (!shipment?.shiprocket_shipment_id) {
-			throw new HttpError(400, 'Shipment does not have a Shiprocket shipment id');
-		}
-		const requestedCourierId = input.courierId ?? shipment.courier_company_id ?? undefined;
-		let response = await assignShiprocketAwb({
-			shipment_id: shipment.shiprocket_shipment_id,
-			courier_id: requestedCourierId
-		});
-		// If the requested courier is not serviceable on this lane, let Shiprocket
-		// pick its recommended courier instead of failing the whole assignment.
-		if (!awbAssignSucceeded(response) && requestedCourierId !== undefined) {
-			response = await assignShiprocketAwb({ shipment_id: shipment.shiprocket_shipment_id });
-		}
-		if (!awbAssignSucceeded(response)) {
-			throw new Error(
-				firstString(getAwbData(response).awb_assign_error, response.message) ??
-					'Shiprocket AWB assignment failed'
-			);
-		}
-		const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(response, shipment);
-		const { data: updatedShipment, error: updateError } = await adminDb
-			.from('shipments')
-			.update({
-				status: 'awb_assigned',
-				awb_code: awbCode,
-				courier_company_id: Number.isFinite(courierCompanyId) ? courierCompanyId : null,
-				courier_name: courierName,
-				raw_awb_response: response,
-				raw_payload: response,
-				last_status_at: new Date().toISOString()
-			})
-			.eq('id', input.shipmentId)
-			.select('*')
-			.single();
-		if (updateError) throw updateError;
-		let tracking = null;
-		if (shipment.shipping_service_type === 'quick') {
-			try {
-				tracking = await refreshShiprocketTracking(updatedShipment);
-			} catch {
-				tracking = null;
-			}
-		}
-		return json(req, 200, {
-			shipment: tracking?.shipment ?? updatedShipment,
-			shiprocket: response,
-			tracking: tracking?.tracking ?? null,
-			dispatchMode:
-				shipment.shipping_service_type === 'quick'
-					? 'quick_rider_requested'
-					: 'standard_awb_assigned'
-		});
+		if (error) throw error;
+		if (!shipment) throw new HttpError(404, 'Shipment not found');
+		return json(req, 200, await assignManualAwb(adminDb, shipment));
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/pickup') {
+	if (req.method === 'POST' && path === '/shipments/manual/pickup') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		requireLivePaymentEnvironment();
 		const input = shipmentIdSchema.parse(await req.json());
-		const { data: shipment, error: shipmentError } = await adminDb
+		const { data: shipment, error } = await adminDb
 			.from('shipments')
 			.select('*')
 			.eq('id', input.shipmentId)
+			.eq('provider', manualLogisticsProvider)
 			.maybeSingle();
-		if (shipmentError) throw shipmentError;
-		if (!shipment?.shiprocket_shipment_id) {
-			throw new HttpError(400, 'Shipment does not have a Shiprocket shipment id');
-		}
-		if (shipment.shipping_service_type === 'quick') {
-			throw new HttpError(
-				400,
-				'Shiprocket Quick rider assignment is triggered during AWB assignment'
-			);
-		}
-		if (!shipment.awb_code) throw new HttpError(400, 'Assign an AWB before scheduling pickup');
-		const pickup = await requestShiprocketPickup(shipment.shiprocket_shipment_id);
-		if (Number(pickup.pickup_status ?? 1) !== 1) {
-			throw new Error(firstString(pickup.message) ?? 'Shiprocket pickup scheduling failed');
-		}
-		const pickupData = getPickupData(pickup);
-		let manifest: Record<string, unknown> | null = null;
-		let manifestError: string | null = null;
-		try {
-			manifest = await generateShiprocketManifest([shipment.shiprocket_shipment_id]);
-		} catch (error) {
-			manifestError =
-				error instanceof Error ? error.message : 'Could not generate Shiprocket manifest';
-		}
-		const manifestUrl = firstString(
-			pickupData.manifest_url,
-			pickup.manifest_url,
-			manifest?.manifest_url
-		);
-		const pickupScheduledDate = toDateOnly(
-			pickupData.pickup_scheduled_date ?? pickup.pickup_scheduled_date ?? new Date().toISOString()
-		);
-		const { data: updatedShipment, error: updateError } = await adminDb
-			.from('shipments')
-			.update({
-				status: manifestUrl ? 'manifest_generated' : 'pickup_scheduled',
-				pickup_scheduled_date: pickupScheduledDate,
-				manifest_url: manifestUrl,
-				raw_payload: { pickup, manifest },
-				last_status_at: new Date().toISOString()
-			})
-			.eq('id', input.shipmentId)
-			.select('*')
-			.single();
-		if (updateError) throw updateError;
-		return json(req, 200, { shipment: updatedShipment, pickup, manifest, manifestError });
+		if (error) throw error;
+		if (!shipment) throw new HttpError(404, 'Shipment not found');
+		return json(req, 200, await scheduleManualPickup(adminDb, shipment));
 	}
 
-	const shipmentTrackingMatch = matchRoute(path, /^\/shipments\/shiprocket\/([^/]+)\/tracking$/);
+	const shipmentTrackingMatch = matchRoute(path, /^\/shipments\/manual\/([^/]+)\/tracking$/);
 	if (req.method === 'GET' && shipmentTrackingMatch) {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'read_admin');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		const input = shipmentIdSchema.parse({ shipmentId: shipmentTrackingMatch[1] });
-		const { data: shipment, error: shipmentError } = await adminDb
+		const { data: shipment, error } = await adminDb
 			.from('shipments')
 			.select('*')
 			.eq('id', input.shipmentId)
+			.eq('provider', manualLogisticsProvider)
 			.maybeSingle();
-		if (shipmentError) throw shipmentError;
+		if (error) throw error;
 		if (!shipment) throw new HttpError(404, 'Shipment not found');
-		return json(req, 200, await refreshShiprocketTracking(shipment));
+		return json(req, 200, await refreshManualTracking(shipment));
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/return') {
+	if (req.method === 'POST' && path === '/shipments/manual/return') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		requireLivePaymentEnvironment();
 		const input = reversePickupSchema.parse(await req.json());
-		const { data: returnRequest, error: returnRequestError } = await adminDb
+		const { data: returnRequest, error: returnError } = await adminDb
 			.from('return_requests')
 			.select('*')
 			.eq('id', input.returnRequestId)
 			.maybeSingle();
-		if (returnRequestError) throw returnRequestError;
+		if (returnError) throw returnError;
 		if (!returnRequest) throw new HttpError(404, 'Return request not found');
 		if (!['approved', 'reverse_pickup_scheduled'].includes(String(returnRequest.status))) {
 			throw new HttpError(409, 'Approve the return before creating a reverse pickup');
 		}
 		if (returnRequest.reverse_shipment_id) {
-			const { data: existingShipment, error: existingShipmentError } = await adminDb
+			const { data: existingShipment, error } = await adminDb
 				.from('shipments')
 				.select('*')
 				.eq('id', returnRequest.reverse_shipment_id)
 				.maybeSingle();
-			if (existingShipmentError) throw existingShipmentError;
+			if (error) throw error;
 			return json(req, 200, { shipment: existingShipment, alreadyCreated: true });
 		}
 
-		const [
-			{ data: order, error: orderError },
-			{ data: returnItems, error: returnItemsError },
-			{ data: pickupLocation, error: pickupLocationError },
-			{ data: latestShipment, error: latestShipmentError }
-		] = await Promise.all([
-			adminDb.from('orders').select('*').eq('id', returnRequest.order_id).maybeSingle(),
-			adminDb
-				.from('return_request_items')
-				.select('order_item_id,qty,reason')
-				.eq('return_request_id', input.returnRequestId),
-			adminDb
-				.from('shipping_pickup_locations')
-				.select('*')
-				.eq('provider', 'shiprocket')
-				.eq('pickup_location', config.shiprocketPickupLocation)
-				.eq('is_active', true)
-				.maybeSingle(),
-			adminDb
-				.from('shipments')
-				.select('shipment_number')
-				.eq('order_id', returnRequest.order_id)
-				.order('shipment_number', { ascending: false })
-				.limit(1)
-				.maybeSingle()
-		]);
+		const [{ data: order, error: orderError }, { data: returnItems, error: itemsError }] =
+			await Promise.all([
+				adminDb.from('orders').select('*').eq('id', returnRequest.order_id).maybeSingle(),
+				adminDb
+					.from('return_request_items')
+					.select('order_item_id,qty')
+					.eq('return_request_id', input.returnRequestId)
+			]);
 		if (orderError) throw orderError;
-		if (returnItemsError) throw returnItemsError;
-		if (pickupLocationError) throw pickupLocationError;
-		if (latestShipmentError) throw latestShipmentError;
+		if (itemsError) throw itemsError;
 		if (!order) throw new HttpError(404, 'Return order was not found');
-		if (!pickupLocation) throw new HttpError(400, 'Shiprocket pickup location is not synced');
-
-		const orderItems = await getOrderItemsWithSku([String(returnRequest.order_id)]);
-		const returnQtyByOrderItem = new Map(
-			(returnItems ?? []).map((item) => [
-				String(item.order_item_id),
-				{ qty: Number(item.qty ?? 0), reason: firstString(item.reason) }
-			])
+		const qtyByItem = new Map(
+			(returnItems ?? []).map((item) => [String(item.order_item_id), Number(item.qty ?? 0)])
 		);
-		const selectedItems = orderItems
-			.filter((item) => returnQtyByOrderItem.has(item.id))
-			.map((item) => {
-				const returnItem = returnQtyByOrderItem.get(item.id);
-				return {
-					...item,
-					return_qty: returnItem?.qty ?? item.qty,
-					return_reason: returnItem?.reason ?? firstString(returnRequest.reason),
-					product_image: item.image
-				};
-			});
-		if (!selectedItems.length) throw new HttpError(400, 'Return request has no items');
+		const items = (await getOrderItemsWithSku([String(returnRequest.order_id)]))
+			.filter((item) => qtyByItem.has(item.id))
+			.map((item) => ({ ...item, qty: qtyByItem.get(item.id) ?? item.qty }));
+		if (!items.length) throw new HttpError(400, 'Return request has no items');
 
-		const payload = toShiprocketReturnOrderPayload({
+		const payload = manualShipmentPayload({
 			order,
-			returnRequest,
-			items: selectedItems,
-			pickupLocation,
-			package: input.package
+			items,
+			package: input.package,
+			pickupLocation: manualPickupLocationName()
 		});
-		const response = await createShiprocketReturnOrder(payload);
-		const shiprocketOrderId = Number(response.order_id ?? response.orderId);
-		const shiprocketShipmentId = Number(response.shipment_id ?? response.shipmentId);
-		const shipmentNumber = Number(latestShipment?.shipment_number ?? 0) + 1;
+		const pickupLocation = await findManualPickupLocation(adminDb, payload.pickup_location);
+		const { data: latestShipment } = await adminDb
+			.from('shipments')
+			.select('shipment_number')
+			.eq('order_id', returnRequest.order_id)
+			.order('shipment_number', { ascending: false })
+			.limit(1)
+			.maybeSingle();
+		const response = {
+			mode: manualLogisticsProvider,
+			createdAt: new Date().toISOString(),
+			returnRequestId: input.returnRequestId
+		};
 		const { data: shipment, error: shipmentError } = await adminDb
 			.from('shipments')
 			.insert({
 				order_id: returnRequest.order_id,
-				provider: 'shiprocket',
-				pickup_location_id: pickupLocation.id,
-				shipment_number: shipmentNumber,
+				provider: manualLogisticsProvider,
+				pickup_location_id: pickupLocation?.id ?? null,
+				shipment_number: Number(latestShipment?.shipment_number ?? 0) + 1,
 				shipping_direction: 'return',
 				return_request_id: returnRequest.id,
 				shipping_service_type: 'standard',
-				status: shiprocketShipmentId ? 'created' : 'pending',
-				shiprocket_order_id: Number.isFinite(shiprocketOrderId) ? shiprocketOrderId : null,
-				shiprocket_shipment_id: Number.isFinite(shiprocketShipmentId) ? shiprocketShipmentId : null,
-				shiprocket_channel_order_id: payload.order_id,
+				status: 'created',
+				provider_reference_id: `return:${returnRequest.id}`,
+				courier_name: 'LapKart Courier',
 				request_payload: payload,
 				raw_create_response: response,
 				raw_payload: response
@@ -4892,8 +4468,7 @@ async function handle(req: Request) {
 			.select('*')
 			.single();
 		if (shipmentError) throw shipmentError;
-
-		await adminDb.from('shipment_packages').insert({
+		const { error: packageError } = await adminDb.from('shipment_packages').insert({
 			shipment_id: shipment.id,
 			package_number: 1,
 			weight_kg: payload.weight,
@@ -4902,54 +4477,39 @@ async function handle(req: Request) {
 			height_cm: payload.height,
 			declared_value: payload.sub_total,
 			item_count: payload.order_items.reduce((sum, item) => sum + item.units, 0),
-			sku_summary: payload.order_items
-				.map((item) => item.sku)
-				.join(', ')
-				.slice(0, 500),
-			order_item_ids: selectedItems.map((item) => item.id),
+			sku_summary: payload.order_items.map((item) => item.sku).join(', ').slice(0, 500),
+			order_item_ids: items.map((item) => item.id),
 			raw_payload: payload
 		});
-
-		const { data: updatedReturnRequest, error: updateReturnError } = await adminDb
+		if (packageError) throw packageError;
+		const { data: updatedReturnRequest, error: updateError } = await adminDb
 			.from('return_requests')
-			.update({
-				status: 'reverse_pickup_scheduled',
-				reverse_shipment_id: shipment.id
-			})
+			.update({ status: 'reverse_pickup_scheduled', reverse_shipment_id: shipment.id })
 			.eq('id', input.returnRequestId)
 			.select('*')
 			.single();
-		if (updateReturnError) throw updateReturnError;
-		return json(req, 200, { shipment, returnRequest: updatedReturnRequest, shiprocket: response });
+		if (updateError) throw updateError;
+		await insertManualShipmentEvent(adminDb, {
+			shipmentId: String(shipment.id),
+			status: 'created',
+			message: 'Manual return shipment created',
+			payload: response
+		});
+		return json(req, 200, { shipment, returnRequest: updatedReturnRequest, manual: response });
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/bulk') {
+	if (req.method === 'POST' && path === '/shipments/manual/bulk') {
 		const adminDb = getSupabaseAdmin();
 		const adminUser = await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
-		requireLivePaymentEnvironment();
 		const input = bulkFulfillmentSchema.parse(await req.json());
-		if (input.action === 'create_orders' && !input.orderIds.length) {
-			throw new HttpError(400, 'Select at least one order');
+		if (input.action === 'create_orders' ? !input.orderIds.length : !input.shipmentIds.length) {
+			throw new HttpError(400, 'Select at least one item');
 		}
-		if (input.action !== 'create_orders' && !input.shipmentIds.length) {
-			throw new HttpError(400, 'Select at least one shipment');
-		}
-		const batchType =
-			input.action === 'create_orders'
-				? 'create_orders'
-				: input.action === 'assign_awb'
-					? 'assign_awb'
-					: input.action === 'schedule_pickup'
-						? 'schedule_pickup'
-						: input.action === 'generate_labels'
-							? 'generate_labels'
-							: 'refresh_tracking';
 		const { data: batch, error: batchError } = await adminDb
 			.from('shipping_batches')
 			.insert({
-				provider: 'shiprocket',
-				batch_type: batchType,
+				provider: manualLogisticsProvider,
+				batch_type: input.action,
 				status: 'processing',
 				requested_by: adminUser.id,
 				total_count:
@@ -4964,193 +4524,81 @@ async function handle(req: Request) {
 		const results: Array<Record<string, unknown>> = [];
 		let successCount = 0;
 		let failureCount = 0;
+		const record = async (row: {
+			orderId?: string | null;
+			shipmentId?: string | null;
+			status: 'completed' | 'failed';
+			response?: Record<string, unknown>;
+			error?: string;
+		}) => {
+			await adminDb.from('shipping_batch_items').insert({
+				batch_id: batch.id,
+				order_id: row.orderId ?? null,
+				shipment_id: row.shipmentId ?? null,
+				status: row.status,
+				provider_reference: row.shipmentId ?? row.orderId ?? null,
+				response_payload: row.response ?? {},
+				error_message: row.error ?? null
+			});
+		};
 
 		if (input.action === 'create_orders') {
 			for (const orderId of input.orderIds) {
 				try {
-					const { shipment, shiprocket } = await createShiprocketShipmentForOrder(adminDb, {
-						orderId
-					});
+					const result = await createManualShipmentForOrder(adminDb, { orderId });
 					successCount += 1;
-					results.push({ orderId, shipmentId: shipment.id, status: 'completed', shiprocket });
-					await adminDb.from('shipping_batch_items').insert({
-						batch_id: batch.id,
-						order_id: orderId,
-						shipment_id: shipment.id,
+					results.push({ orderId, shipmentId: result.shipment.id, status: 'completed' });
+					await record({
+						orderId,
+						shipmentId: String(result.shipment.id),
 						status: 'completed',
-						provider_reference: firstString(shipment.shiprocket_shipment_id),
-						response_payload: shiprocket
+						response: result.manual
 					});
 				} catch (error) {
 					failureCount += 1;
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					results.push({ orderId, status: 'failed', error: errorMessage });
-					await adminDb.from('shipping_batch_items').insert({
-						batch_id: batch.id,
-						order_id: orderId,
-						status: 'failed',
-						error_message: errorMessage
-					});
+					const message = error instanceof Error ? error.message : String(error);
+					results.push({ orderId, status: 'failed', error: message });
+					await record({ orderId, status: 'failed', error: message });
 				}
-			}
-
-			const finalStatus =
-				failureCount === 0 ? 'completed' : successCount === 0 ? 'failed' : 'partially_failed';
-			const { data: updatedBatch, error: updateBatchError } = await adminDb
-				.from('shipping_batches')
-				.update({
-					status: finalStatus,
-					success_count: successCount,
-					failure_count: failureCount,
-					response_payload: { results },
-					completed_at: new Date().toISOString()
-				})
-				.eq('id', batch.id)
-				.select('*')
-				.single();
-			if (updateBatchError) throw updateBatchError;
-			return json(req, 200, { batch: updatedBatch, results });
-		}
-
-		const { data: shipments, error: shipmentsError } = await adminDb
-			.from('shipments')
-			.select('*')
-			.in('id', input.shipmentIds);
-		if (shipmentsError) throw shipmentsError;
-		const shipmentRows = (shipments ?? []) as Array<Record<string, unknown>>;
-
-		if (input.action === 'generate_labels') {
-			try {
-				const shiprocketShipmentIds = shipmentRows
-					.map((shipment) => Number(shipment.shiprocket_shipment_id))
-					.filter((id) => Number.isFinite(id));
-				if (!shiprocketShipmentIds.length) throw new Error('No Shiprocket shipment ids found');
-				const response = await generateShiprocketLabels(shiprocketShipmentIds);
-				const labelUrl = firstString(response.label_url);
-				if (labelUrl) {
-					await adminDb
-						.from('shipments')
-						.update({
-							status: 'label_generated',
-							label_url: labelUrl,
-							raw_payload: response,
-							last_status_at: new Date().toISOString()
-						})
-						.in('id', input.shipmentIds);
-				}
-				successCount = shipmentRows.length;
-				results.push({ action: input.action, response, labelUrl });
-				await adminDb.from('shipping_batch_items').insert(
-					shipmentRows.map((shipment) => ({
-						batch_id: batch.id,
-						order_id: shipment.order_id,
-						shipment_id: shipment.id,
-						status: 'completed',
-						provider_reference: firstString(shipment.shiprocket_shipment_id),
-						response_payload: response
-					}))
-				);
-			} catch (error) {
-				failureCount = shipmentRows.length;
-				results.push({
-					action: input.action,
-					error: error instanceof Error ? error.message : String(error)
-				});
-				await adminDb.from('shipping_batch_items').insert(
-					shipmentRows.map((shipment) => ({
-						batch_id: batch.id,
-						order_id: shipment.order_id,
-						shipment_id: shipment.id,
-						status: 'failed',
-						error_message: error instanceof Error ? error.message : String(error)
-					}))
-				);
 			}
 		} else {
-			for (const shipment of shipmentRows) {
+			const { data: shipments, error } = await adminDb
+				.from('shipments')
+				.select('*')
+				.in('id', input.shipmentIds)
+				.eq('provider', manualLogisticsProvider);
+			if (error) throw error;
+			for (const shipment of (shipments ?? []) as Array<Record<string, unknown>>) {
 				try {
-					let response: Record<string, unknown>;
-					if (input.action === 'assign_awb') {
-						const shiprocketShipmentId = Number(shipment.shiprocket_shipment_id);
-						if (!Number.isFinite(shiprocketShipmentId)) {
-							throw new Error('Shipment does not have a Shiprocket shipment id');
-						}
-						const requestedCourierId =
-							typeof shipment.courier_company_id === 'number'
-								? shipment.courier_company_id
-								: undefined;
-						response = await assignShiprocketAwb({
-							shipment_id: shiprocketShipmentId,
-							courier_id: requestedCourierId
-						});
-						if (!awbAssignSucceeded(response) && requestedCourierId !== undefined) {
-							response = await assignShiprocketAwb({ shipment_id: shiprocketShipmentId });
-						}
-						if (!awbAssignSucceeded(response)) {
-							throw new Error(
-								firstString(getAwbData(response).awb_assign_error, response.message) ??
-									'Shiprocket AWB assignment failed'
-							);
-						}
-						const { awbCode, courierName, courierCompanyId } = await resolveAssignedAwb(
-							response,
-							shipment
-						);
-						await adminDb
-							.from('shipments')
-							.update({
-								status: 'awb_assigned',
-								awb_code: awbCode,
-								courier_company_id: courierCompanyId,
-								courier_name: courierName,
-								raw_awb_response: response,
-								raw_payload: response,
-								last_status_at: new Date().toISOString()
-							})
-							.eq('id', String(shipment.id));
-					} else if (input.action === 'schedule_pickup') {
-						const shiprocketShipmentId = Number(shipment.shiprocket_shipment_id);
-						if (!Number.isFinite(shiprocketShipmentId)) {
-							throw new Error('Shipment does not have a Shiprocket shipment id');
-						}
-						if (!shipment.awb_code) throw new Error('Assign AWB before scheduling pickup');
-						response = await requestShiprocketPickup(shiprocketShipmentId);
-						const pickupData = getPickupData(response);
-						await adminDb
-							.from('shipments')
-							.update({
-								status: 'pickup_scheduled',
-								pickup_scheduled_date: toDateOnly(
-									pickupData.pickup_scheduled_date ?? response.pickup_scheduled_date
-								),
-								raw_payload: response,
-								last_status_at: new Date().toISOString()
-							})
-							.eq('id', String(shipment.id));
-					} else {
-						const refreshed = await refreshShiprocketTracking(shipment);
-						response = refreshed.tracking;
-					}
+					const response =
+						input.action === 'assign_awb'
+							? (await assignManualAwb(adminDb, shipment)).manual
+							: input.action === 'schedule_pickup'
+								? (await scheduleManualPickup(adminDb, shipment)).manual
+								: input.action === 'refresh_tracking'
+									? (await refreshManualTracking(shipment)).tracking
+									: {
+										mode: manualLogisticsProvider,
+										labelsManagedExternally: true,
+										preparedAt: new Date().toISOString()
+									};
 					successCount += 1;
 					results.push({ shipmentId: shipment.id, status: 'completed', response });
-					await adminDb.from('shipping_batch_items').insert({
-						batch_id: batch.id,
-						order_id: shipment.order_id,
-						shipment_id: shipment.id,
+					await record({
+						orderId: firstString(shipment.order_id),
+						shipmentId: String(shipment.id),
 						status: 'completed',
-						provider_reference: firstString(shipment.shiprocket_shipment_id),
-						response_payload: response
+						response
 					});
 				} catch (error) {
 					failureCount += 1;
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					results.push({ shipmentId: shipment.id, status: 'failed', error: errorMessage });
-					await adminDb.from('shipping_batch_items').insert({
-						batch_id: batch.id,
-						order_id: shipment.order_id,
-						shipment_id: shipment.id,
+					const message = error instanceof Error ? error.message : String(error);
+					results.push({ shipmentId: shipment.id, status: 'failed', error: message });
+					await record({
+						orderId: firstString(shipment.order_id),
+						shipmentId: String(shipment.id),
 						status: 'failed',
-						error_message: errorMessage
+						error: message
 					});
 				}
 			}
@@ -5158,7 +4606,7 @@ async function handle(req: Request) {
 
 		const finalStatus =
 			failureCount === 0 ? 'completed' : successCount === 0 ? 'failed' : 'partially_failed';
-		const { data: updatedBatch, error: updateBatchError } = await adminDb
+		const { data: updatedBatch, error: updateError } = await adminDb
 			.from('shipping_batches')
 			.update({
 				status: finalStatus,
@@ -5170,218 +4618,30 @@ async function handle(req: Request) {
 			.eq('id', batch.id)
 			.select('*')
 			.single();
-		if (updateBatchError) throw updateBatchError;
+		if (updateError) throw updateError;
 		return json(req, 200, { batch: updatedBatch, results });
 	}
 
-	if (req.method === 'POST' && path === '/shipments/shiprocket/labels') {
+	if (req.method === 'POST' && path === '/shipments/manual/labels') {
 		const adminDb = getSupabaseAdmin();
 		await requireStaff(req, 'manage_fulfillment');
-		await requireFeatureFlag('shiprocket', 'Shiprocket is temporarily unavailable');
 		const input = labelsSchema.parse(await req.json());
 		const { data: shipments, error } = await adminDb
 			.from('shipments')
-			.select('id,shiprocket_shipment_id')
-			.in('id', input.shipmentIds);
+			.select('id')
+			.in('id', input.shipmentIds)
+			.eq('provider', manualLogisticsProvider);
 		if (error) throw error;
-		const shiprocketShipmentIds = (shipments ?? [])
-			.map((shipment) => shipment.shiprocket_shipment_id)
-			.filter((id): id is number => typeof id === 'number');
-		if (!shiprocketShipmentIds.length) throw new HttpError(400, 'No Shiprocket shipment ids found');
-		const response = await generateShiprocketLabels(shiprocketShipmentIds);
-		const labelUrl = typeof response.label_url === 'string' ? response.label_url : undefined;
-		if (labelUrl) {
-			await adminDb
-				.from('shipments')
-				.update({
-					status: 'label_generated',
-					label_url: labelUrl,
-					raw_payload: response,
-					last_status_at: new Date().toISOString()
-				})
-				.in('id', input.shipmentIds);
-		}
-		return json(req, 200, { shiprocket: response });
+		if (!(shipments ?? []).length) throw new HttpError(404, 'No shipments found');
+		return json(req, 200, {
+			manual: {
+				mode: manualLogisticsProvider,
+				labelsManagedExternally: true,
+				shipmentIds: (shipments ?? []).map((shipment) => shipment.id)
+			}
+		});
 	}
 
-	if (req.method === 'POST' && path === '/logistics/events') {
-		const adminDb = getSupabaseAdmin();
-		await enforceDurableRateLimit(req, 'webhook', webhookRateLimit, getClientIp(req));
-		if (!config.shiprocketWebhookToken) {
-			throw new HttpError(
-				503,
-				'SHIPROCKET_WEBHOOK_TOKEN is required before accepting logistics webhooks'
-			);
-		}
-		// Shiprocket delivers the configured security token in the x-api-key
-		// header. The legacy custom header is still accepted for manual replays.
-		const token =
-			req.headers.get('x-api-key') ?? req.headers.get('x-lapkart-logistics-token') ?? '';
-		if (!(await timingSafeEqualSecret(token, config.shiprocketWebhookToken))) {
-			throw new HttpError(401, 'Invalid webhook token');
-		}
-		const body = asRecord(await req.json());
-		const awb = String(body.awb ?? body.awb_code ?? body.awbCode ?? '').trim() || null;
-		const shiprocketShipmentId = Number(body.shipment_id ?? body.shipmentId);
-		const shiprocketOrderId = Number(body.sr_order_id ?? body.srOrderId);
-		const isReturn = Number(body.is_return ?? 0) === 1;
-		const status = String(body.current_status ?? body.status ?? body.shipment_status ?? 'updated');
-		const statusCode = Number(body.current_status_id ?? body.status_code);
-		const statusTime =
-			parseShiprocketTimestamp(
-				String(
-					body.event_time ?? body.status_time ?? body.updated_at ?? body.current_timestamp ?? ''
-				)
-			) ?? null;
-		const scans = Array.isArray(body.scans) ? body.scans.map(asRecord) : [];
-		const lastScan = scans.length ? scans[scans.length - 1] : null;
-		const location = String(body.location ?? lastScan?.location ?? '').trim() || null;
-		const message = String(body.message ?? lastScan?.activity ?? '').trim() || null;
-		const etd = String(body.etd ?? '').trim() || null;
-		const providerEventId = String(body.event_id ?? body.eventId ?? body.id ?? '').trim() || null;
-		// Shiprocket sends no event id, so dedupe on the full event identity.
-		// statusTime must participate or two same-status events (e.g. successive
-		// IN TRANSIT scans) collapse into one and later updates are dropped.
-		const idempotencySeed =
-			providerEventId ??
-			[
-				awb ?? '',
-				Number.isFinite(shiprocketShipmentId) ? String(shiprocketShipmentId) : '',
-				Number.isFinite(shiprocketOrderId) ? String(shiprocketOrderId) : '',
-				status,
-				Number.isFinite(statusCode) ? String(statusCode) : '',
-				statusTime ?? '',
-				String(scans.length)
-			].join('|');
-		const idempotencyKey = await sha256Hex(idempotencySeed);
-		const direction = isReturn ? 'return' : 'outbound';
-		let shipmentId: string | null = null;
-		let shipmentOrderId: string | null = null;
-		const matchShipment = async (
-			column: 'awb_code' | 'shiprocket_shipment_id' | 'shiprocket_order_id',
-			value: string | number
-		) => {
-			const { data } = await adminDb
-				.from('shipments')
-				.select('id,order_id')
-				.eq(column, value)
-				.eq('shipping_direction', direction)
-				.order('created_at', { ascending: false })
-				.limit(1)
-				.maybeSingle();
-			return data ?? null;
-		};
-		let matched = awb ? await matchShipment('awb_code', awb) : null;
-		if (!matched && Number.isFinite(shiprocketShipmentId)) {
-			matched = await matchShipment('shiprocket_shipment_id', shiprocketShipmentId);
-		}
-		if (!matched && Number.isFinite(shiprocketOrderId)) {
-			matched = await matchShipment('shiprocket_order_id', shiprocketOrderId);
-		}
-		shipmentId = matched?.id ?? null;
-		shipmentOrderId = matched?.order_id ?? null;
-		const { data: webhookEvent, error: webhookEventError } = await adminDb
-			.from('provider_webhook_events')
-			.insert({
-				provider: 'shiprocket',
-				provider_event_id: providerEventId,
-				event_type: status,
-				signature_valid: true,
-				idempotency_key: idempotencyKey,
-				related_shipment_id: shipmentId,
-				payload: body
-			})
-			.select('id')
-			.single();
-		if (webhookEventError) {
-			if (webhookEventError.code === '23505') {
-				await logMonitoringEvent({
-					source: 'shiprocket.webhook',
-					severity: 'info',
-					message: 'Duplicate Shiprocket webhook ignored',
-					requestKey: idempotencyKey,
-					metadata: { providerEventId, awb, shiprocketShipmentId }
-				});
-				return json(req, 200, { ok: true, duplicate: true });
-			}
-			throw webhookEventError;
-		}
-		// The payload is persisted above; processing failures must not bubble up
-		// as non-200 responses or Shiprocket marks the webhook as failing and may
-		// disable it. Log and acknowledge instead — the stored event allows replay.
-		try {
-			await adminDb.from('shipment_events').insert({
-				shipment_id: shipmentId,
-				provider: 'shiprocket',
-				awb_code: awb,
-				status,
-				status_code: Number.isFinite(statusCode) ? statusCode : null,
-				status_time: statusTime,
-				location,
-				message,
-				raw_payload: body
-			});
-			if (shipmentId) {
-				const normalizedShipmentStatus = normalizeShipmentStatus(status);
-				const shipmentPatch: Record<string, unknown> = {
-					status: normalizedShipmentStatus,
-					last_status_at: statusTime ?? new Date().toISOString(),
-					raw_payload: body
-				};
-				if (Number.isFinite(statusCode)) shipmentPatch.last_status_code = statusCode;
-				if (etd) {
-					const etdDate = new Date(etd.replace(' ', 'T'));
-					if (Number.isFinite(etdDate.getTime())) {
-						shipmentPatch.expected_delivery_date = etdDate.toISOString().slice(0, 10);
-					}
-				}
-				if (normalizedShipmentStatus === 'delivered') {
-					shipmentPatch.actual_delivery_at = statusTime ?? new Date().toISOString();
-				}
-				await adminDb.from('shipments').update(shipmentPatch).eq('id', shipmentId);
-				if (shipmentOrderId && !isReturn) {
-					await propagateShipmentStatusToOrder(adminDb, shipmentOrderId, normalizedShipmentStatus);
-				}
-			}
-			await adminDb
-				.from('provider_webhook_events')
-				.update({
-					processing_status: shipmentId ? 'processed' : 'ignored',
-					related_shipment_id: shipmentId,
-					processed_at: new Date().toISOString()
-				})
-				.eq('id', webhookEvent.id);
-			if (!shipmentId) {
-				await logMonitoringEvent({
-					source: 'shiprocket.webhook',
-					severity: 'warning',
-					message: 'Shiprocket webhook did not match a shipment',
-					requestKey: idempotencyKey,
-					metadata: { providerEventId, awb, shiprocketShipmentId, shiprocketOrderId, status }
-				});
-			}
-		} catch (processingError) {
-			await logMonitoringEvent({
-				source: 'shiprocket.webhook',
-				severity: 'error',
-				message: 'Shiprocket webhook processing failed after persisting the event',
-				requestKey: idempotencyKey,
-				metadata: {
-					providerEventId,
-					awb,
-					status,
-					webhookEventId: webhookEvent.id,
-					error:
-						processingError instanceof Error ? processingError.message : String(processingError)
-				}
-			});
-			await adminDb
-				.from('provider_webhook_events')
-				.update({ processing_status: 'failed', processed_at: new Date().toISOString() })
-				.eq('id', webhookEvent.id);
-		}
-		return json(req, 200, { ok: true });
-	}
 
 	const storageUploadMatch = matchRoute(path, /^\/storage\/upload\/(products|users)$/);
 	if (req.method === 'POST' && storageUploadMatch) {
@@ -6671,7 +5931,7 @@ async function handle(req: Request) {
 			if ('payment_status' in payload) {
 				throw new HttpError(400, 'Use the cancellation workflow before changing payment state');
 			}
-			await cancelOrderShipmentOnShiprocket(adminDb, orderId);
+			await cancelManualOrderShipment(adminDb, orderId);
 			const { error: cancellationError } = await adminDb.rpc('admin_cancel_order', {
 				p_order_id: orderId,
 				p_admin_user_id: adminUser.id,

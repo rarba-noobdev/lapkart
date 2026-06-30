@@ -27,7 +27,7 @@ comment on column public.notification_outbox.payload is
 
 create table if not exists public.provider_webhook_events (
   id uuid primary key default gen_random_uuid(),
-  provider text not null check (provider in ('razorpay', 'shiprocket', 'ola_maps')),
+	provider text not null check (provider in ('razorpay', 'manual', 'ola_maps')),
   provider_event_id text,
   event_type text not null,
   signature_valid boolean not null default false,
@@ -43,7 +43,7 @@ create table if not exists public.provider_webhook_events (
 );
 
 comment on table public.provider_webhook_events is
-  'Provider webhook idempotency ledger. Edge Functions insert before processing Razorpay, Shiprocket, or Ola callback payloads.';
+	'Provider webhook idempotency ledger for payment and mapping callback payloads.';
 comment on column public.provider_webhook_events.idempotency_key is
   'Stable provider-scoped key used to ignore duplicate callbacks and retries.';
 

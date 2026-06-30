@@ -22,9 +22,8 @@ Canonical implementation: `supabase/functions/api/index.ts`
 - Health/risk: `GET /health`, `POST /fraud/score`
 - Checkout/payment: `POST /checkout/preview`, `POST /checkout/create-cod-order`, `POST /checkout/create-payment-order`, `POST /checkout/complete-payment`, legacy Razorpay aliases
 - Maps: `GET /maps/autocomplete`, `GET /maps/reverse-geocode`, `GET /maps/delivery-estimate`
-- Shiprocket/account: `GET /shiprocket/status`, `GET /shiprocket/account`
-- Fulfillment: `GET /admin/fulfillment/orders`, `POST /shipments/shiprocket/create`, `POST /shipments/shiprocket/assign-awb`, `POST /shipments/shiprocket/pickup`, `GET /shipments/shiprocket/:shipmentId/tracking`, `POST /shipments/shiprocket/return`, `POST /shipments/shiprocket/bulk`, `POST /shipments/shiprocket/labels`
-- Webhooks/provider events: `POST /logistics/events`
+- Manual fulfillment/account: `GET /manual-fulfillment/status`, `GET /manual-fulfillment/account`
+- Fulfillment: `GET /admin/fulfillment/orders`, `POST /shipments/manual/create`, `POST /shipments/manual/assign-awb`, `POST /shipments/manual/pickup`, `GET /shipments/manual/:shipmentId/tracking`, `POST /shipments/manual/return`, `POST /shipments/manual/bulk`, `POST /shipments/manual/labels`
 - User order lifecycle: `GET /orders/:orderId/tracking`, `GET /orders/:orderId/invoice`, `POST /orders/:orderId/cancel`, `POST /orders/:orderId/return`
 - Engagement/account: `GET/POST/DELETE /wishlist`, `POST /product-reviews`, `POST /stock-notifications`, `GET/PATCH /account/business`, `GET/POST /product-questions`
 - Admin moderation/support: `GET/PATCH /admin/product-questions`, `GET/PATCH/POST /admin/stock-notification-events`
@@ -54,7 +53,7 @@ Current browser code primarily calls server/Edge endpoints through shared helper
 - `PATCH /admin/orders/:orderId` currently accepts status/payment status style updates and must be constrained by DB/service transition logic.
 - `POST /admin/cancellations/:id` must create audit + notification outbox + refund workflow atomically and block shipment-locked orders.
 - `POST /admin/returns/:id` and `POST /admin/refunds` need strict transition, amount, and evidence checks.
-- Shiprocket create/AWB/pickup/label/bulk paths need idempotency and shipment-lock integration.
+- Manual create/AWB/pickup/label/bulk paths need idempotency and shipment-lock integration.
 - `PATCH /admin/users/:userId` already has last-admin protections in DB migrations, but role changes need reason/audit everywhere.
 - Product and coupon admin endpoints use allowlisted payloads but still need DB constraints for negative values and lifecycle-safe deletes/archives.
 
@@ -105,7 +104,7 @@ Gaps to fix:
 3. Tighten product public SELECT and payment direct SELECT exposure.
 4. Add DB order transition/cancellation RPC that locks orders/shipments, rejects illegal transitions, writes audit/outbox/refund inventory side effects.
 5. Wire Edge Function admin cancellation/status mutation to RPC instead of arbitrary table updates.
-6. Add provider webhook idempotency writes and stale-status rejection for Shiprocket.
+6. Add stale-status rejection and stronger idempotency for manual shipment mutations.
 7. Add Razorpay/payment duplicate callback tests and DB uniqueness where missing.
 8. Add focused security regression tests or SQL test scripts for BOLA, mass assignment, immutable snapshots, invalid transitions, duplicate callbacks, and shipment locks.
 9. Update frontend gating to consume backend action availability and typed errors.

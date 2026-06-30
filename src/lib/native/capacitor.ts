@@ -38,6 +38,10 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 
 	listeners.push(
 		await App.addListener('backButton', async ({ canGoBack }) => {
+			if (document.documentElement.dataset.lapkartOnboarding === 'open') {
+				window.dispatchEvent(new CustomEvent('lapkart:onboarding-back'));
+				return;
+			}
 			const path = options.getPathname();
 			if (canGoBack) {
 				window.history.back();

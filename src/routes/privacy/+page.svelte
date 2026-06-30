@@ -12,7 +12,7 @@
 		},
 		{
 			title: 'Third-party processors',
-			body: 'Payment and map-related data may be shared with Razorpay, Ola Maps, and Supabase only as needed for the requested service. Courier details are handled through LapKart operations unless a future logistics provider is enabled.'
+			body: 'Payment and map-related data may be shared with Razorpay, Ola Maps, and Supabase only as needed for the requested service. Courier details are handled through LapKart operations.'
 		}
 	];
 </script>

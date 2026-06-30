@@ -10,12 +10,6 @@ dashboard toggles). Updated as work lands.
 
 These cannot be done from code. Nothing below is optional for a real launch.
 
-- [ ] **Register the Shiprocket webhook** — Shiprocket panel → Settings → API → Webhooks.
-  - URL: `https://jcktbslbbidjqwpgvsid.supabase.co/functions/v1/api/logistics/events`
-  - Auth type: **API Key** header, key name `x-api-key`
-  - Token: `7ff6fbf1df2021bfc664d29472f9bbc311eec6dbc4a30c45` (already set as the
-    `SHIPROCKET_WEBHOOK_TOKEN` Supabase secret and in local `.env`)
-  - Enable the toggle. Until this is done, order tracking is not webhook-driven.
 - [ ] **Supply real legal values** for the contact / policy pages (DPDP + IT Rules + Consumer Protection):
   - Registered legal entity name
   - Principal place of business (full address)
@@ -60,7 +54,7 @@ These cannot be done from code. Nothing below is optional for a real launch.
 - [x] Grouped sidebar, number-key section switching, sticky topbar
 - [x] Server-paginated catalog + orders (was capped at 50)
 - [x] Per-section redesign: timelines, stage chips, stock dots, usage meters
-- [x] Shiprocket webhook handler aligned to documented payload + multi-status filter
+- [x] Manual fulfillment events and tracking history
 - [x] Realtime client heartbeat tuning
 
 ---

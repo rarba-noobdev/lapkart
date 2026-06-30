@@ -11,7 +11,7 @@ It includes both a customer storefront and an admin operations surface.
 - view product details, stock, and pricing
 - add items to cart
 - select a delivery location with map-assisted address capture
-- fetch live courier options before payment
+- calculate manual delivery options before payment
 - place orders through Razorpay or eligible COD
 - review account history and order tracking
 
@@ -21,7 +21,7 @@ It includes both a customer storefront and an admin operations surface.
 - manage coupons, featured merchandising, and user roles
 - review support questions and stock notification events
 - update order lifecycle state, cancellations, returns, and refunds
-- create and manage Shiprocket fulfillment, AWB, pickup, labels, and tracking
+- create and manage manual shipments, AWBs, pickups, labels, and tracking
 
 ## Frontend Stack
 
@@ -39,7 +39,7 @@ It includes both a customer storefront and an admin operations surface.
 - Supabase Realtime
 - Supabase Edge Function API in `supabase/functions/api`
 - Razorpay for payments
-- Shiprocket for logistics
+- staff-managed logistics and fulfillment
 - Ola Maps for address search, reverse geocoding, and delivery estimation
 
 ## Current Repo Shape

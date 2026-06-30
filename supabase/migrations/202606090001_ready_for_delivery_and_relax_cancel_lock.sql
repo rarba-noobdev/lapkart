@@ -26,7 +26,7 @@ alter table public.orders
 -- 2) Relax the admin cancellation shipment lock.
 --    Orders may now be cancelled until the parcel is out for delivery, even
 --    though an AWB is assigned at order creation. The Edge Function cancels the
---    Shiprocket shipment before invoking this RPC, so an assigned AWB alone no
+--    manual shipment before invoking this RPC, so an assigned AWB alone no
 --    longer blocks cancellation. Only block once the parcel has left for final
 --    delivery or reached a terminal logistics state.
 create or replace function public.admin_cancel_order(
