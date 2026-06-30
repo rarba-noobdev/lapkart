@@ -245,11 +245,16 @@ async function loadSearchProducts(
 	limit: number,
 	page: number
 ): Promise<ProductSearchResult> {
+	const queryText = options.query?.trim() ?? '';
+
 	if (options.category && hiddenCategories.includes(options.category)) {
 		return { products: [], total: 0, source: 'postgres' };
 	}
-	if (isPrivateSupplierQuery(options.query)) {
+	if (isPrivateSupplierQuery(queryText)) {
 		return { products: [], total: 0, source: 'postgres' };
+	}
+	if (!queryText) {
+		return loadFallbackSearchProducts(options, client, limit, page);
 	}
 
 	try {
@@ -262,7 +267,7 @@ async function loadSearchProducts(
 			p_min_price: asNullableNumber(options.minPrice) ?? null,
 			p_min_rating: asNullableNumber(options.minRating) ?? null,
 			p_offset: (page - 1) * limit,
-			p_query: options.query?.trim() || null,
+			p_query: queryText,
 			p_sort: options.sort ?? 'relevance'
 		});
 

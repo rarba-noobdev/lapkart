@@ -118,15 +118,13 @@
 		inset-inline: 0;
 		bottom: calc(82px + env(safe-area-inset-bottom));
 		z-index: 45;
-		border-top: 1px solid var(--border-faint);
-		background: rgba(255, 255, 255, 0.92);
-		backdrop-filter: blur(12px);
-		box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
+		padding-inline: 10px;
+		pointer-events: none;
 	}
 
 	@media (min-width: 768px) {
 		.sticky-atc {
-			bottom: 0;
+			bottom: calc(18px + env(safe-area-inset-bottom));
 		}
 	}
 
@@ -135,9 +133,19 @@
 		grid-template-columns: minmax(72px, 0.82fr) minmax(0, 1.65fr);
 		align-items: center;
 		gap: 8px;
-		max-width: 56rem;
+		width: min(56rem, calc(100vw - 20px));
+		min-height: 56px;
 		margin-inline: auto;
-		padding: 8px 10px calc(8px + env(safe-area-inset-bottom) * 0);
+		overflow: hidden;
+		border: 1px solid var(--border-muted);
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.96);
+		padding: 5px 5px 5px 12px;
+		box-shadow:
+			0 18px 42px -24px rgba(17, 24, 39, 0.42),
+			0 2px 10px rgba(17, 24, 39, 0.08);
+		backdrop-filter: blur(14px);
+		pointer-events: auto;
 	}
 
 	.sticky-atc-price {
@@ -156,7 +164,7 @@
 		min-width: 0;
 		font-size: 16px;
 		font-weight: 650;
-		letter-spacing: -0.01em;
+		letter-spacing: 0;
 		color: var(--foreground);
 		font-variant-numeric: tabular-nums;
 	}
@@ -190,14 +198,11 @@
 	.sticky-atc-pill {
 		display: grid;
 		min-width: 0;
-		height: 48px;
+		height: 46px;
 		grid-template-columns: auto minmax(82px, 1fr);
 		align-items: center;
-		overflow: hidden;
-		border: 1px solid var(--border-muted);
-		border-radius: 999px;
-		background: white;
-		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+		gap: 6px;
+		overflow: visible;
 	}
 
 	.sticky-atc-stepper {
@@ -205,9 +210,10 @@
 		grid-template-columns: 34px minmax(36px, 44px) 34px;
 		align-items: center;
 		gap: 2px;
-		height: 100%;
+		height: 42px;
 		padding: 4px;
-		border-right: 1px solid var(--border-faint);
+		border-radius: 999px;
+		background: var(--black-alpha-4);
 	}
 
 	.sticky-atc-icon {
@@ -244,7 +250,7 @@
 	.sticky-atc-qty-label {
 		font-size: 8px;
 		font-weight: 700;
-		letter-spacing: 0.1em;
+		letter-spacing: 0;
 		color: var(--black-alpha-40);
 		text-transform: uppercase;
 	}
@@ -264,8 +270,8 @@
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		height: 40px;
-		margin: 4px;
+		height: 42px;
+		margin: 0;
 		border-radius: 999px;
 		background: var(--heat-100);
 		color: white;
@@ -283,18 +289,18 @@
 	}
 
 	.sticky-atc-confirm {
-		height: 48px;
+		height: 46px;
 		margin: 0;
 		padding-inline: 18px;
 		background: var(--accent-forest);
-		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
 	}
 
 	@media (min-width: 768px) {
 		.sticky-atc-inner {
-			grid-template-columns: minmax(160px, 1fr) 360px;
-			gap: 12px;
-			padding-inline: 16px;
+			grid-template-columns: minmax(160px, 1fr) minmax(340px, 380px);
+			gap: 14px;
+			width: min(56rem, calc(100vw - 32px));
+			padding: 6px 6px 6px 18px;
 		}
 	}
 
@@ -313,10 +319,16 @@
 	}
 
 	@media (max-width: 360px) {
+		.sticky-atc {
+			padding-inline: 8px;
+		}
+
 		.sticky-atc-inner {
 			grid-template-columns: minmax(64px, 0.72fr) minmax(0, 1.9fr);
 			gap: 6px;
-			padding-inline: 8px;
+			width: calc(100vw - 16px);
+			min-height: 54px;
+			padding: 5px 5px 5px 10px;
 		}
 
 		.sticky-atc-current {
@@ -330,12 +342,16 @@
 		}
 
 		.sticky-atc-pill {
+			height: 44px;
 			grid-template-columns: auto minmax(70px, 1fr);
+			gap: 4px;
 		}
 
 		.sticky-atc-stepper {
 			grid-template-columns: 30px 28px 30px;
 			gap: 0;
+			height: 40px;
+			padding: 3px;
 		}
 
 		.sticky-atc-icon {

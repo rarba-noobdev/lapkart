@@ -556,7 +556,7 @@
 <!-- Product layout: two-panel card -->
 <section class="container mx-auto px-0 pb-8 md:px-4 md:pb-14 lg:pb-14">
 	<div
-		class="motion-section overflow-hidden bg-white md:mt-4 md:rounded-lg md:border md:border-[var(--border-faint)] md:shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)]"
+		class="overflow-hidden bg-white md:mt-4 md:rounded-lg md:border md:border-[var(--border-faint)] md:shadow-[0_8px_32px_-16px_rgba(0,0,0,0.12)] lg:overflow-visible"
 	>
 		<div class="grid lg:grid-cols-2">
 			<!-- Left panel: Gallery -->
