@@ -56,7 +56,7 @@
 		</span>
 	{/if}
 
-	<div class="flex flex-1 flex-col justify-center px-2.5 py-2 sm:px-4 sm:py-3">
+	<div class="product-card-copy flex flex-1 flex-col justify-center px-2.5 py-2 sm:px-4 sm:py-3">
 		<p
 			class="truncate font-mono text-[9px] tracking-[0.12em] uppercase sm:text-[11px]"
 			style="color:var(--black-alpha-56)"
@@ -64,7 +64,7 @@
 			{product.brand}
 		</p>
 		<h3
-			class="mt-0.5 line-clamp-2 text-[11px] leading-snug font-medium sm:text-[13px]"
+			class="product-card-title mt-0.5 line-clamp-2 text-[11px] leading-snug font-medium sm:text-[13px]"
 			style="color:var(--foreground)"
 		>
 			{product.title}
@@ -84,7 +84,7 @@
 		</div>
 
 		<div
-			class="mt-1.5 flex items-baseline gap-1.5 sm:mt-auto sm:gap-2 sm:border-t sm:border-[var(--border-faint)] sm:pt-3"
+			class="product-card-price-row mt-1.5 flex items-baseline gap-1.5 sm:mt-auto sm:gap-2 sm:border-t sm:border-[var(--border-faint)] sm:pt-3"
 		>
 			<span class="text-[13px] font-semibold sm:text-[15px]" style="color:var(--foreground)"
 				>{formatINR(product.price)}</span
@@ -109,6 +109,22 @@
 		flex-shrink: 0;
 		overflow: hidden;
 		background: var(--background-lighter);
+	}
+
+	.product-card-copy {
+		min-width: 0;
+	}
+
+	.product-card-title {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		hyphens: auto;
+	}
+
+	.product-card-price-row {
+		min-width: 0;
+		flex-wrap: wrap;
 	}
 
 	@media (min-width: 640px) {

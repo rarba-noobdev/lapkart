@@ -33,6 +33,7 @@ declare global {
 			name: string;
 			description: string;
 			order_id: string;
+			webview_intent?: boolean;
 			prefill: { name: string; email: string; contact: string };
 			config?: Record<string, unknown>;
 			theme: { color: string };

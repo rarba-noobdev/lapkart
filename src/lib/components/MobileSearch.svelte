@@ -6,7 +6,6 @@
 		ArrowLeft,
 		ArrowRight,
 		Clock,
-		Flame,
 		LoaderCircle,
 		Search,
 		TrendingUp,
@@ -16,6 +15,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { allCategories, formatINR, type Product } from '$lib/catalog';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import { nativeImpact } from '$lib/native/capacitor';
 
 	let {
@@ -238,7 +238,7 @@
 						<ArrowLeft class="size-[18px]" strokeWidth={2.2} />
 					</button>
 					<span class="head-kicker">
-						<Flame class="size-3.5 text-[var(--heat-100)]" strokeWidth={2.4} />
+						<BrandLogo variant="search" showText={false} />
 						Search lapkart
 					</span>
 				</div>

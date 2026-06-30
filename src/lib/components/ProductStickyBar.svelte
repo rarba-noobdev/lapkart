@@ -46,61 +46,67 @@
 		aria-label="Add to cart"
 	>
 		<div class="sticky-atc-inner">
-			<div class="min-w-0 flex-1">
-				<div class="flex items-baseline gap-2">
-					<span class="text-[17px] font-semibold tracking-tight text-foreground tabular-nums">
+			<div class="sticky-atc-price">
+				<div class="sticky-atc-price-row">
+					<span class="sticky-atc-current">
 						{formatINR(product.price)}
 					</span>
 					{#if save > 0}
-						<span class="text-[12px] text-[var(--black-alpha-32)] tabular-nums line-through">
+						<span class="sticky-atc-mrp">
 							{formatINR(product.mrp)}
 						</span>
 					{/if}
 				</div>
 				{#if lowStock}
-					<p class="text-[11px] font-medium text-[var(--accent-crimson)]">
+					<p class="sticky-atc-meta sticky-atc-low">
 						Only {product.stock} left
 					</p>
 				{:else if save > 0}
-					<p class="text-[11px] font-medium text-[var(--accent-forest)]">
+					<p class="sticky-atc-meta sticky-atc-save">
 						You save {formatINR(save)}
 					</p>
 				{/if}
 			</div>
 
 			{#if added}
-				<a href={resolve('/cart')} class="sticky-atc-cta sticky-atc-cta-success">
+				<a href={resolve('/cart')} class="sticky-atc-confirm">
 					<Check class="size-4" strokeWidth={2.4} />
 					Go to cart{cartCount > 0 ? ` (${cartCount})` : ''}
 				</a>
 			{:else}
-				<div
-					class="grid h-11 shrink-0 grid-cols-[40px_minmax(28px,1fr)_40px] overflow-hidden rounded-md border border-[var(--border-muted)] bg-white"
-				>
-					<button
-						type="button"
-						aria-label="Decrease quantity"
-						disabled={qty <= 1 || outOfStock}
-						class="grid place-items-center text-[var(--black-alpha-48)] transition-colors hover:bg-[var(--black-alpha-2)] hover:text-foreground disabled:opacity-30"
-						onclick={decrement}
-					>
-						<Minus class="size-4" />
-					</button>
-					<span class="grid place-items-center text-[14px] font-medium tabular-nums">{qty}</span>
-					<button
-						type="button"
-						aria-label="Increase quantity"
-						disabled={outOfStock}
-						class="grid place-items-center text-[var(--black-alpha-48)] transition-colors hover:bg-[var(--black-alpha-2)] hover:text-foreground disabled:opacity-30"
-						onclick={increment}
-					>
-						<Plus class="size-4" />
+				<div class="sticky-atc-pill" aria-label="Quantity and add to cart controls">
+					<div class="sticky-atc-stepper" aria-label="Quantity">
+						<button
+							type="button"
+							aria-label="Decrease quantity"
+							disabled={qty <= 1 || outOfStock}
+							class="sticky-atc-icon"
+							onclick={decrement}
+						>
+							<Minus class="size-4" />
+						</button>
+						<span class="sticky-atc-qty" aria-label={`Quantity ${qty}`}>
+							<span class="sticky-atc-qty-label">Qty</span>
+							<span class="sticky-atc-qty-value">{qty}</span>
+						</span>
+						<button
+							type="button"
+							aria-label="Increase quantity"
+							disabled={outOfStock}
+							class="sticky-atc-icon"
+							onclick={increment}
+						>
+							<Plus class="size-4" />
+						</button>
+					</div>
+					<button type="button" disabled={outOfStock} class="sticky-atc-add" onclick={onAdd}>
+						<ShoppingCart class="size-4 shrink-0" strokeWidth={2.2} />
+						<span>{outOfStock ? 'Sold out' : 'Add'}</span>
+						{#if !outOfStock}
+							<span class="sticky-atc-add-wide">to cart</span>
+						{/if}
 					</button>
 				</div>
-				<button type="button" disabled={outOfStock} class="sticky-atc-cta" onclick={onAdd}>
-					<ShoppingCart class="size-4" strokeWidth={2.2} />
-					{outOfStock ? 'Out of stock' : 'Add to cart'}
-				</button>
 			{/if}
 		</div>
 	</div>
@@ -125,51 +131,220 @@
 	}
 
 	.sticky-atc-inner {
-		display: flex;
+		display: grid;
+		grid-template-columns: minmax(72px, 0.82fr) minmax(0, 1.65fr);
 		align-items: center;
-		gap: 12px;
+		gap: 8px;
 		max-width: 56rem;
 		margin-inline: auto;
-		padding: 10px 16px calc(10px + env(safe-area-inset-bottom) * 0);
+		padding: 8px 10px calc(8px + env(safe-area-inset-bottom) * 0);
 	}
 
-	.sticky-atc-cta {
+	.sticky-atc-price {
+		min-width: 0;
+		padding-left: 2px;
+	}
+
+	.sticky-atc-price-row {
+		display: flex;
+		min-width: 0;
+		align-items: baseline;
+		gap: 6px;
+	}
+
+	.sticky-atc-current {
+		min-width: 0;
+		font-size: 16px;
+		font-weight: 650;
+		letter-spacing: -0.01em;
+		color: var(--foreground);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sticky-atc-mrp {
+		min-width: 0;
+		font-size: 11px;
+		color: var(--black-alpha-32);
+		text-decoration: line-through;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sticky-atc-meta {
+		margin-top: 1px;
+		overflow: hidden;
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1.15;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sticky-atc-low {
+		color: var(--accent-crimson);
+	}
+
+	.sticky-atc-save {
+		color: var(--accent-forest);
+	}
+
+	.sticky-atc-pill {
+		display: grid;
+		min-width: 0;
+		height: 48px;
+		grid-template-columns: auto minmax(82px, 1fr);
+		align-items: center;
+		overflow: hidden;
+		border: 1px solid var(--border-muted);
+		border-radius: 999px;
+		background: white;
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+	}
+
+	.sticky-atc-stepper {
+		display: grid;
+		grid-template-columns: 34px minmax(36px, 44px) 34px;
+		align-items: center;
+		gap: 2px;
+		height: 100%;
+		padding: 4px;
+		border-right: 1px solid var(--border-faint);
+	}
+
+	.sticky-atc-icon {
+		display: grid;
+		width: 34px;
+		height: 34px;
+		place-items: center;
+		border-radius: 999px;
+		color: var(--black-alpha-56);
+		transition:
+			background-color 150ms ease,
+			color 150ms ease,
+			opacity 150ms ease;
+	}
+
+	.sticky-atc-icon:hover {
+		background: var(--black-alpha-4);
+		color: var(--foreground);
+	}
+
+	.sticky-atc-icon:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+
+	.sticky-atc-qty {
+		display: grid;
+		min-width: 0;
+		place-items: center;
+		line-height: 1;
+		text-align: center;
+	}
+
+	.sticky-atc-qty-label {
+		font-size: 8px;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		color: var(--black-alpha-40);
+		text-transform: uppercase;
+	}
+
+	.sticky-atc-qty-value {
+		margin-top: 2px;
+		font-size: 14px;
+		font-weight: 650;
+		color: var(--foreground);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sticky-atc-add,
+	.sticky-atc-confirm {
 		display: inline-flex;
-		flex: 1 1 auto;
+		min-width: 0;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
-		height: 44px;
-		min-width: 0;
-		padding-inline: 20px;
-		border-radius: 8px;
+		gap: 6px;
+		height: 40px;
+		margin: 4px;
+		border-radius: 999px;
 		background: var(--heat-100);
 		color: white;
 		font-size: 14px;
 		font-weight: 600;
+		line-height: 1;
 		white-space: nowrap;
 		transition:
 			background-color 150ms ease,
 			opacity 150ms ease;
 	}
 
+	.sticky-atc-add {
+		padding-inline: 12px 14px;
+	}
+
+	.sticky-atc-confirm {
+		height: 48px;
+		margin: 0;
+		padding-inline: 18px;
+		background: var(--accent-forest);
+		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+	}
+
 	@media (min-width: 768px) {
-		.sticky-atc-cta {
-			flex: 0 0 auto;
-			min-width: 200px;
+		.sticky-atc-inner {
+			grid-template-columns: minmax(160px, 1fr) 360px;
+			gap: 12px;
+			padding-inline: 16px;
 		}
 	}
 
-	.sticky-atc-cta:hover {
+	.sticky-atc-add:hover,
+	.sticky-atc-confirm:hover {
 		background: var(--heat-120, var(--heat-100));
 	}
 
-	.sticky-atc-cta:disabled {
+	.sticky-atc-add:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	.sticky-atc-cta-success {
+	.sticky-atc-confirm:hover {
 		background: var(--accent-forest);
+	}
+
+	@media (max-width: 360px) {
+		.sticky-atc-inner {
+			grid-template-columns: minmax(64px, 0.72fr) minmax(0, 1.9fr);
+			gap: 6px;
+			padding-inline: 8px;
+		}
+
+		.sticky-atc-current {
+			font-size: 15px;
+		}
+
+		.sticky-atc-mrp,
+		.sticky-atc-qty-label,
+		.sticky-atc-add-wide {
+			display: none;
+		}
+
+		.sticky-atc-pill {
+			grid-template-columns: auto minmax(70px, 1fr);
+		}
+
+		.sticky-atc-stepper {
+			grid-template-columns: 30px 28px 30px;
+			gap: 0;
+		}
+
+		.sticky-atc-icon {
+			width: 30px;
+			height: 30px;
+		}
+
+		.sticky-atc-add {
+			padding-inline: 10px 12px;
+		}
 	}
 </style>

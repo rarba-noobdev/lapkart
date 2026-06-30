@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { Flame, ArrowLeft, Search } from '@lucide/svelte';
+	import { ArrowLeft, Search } from '@lucide/svelte';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 
 	const status = $derived(page.status);
 	const isNotFound = $derived(status === 404);
@@ -20,8 +21,7 @@
 <main class="err-shell">
 	<div class="err-card">
 		<div class="err-logo">
-			<span class="err-flame"><Flame class="size-4" strokeWidth={2.5} /></span>
-			lap<span class="err-brand">kart</span>
+			<BrandLogo variant="error" />
 		</div>
 		<p class="err-status">{status}</p>
 		<h1 class="err-title">{heading}</h1>
@@ -62,20 +62,6 @@
 		font-weight: 700;
 		letter-spacing: -0.01em;
 		color: var(--foreground, #161616);
-	}
-
-	.err-flame {
-		display: grid;
-		place-items: center;
-		width: 30px;
-		height: 30px;
-		border-radius: 8px;
-		background: var(--heat-100, #fa5d19);
-		color: white;
-	}
-
-	.err-brand {
-		color: var(--heat-100, #fa5d19);
 	}
 
 	.err-status {

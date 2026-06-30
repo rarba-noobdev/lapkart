@@ -283,14 +283,14 @@
 		product.highlights.length > 0
 			? product.highlights
 			: [
-					'Compatibility guidance available before dispatch.',
-					'Fast-moving inventory with stock visibility.',
-					'Returns and warranty support remain visible after checkout.'
+					'We can confirm fit before dispatch.',
+					'Live stock shown before checkout.',
+					'Return and warranty support after checkout.'
 				]
 	);
 	const visibleHighlights = $derived(highlights.filter((highlight) => !isLabeledSpec(highlight)));
 	const compatibility = $derived(
-		product.compatibility || 'Compatibility guidance is available before dispatch.'
+		product.compatibility || 'We can confirm fit before dispatch.'
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const packageSize = $derived(formatPackageSize(product));
@@ -578,7 +578,7 @@
 				<!-- Title -->
 				<div class="mt-1.5 flex items-start gap-3">
 					<h1
-						class="min-w-0 flex-1 font-display text-[clamp(1.25rem,2.8vw,1.75rem)] leading-snug tracking-[-0.015em] text-foreground"
+						class="product-title-text min-w-0 flex-1 font-display text-[clamp(1.25rem,2.8vw,1.75rem)] leading-snug tracking-[-0.015em] text-foreground"
 					>
 						{product.title}
 					</h1>
@@ -833,7 +833,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
 						<ShieldCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
-						GST invoice
+						Tax invoice
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
@@ -845,7 +845,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)] sm:col-span-1"
 					>
 						<Truck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Chennai warehouse
+						Local dispatch
 					</span>
 					{#if product.cod_eligible}
 						<span
@@ -958,7 +958,7 @@
 									class="grid grid-cols-[104px_1fr] gap-3 px-4 py-2.5 sm:grid-cols-[132px_1fr] sm:px-6 md:px-8"
 								>
 									<span class="text-body-small text-[var(--black-alpha-48)]">{row.type}</span>
-									<span class="text-body-small font-medium text-foreground">{row.value}</span>
+									<span class="detail-break text-body-small font-medium text-foreground">{row.value}</span>
 								</div>
 							{/each}
 						</div>
@@ -996,7 +996,7 @@
 												>{row.brand}</td
 											>
 											<td class="text-body-small px-4 py-2.5 text-foreground sm:px-6 md:px-8"
-												>{row.model}</td
+												><span class="detail-break">{row.model}</span></td
 											>
 										</tr>
 									{/each}
@@ -1091,3 +1091,16 @@
 </section>
 
 <ProductStickyBar {product} bind:qty {added} visible={showStickyBar} onAdd={handleAddToCart} />
+
+<style>
+	.product-title-text,
+	.detail-break {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		hyphens: auto;
+	}
+
+	.detail-break {
+		min-width: 0;
+	}
+</style>

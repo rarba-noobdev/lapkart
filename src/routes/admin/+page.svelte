@@ -8,6 +8,7 @@
 	import AdminPromotionsManager from '$lib/components/admin/AdminPromotionsManager.svelte';
 	import AdminOperationsPanel from '$lib/components/admin/AdminOperationsPanel.svelte';
 	import AdminOverviewPanel from '$lib/components/admin/AdminOverviewPanel.svelte';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import { uploadAdminImage, type AdminOrderRecord } from '$lib/admin';
 	import { apiBase } from '$lib/api-base';
 	import { allCategories, formatINR } from '$lib/catalog';
@@ -22,7 +23,6 @@
 		Boxes,
 		Check,
 		Filter,
-		Flame,
 		LayoutDashboard,
 		LifeBuoy,
 		Minimize2,
@@ -2007,7 +2007,7 @@
 				authenticityGrade: productEditor.authenticityGrade,
 				conditionGrade: productEditor.conditionGrade,
 				hsnCode: productEditor.hsnCode,
-				gstRate: optionalNonnegativePayloadNumber(productEditor.gstRate, 'GST rate') ?? 18,
+				gstRate: optionalNonnegativePayloadNumber(productEditor.gstRate, 'Tax rate') ?? 18,
 				doaPolicyDays:
 					optionalNonnegativePayloadNumber(productEditor.doaPolicyDays, 'DOA policy days', true) ??
 					7,
@@ -2464,12 +2464,7 @@
 	<aside class="admin-sidebar">
 		<div class="sidebar-header">
 			<a href={resolve('/')} class="sidebar-logo">
-				<div class="grid size-8 place-items-center rounded-lg bg-[var(--heat-100)]">
-					<Flame class="size-4 text-white" strokeWidth={2.5} />
-				</div>
-				<span class="text-[15px] font-semibold tracking-tight text-white">
-					lap<span class="text-[var(--heat-100)]">kart</span>
-				</span>
+				<BrandLogo variant="admin" />
 			</a>
 			{#if currentUser?.email}
 				<p class="mt-2 truncate text-[10px] tracking-tight text-white/30">{currentUser.email}</p>
@@ -3830,7 +3825,7 @@
 															<input bind:value={productEditor.hsnCode} class="input-field" />
 														</label>
 														<label>
-															<span class="field-label">GST rate (%)</span>
+															<span class="field-label">Tax rate (%)</span>
 															<input
 																bind:value={productEditor.gstRate}
 																class="input-field"

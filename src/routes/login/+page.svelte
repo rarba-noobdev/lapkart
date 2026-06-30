@@ -6,7 +6,6 @@
 		BadgeCheck,
 		Eye,
 		EyeOff,
-		Flame,
 		LoaderCircle,
 		Lock,
 		Mail,
@@ -16,6 +15,7 @@
 	} from '@lucide/svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import { getAuthContext } from '$lib/auth-context';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form } = $props<{ data: PageData; form: ActionData }>();
@@ -62,12 +62,7 @@
 
 		<!-- Logo -->
 		<a href={resolve('/')} class="relative z-10 inline-flex items-center gap-2.5">
-			<div class="grid size-9 place-items-center rounded-lg bg-[var(--heat-100)] shadow-[0_0_20px_var(--heat-40)]">
-				<Flame class="size-4.5 text-white" strokeWidth={2.5} />
-			</div>
-			<span class="text-[20px] font-semibold tracking-tight text-white">
-				lap<span class="text-[var(--heat-100)]">kart</span>
-			</span>
+			<BrandLogo variant="auth" />
 		</a>
 
 		<!-- Pitch -->
@@ -77,7 +72,7 @@
 				<span class="text-[var(--heat-100)]">shipped fast.</span>
 			</h2>
 			<p class="mt-3 text-[14px] leading-relaxed text-white/60 xl:text-[15px]">
-				RAM, SSDs, batteries, displays — with fitment guidance and same-day dispatch from verified inventory.
+				RAM, SSDs, batteries, displays — with part-number help and same-day dispatch from verified inventory.
 			</p>
 
 			<div class="mt-8 space-y-4">
@@ -126,12 +121,7 @@
 		<div class="motion-section w-full max-w-[400px] space-y-6">
 			<!-- Mobile logo -->
 			<a href={resolve('/')} class="inline-flex items-center gap-2 lg:hidden">
-				<div class="grid size-8 place-items-center rounded-lg bg-[var(--heat-100)]">
-					<Flame class="size-4 text-white" strokeWidth={2.5} />
-				</div>
-				<span class="text-[18px] font-semibold tracking-tight text-foreground">
-					lap<span class="text-[var(--heat-100)]">kart</span>
-				</span>
+				<BrandLogo />
 			</a>
 
 			<!-- Heading -->

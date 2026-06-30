@@ -12,7 +12,7 @@
 		},
 		{
 			title: 'Support promise',
-			body: 'We prioritize compatibility clarity, genuine sourcing, safe packaging, and clear post-order support for cancellation, returns, refunds, and delivery tracking.'
+			body: 'We prioritize clear compatibility notes, genuine sourcing, safe packaging, and support for cancellation, returns, refunds, and delivery tracking.'
 		}
 	];
 </script>

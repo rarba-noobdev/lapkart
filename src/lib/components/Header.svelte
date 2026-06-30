@@ -3,7 +3,6 @@
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import {
-		Flame,
 		ShoppingCart,
 		User,
 		LogOut,
@@ -14,6 +13,7 @@
 	import { getAuthContext } from '$lib/auth-context';
 	import { cartState } from '$lib/cart';
 	import { isStaffRole } from '$lib/roles';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import MobileSearch from '$lib/components/MobileSearch.svelte';
 
@@ -80,20 +80,9 @@
 	<div class="container mx-auto flex items-center gap-4 px-4 py-3 sm:gap-8">
 		<a
 			href={resolve(isAdmin ? '/admin' : '/')}
-			class="motion-soft-link group flex items-baseline gap-2"
+			class="motion-soft-link group flex items-center"
 		>
-			<Flame
-				class="size-5 -translate-y-px text-[var(--heat-100)] transition-transform group-hover:rotate-6"
-				strokeWidth={2.4}
-			/>
-			<div class="leading-none">
-				<span class="font-display text-[22px] font-medium tracking-[-0.02em] text-foreground">
-					lap<span class="text-[var(--heat-100)]">kart</span>
-				</span>
-				<span class="text-mono-x-small ml-1.5 text-[var(--black-alpha-40)]">
-					{isAdmin ? '/ops' : '/parts'}
-				</span>
-			</div>
+			<BrandLogo suffix={isAdmin ? '/ops' : '/parts'} />
 		</a>
 
 		<SearchBar

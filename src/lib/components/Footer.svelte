@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowUpRight, Flame } from '@lucide/svelte';
+	import { ArrowUpRight } from '@lucide/svelte';
 	import { getAuthContext } from '$lib/auth-context';
+	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import { isStaffRole } from '$lib/roles';
 
 	type FooterColumn = {
@@ -107,12 +108,7 @@
 	<div class="relative container mx-auto px-4 pt-16 pb-8">
 		<div class="grid gap-12 border-b border-white/8 pb-12 md:grid-cols-[1.4fr_2fr]">
 			<div>
-				<div class="flex items-baseline gap-2">
-					<Flame class="size-6 text-[var(--heat-100)]" strokeWidth={2.4} />
-					<span class="font-display text-[28px] font-medium tracking-[-0.02em] text-white">
-						lap<span class="text-[var(--heat-100)]">kart</span>
-					</span>
-				</div>
+				<BrandLogo variant="footer" />
 				<p class="text-body-medium mt-5 max-w-sm leading-relaxed text-white/60">
 					{#if isAdmin}
 						Operations workspace for catalog control, user management, order visibility, and

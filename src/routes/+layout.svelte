@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { goto, invalidate } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { asset, resolve } from '$app/paths';
 	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import { setAuthContext } from '$lib/auth-context';
 	import type { LayoutProps } from './$types';
 	import AppUpdatePrompt from '$lib/components/AppUpdatePrompt.svelte';
@@ -144,9 +143,13 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/svg+xml" href={asset('/brand/lapkart-logo.svg')} />
+	<link rel="icon" type="image/png" sizes="32x32" href={asset('/brand/lapkart-icon-32.png')} />
+	<link rel="apple-touch-icon" href={asset('/brand/apple-touch-icon.png')} />
+	<link rel="manifest" href={asset('/site.webmanifest')} />
 	<meta property="og:site_name" content="LapKart" />
 	<meta name="application-name" content="LapKart" />
+	<meta name="mobile-web-app-capable" content="yes" />
 	{#if robotsNoIndex}
 		<meta name="robots" content="noindex,nofollow" />
 	{/if}

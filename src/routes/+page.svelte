@@ -7,7 +7,6 @@
 		ArrowRight,
 		BadgeCheck,
 		ChevronRight,
-		Flame,
 		Headphones,
 		Percent,
 		RotateCcw,
@@ -135,7 +134,7 @@
 			id: 'upgrade',
 			kicker: 'Upgrade week',
 			title: 'SSD and RAM combos',
-			body: 'Faster boot, cleaner multitasking, and verified fitment before dispatch.',
+			body: 'Faster boot, cleaner multitasking, and verified match before dispatch.',
 			href: '/products?category=ssd',
 			icon: Zap
 		},
@@ -167,7 +166,7 @@
 		{
 			id: 'genuine',
 			title: 'Grade visible',
-			body: 'OEM, compatible, open-box, warranty, and fitment notes stay visible.',
+			body: 'OEM, compatible, open-box, warranty, and matching notes stay visible.',
 			icon: BadgeCheck
 		},
 		{
@@ -207,7 +206,7 @@
 				<h1>Find the right part before the laptop leaves your bench.</h1>
 				<p class="home-hero-lede">
 					Search SSDs, RAM, displays, batteries, chargers, keyboards, cooling parts, and repair
-					spares with stock visibility and compatibility notes.
+					spares with live stock and compatibility notes.
 				</p>
 
 				<form action={resolve('/products')} method="GET" class="hero-search" role="search">

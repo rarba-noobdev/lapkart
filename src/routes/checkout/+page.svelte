@@ -35,6 +35,7 @@
 	} from '$lib/shipping';
 	import { getAccessToken, getAuthorizationHeaders } from '$lib/supabase-auth';
 	import type { Tables } from '$lib/supabase/types';
+	import { isNativeApp } from '$lib/native/capacitor';
 	import DeliveryMapPicker, {
 		type DeliveryPin,
 		type ResolvedDeliveryAddress
@@ -157,6 +158,7 @@
 	let deliveryEstimate = $state<DeliveryEstimate | null>(null);
 	let selectedQuoteId = $state<string | null>(null);
 	let paymentMode = $state<'razorpay' | 'cod'>('razorpay');
+	let nativeCheckout = $state(false);
 	let couponCode = $state('');
 	let appliedSummary = $state<CheckoutSummary | null>(null);
 	let suggestedCoupon = $state<{
@@ -551,6 +553,14 @@
 	});
 
 	onMount(() => {
+		void isNativeApp()
+			.then((value) => {
+				nativeCheckout = value;
+			})
+			.catch(() => {
+				nativeCheckout = false;
+			});
+
 		return () => {
 			clearEstimateRequest();
 		};
@@ -804,6 +814,7 @@
 				description:
 					rows.length > 0 ? `${rows.length} laptop marketplace item(s)` : 'LapKart payment',
 				order_id: body.razorpayOrder.order_id,
+				webview_intent: nativeCheckout,
 				prefill: {
 					name: address.fullName.trim(),
 					email: address.email.trim() || currentUser.email || '',

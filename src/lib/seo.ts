@@ -2,8 +2,9 @@ import { categories, discountPct, formatINR, type Product } from '$lib/catalog';
 import { calculateManualDeliveryCharge, MANUAL_DELIVERY_REGION } from '$lib/shipping';
 
 export const SITE_NAME = 'LapKart';
+export const SITE_LOGO_PATH = '/brand/lapkart-logo.png';
 export const DEFAULT_DESCRIPTION =
-	'Shop laptop SSDs, RAM, batteries, displays, chargers, keyboards, processors, and replacement parts with fitment guidance and fast dispatch.';
+	'Shop laptop SSDs, RAM, batteries, displays, chargers, keyboards, processors, and replacement parts with part-number help and fast dispatch.';
 const SEO_DESCRIPTION_MAX_LENGTH = 160;
 const PRODUCT_KEYWORD_LIMIT = 32;
 const PRODUCT_KEYWORD_MAX_LENGTH = 160;
@@ -58,7 +59,7 @@ export function categorySeoDescription(slug: string, count?: number) {
 	const name = categoryName(slug);
 	const prefix =
 		count && count > 0 ? `Browse ${count.toLocaleString('en-IN')} ${name}` : `Browse ${name}`;
-	return `${prefix} for laptop repair and upgrades with compatibility guidance, stock visibility, and secure checkout.`;
+	return `${prefix} for laptop repair and upgrades with part-number help, live stock, and secure checkout.`;
 }
 
 export function productSeoTitle(product: Product) {
@@ -315,7 +316,7 @@ export function organizationJsonLd(origin: string) {
 		'@type': 'Organization',
 		name: SITE_NAME,
 		url: absoluteUrl(origin, '/'),
-		logo: absoluteUrl(origin, '/favicon.svg')
+		logo: absoluteUrl(origin, SITE_LOGO_PATH)
 	};
 }
 

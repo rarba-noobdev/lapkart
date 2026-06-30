@@ -165,7 +165,6 @@
 
 	<!-- Desktop: main image with hover lens zoom + side magnifier panel -->
 	<div class="d-zone">
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="d-main"
 			bind:this={mainWrap}
@@ -255,18 +254,24 @@
 				if (e.target === e.currentTarget) closeLightbox();
 			}}
 		>
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
-			<img
-				src={current}
-				{alt}
-				class="lb-img"
+			<button
+				type="button"
+				class="lb-image-button"
 				class:is-zoomed={lbZoomed}
-				draggable="false"
+				aria-label={lbZoomed ? 'Zoom out image' : 'Zoom in image'}
 				onclick={(e) => {
 					e.stopPropagation();
 					lbZoomed = !lbZoomed;
 				}}
-			/>
+			>
+				<img
+					src={current}
+					{alt}
+					class="lb-img"
+					class:is-zoomed={lbZoomed}
+					draggable="false"
+				/>
+			</button>
 		</div>
 
 		<button type="button" class="lb-close" aria-label="Close" onclick={closeLightbox}>
@@ -298,7 +303,9 @@
 <style>
 	.gallery {
 		position: relative;
+		min-width: 0;
 		padding: 12px;
+		overflow: hidden;
 	}
 
 	@media (min-width: 640px) {
@@ -330,9 +337,11 @@
 		display: flex;
 		scroll-snap-type: x mandatory;
 		overflow-x: auto;
+		overflow-y: hidden;
 		scrollbar-width: none;
 		-webkit-overflow-scrolling: touch;
 		overscroll-behavior-x: contain;
+		overscroll-behavior-y: none;
 	}
 
 	.m-track::-webkit-scrollbar {
@@ -342,16 +351,20 @@
 	.m-slide {
 		display: grid;
 		flex: 0 0 100%;
+		min-width: 0;
 		scroll-snap-align: center;
 		place-items: center;
 		height: clamp(240px, 62vw, 320px);
+		overflow: hidden;
 		padding: 4px;
 	}
 
 	.m-slide img {
-		max-height: 100%;
-		max-width: 100%;
+		display: block;
+		width: 100%;
+		height: 100%;
 		object-fit: contain;
+		user-select: none;
 	}
 
 	.m-dots {
@@ -530,9 +543,17 @@
 		max-width: min(94vw, 1100px);
 		max-height: 86vh;
 		object-fit: contain;
-		cursor: zoom-in;
 		user-select: none;
 		transition: transform 200ms var(--motion-ease-out);
+	}
+
+	.lb-image-button {
+		display: block;
+		border: 0;
+		background: transparent;
+		padding: 0;
+		line-height: 0;
+		cursor: zoom-in;
 	}
 
 	/* Zoomed: grow past the viewport so the scroll container lets you pan. */
@@ -541,6 +562,9 @@
 		max-height: none;
 		width: min(190vw, 1800px);
 		height: auto;
+	}
+
+	.lb-image-button.is-zoomed {
 		cursor: zoom-out;
 	}
 

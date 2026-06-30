@@ -1,0 +1,22 @@
+{
+	"name": "LapKart",
+	"short_name": "LapKart",
+	"description": "Laptop parts, displays, batteries, chargers, keyboards, SSDs and RAM.",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#f8f8f8",
+	"icons": [
+		{
+			"src": "/brand/lapkart-icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any maskable"
+		},
+		{
+			"src": "/brand/lapkart-icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any maskable"
+		}
+	]
+}

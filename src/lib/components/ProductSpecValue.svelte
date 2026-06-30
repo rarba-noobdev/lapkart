@@ -12,14 +12,14 @@
 
 	const items = $derived.by(() => {
 		if (!value.includes(',')) return [] as string[];
-		const seen = new Set<string>();
+		const seen: string[] = [];
 		const out: string[] = [];
 		for (const raw of value.split(',')) {
 			const item = raw.trim();
 			if (!item) continue;
 			const key = item.toLowerCase();
-			if (seen.has(key)) continue;
-			seen.add(key);
+			if (seen.includes(key)) continue;
+			seen.push(key);
 			out.push(item);
 		}
 		return out;
@@ -44,14 +44,22 @@
 		{/if}
 	</div>
 {:else}
-	<span class="text-body-small text-foreground">{value}</span>
+	<span class="spec-value text-body-small text-foreground">{value}</span>
 {/if}
 
 <style>
+	.spec-value {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		hyphens: auto;
+	}
+
 	.chip-list {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
+		min-width: 0;
 	}
 
 	.chip {
@@ -64,6 +72,9 @@
 		font-size: 12px;
 		line-height: 1.3;
 		color: var(--black-alpha-72);
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 
 	.show-toggle {

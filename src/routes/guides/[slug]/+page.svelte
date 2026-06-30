@@ -16,6 +16,7 @@
 		categoryName,
 		itemListJsonLd,
 		safeJsonLd,
+		SITE_LOGO_PATH,
 		SITE_NAME
 	} from '$lib/seo';
 	import type { PageProps } from './$types';
@@ -68,7 +69,7 @@
 					name: SITE_NAME,
 					logo: {
 						'@type': 'ImageObject',
-						url: absoluteUrl(page.url.origin, '/favicon.svg')
+						url: absoluteUrl(page.url.origin, SITE_LOGO_PATH)
 					}
 				}
 			},
