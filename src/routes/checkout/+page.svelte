@@ -1036,6 +1036,33 @@
 						{/if}
 					</div>
 
+					<!-- Location first: pin / use current location, which auto-fills the address below -->
+					<div class="border-b border-[var(--border-faint)] p-3 sm:p-4">
+						<div class="mb-2 flex items-center gap-1.5">
+							<MapPin class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
+							<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">
+								Set your delivery location
+							</p>
+						</div>
+						<div
+							class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2"
+						>
+							<DeliveryMapPicker
+								value={deliveryPin}
+								onChange={(pin) => {
+									address.latitude = pin.latitude;
+									address.longitude = pin.longitude;
+									address.locationSource = pin.source;
+								}}
+								onAddressResolved={applyResolvedAddress}
+							/>
+						</div>
+						<p class="mt-2 text-[10px] leading-relaxed text-[var(--black-alpha-40)]">
+							Use your current location to auto-fill the address and confirm delivery to your exact
+							spot.
+						</p>
+					</div>
+
 					<!-- Saved address picker -->
 					{#if savedAddresses.length > 0}
 						<div class="border-b border-[var(--border-faint)] p-3 sm:p-4">
@@ -1086,9 +1113,7 @@
 
 					<!-- Address form (show if no saved addresses OR manual mode) -->
 					{#if savedAddresses.length === 0 || showManualForm}
-						<div
-							class="grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)]"
-						>
+						<div class="p-3 sm:p-4">
 							<div class="grid content-start gap-2 sm:grid-cols-2 sm:gap-2.5">
 								<label>
 									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]"
@@ -1171,37 +1196,6 @@
 										{/each}
 									</select>
 								</label>
-							</div>
-
-							<div
-								class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2"
-							>
-								<DeliveryMapPicker
-									value={deliveryPin}
-									onChange={(pin) => {
-										address.latitude = pin.latitude;
-										address.longitude = pin.longitude;
-										address.locationSource = pin.source;
-									}}
-									onAddressResolved={applyResolvedAddress}
-								/>
-							</div>
-						</div>
-					{:else}
-						<!-- Map picker for saved address (may need pin update) -->
-						<div class="p-3 sm:p-4">
-							<div
-								class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2"
-							>
-								<DeliveryMapPicker
-									value={deliveryPin}
-									onChange={(pin) => {
-										address.latitude = pin.latitude;
-										address.longitude = pin.longitude;
-										address.locationSource = pin.source;
-									}}
-									onAddressResolved={applyResolvedAddress}
-								/>
 							</div>
 						</div>
 					{/if}

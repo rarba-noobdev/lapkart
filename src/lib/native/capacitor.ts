@@ -122,6 +122,19 @@ export async function pickImageFile(options: { title?: string; fileNamePrefix?: 
 	return pickBrowserImageFile();
 }
 
+// Triggers the OS/browser location permission prompt. Resolves true if the
+// user grants access (works in the browser and the Capacitor Android webview).
+export async function requestLocationPermission(): Promise<boolean> {
+	if (typeof navigator === 'undefined' || !navigator.geolocation) return false;
+	return new Promise((resolve) => {
+		navigator.geolocation.getCurrentPosition(
+			() => resolve(true),
+			() => resolve(false),
+			{ enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 }
+		);
+	});
+}
+
 export async function registerPushNotifications(options: { prompt: boolean }) {
 	const { Capacitor } = await import('@capacitor/core');
 	if (!Capacitor.isNativePlatform()) return null;
