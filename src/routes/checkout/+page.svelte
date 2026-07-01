@@ -1036,33 +1036,6 @@
 						{/if}
 					</div>
 
-					<!-- Location first: pin / use current location, which auto-fills the address below -->
-					<div class="border-b border-[var(--border-faint)] p-3 sm:p-4">
-						<div class="mb-2 flex items-center gap-1.5">
-							<MapPin class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
-							<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">
-								Set your delivery location
-							</p>
-						</div>
-						<div
-							class="rounded-lg border border-[var(--border-faint)] bg-[var(--background-base)] p-2"
-						>
-							<DeliveryMapPicker
-								value={deliveryPin}
-								onChange={(pin) => {
-									address.latitude = pin.latitude;
-									address.longitude = pin.longitude;
-									address.locationSource = pin.source;
-								}}
-								onAddressResolved={applyResolvedAddress}
-							/>
-						</div>
-						<p class="mt-2 text-[10px] leading-relaxed text-[var(--black-alpha-40)]">
-							Use your current location to auto-fill the address and confirm delivery to your exact
-							spot.
-						</p>
-					</div>
-
 					<!-- Saved address picker -->
 					{#if savedAddresses.length > 0}
 						<div class="border-b border-[var(--border-faint)] p-3 sm:p-4">
@@ -1113,7 +1086,29 @@
 
 					<!-- Address form (show if no saved addresses OR manual mode) -->
 					{#if savedAddresses.length === 0 || showManualForm}
-						<div class="p-3 sm:p-4">
+						<div class="space-y-3 p-3 sm:space-y-4 sm:p-4">
+							<!-- Location-first for a new address: detecting location auto-fills the fields. -->
+							<div>
+								<div class="mb-1.5 flex items-center gap-1.5">
+									<MapPin class="size-3.5 text-[var(--heat-100)]" strokeWidth={2} />
+									<p class="text-[11px] font-medium text-[var(--black-alpha-48)]">
+										Set your delivery location
+									</p>
+								</div>
+								<DeliveryMapPicker
+									value={deliveryPin}
+									onChange={(pin) => {
+										address.latitude = pin.latitude;
+										address.longitude = pin.longitude;
+										address.locationSource = pin.source;
+									}}
+									onAddressResolved={applyResolvedAddress}
+								/>
+								<p class="mt-1.5 text-[10px] leading-relaxed text-[var(--black-alpha-40)]">
+									Use your current location to auto-fill the address fields below.
+								</p>
+							</div>
+
 							<div class="grid content-start gap-2 sm:grid-cols-2 sm:gap-2.5">
 								<label>
 									<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]"
