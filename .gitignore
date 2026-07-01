@@ -77,3 +77,4 @@ scripts/*
 !scripts/import-ipc-advanced-search-displays.mjs
 !scripts/backfill-display-compatibility-structure.mjs
 !scripts/export-display-compatibility-links.mjs
+!scripts/sync-typesense-products.mjs

@@ -17,6 +17,8 @@
 		"android:build": "node scripts/build-capacitor.mjs apk",
 		"android:install": "node scripts/build-capacitor.mjs install",
 		"android:open": "cap open android",
+		"typesense:sync": "node scripts/sync-typesense-products.mjs --full --queue",
+		"typesense:reindex": "node scripts/sync-typesense-products.mjs --full --recreate --queue",
 		"open-design": "open-design-ade",
 		"open-design:mcp": "open-design-mcp"
 	},

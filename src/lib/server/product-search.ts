@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { hiddenCategories, type Product } from '$lib/catalog';
 import { isPrivateSupplierQuery, sanitizePublicProduct } from '$lib/public-product';
 import { listCatalogProductPage } from '$lib/products';
+import { searchTypesenseProducts } from '$lib/server/typesense-products';
 import type { Database } from '$lib/supabase/types';
 
 type ProductClient = SupabaseClient<Database>;
@@ -30,7 +31,7 @@ export type ProductSearchOptions = {
 export type ProductSearchResult = {
 	products: Product[];
 	total: number;
-	source: 'postgres' | 'supabase';
+	source: 'typesense' | 'postgres' | 'supabase';
 };
 
 type ProductSearchRow = {
@@ -255,6 +256,22 @@ async function loadSearchProducts(
 	}
 	if (!queryText) {
 		return loadFallbackSearchProducts(options, client, limit, page);
+	}
+
+	try {
+		const typesenseResult = await searchTypesenseProducts({
+			...options,
+			limit,
+			page
+		});
+		if (typesenseResult) {
+			return {
+				...typesenseResult,
+				source: 'typesense'
+			};
+		}
+	} catch (typesenseError) {
+		console.warn('Typesense product search failed, falling back to Postgres.', typesenseError);
 	}
 
 	try {
