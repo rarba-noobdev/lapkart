@@ -41,26 +41,26 @@
 	});
 
 	const categoryImages: Record<string, string> = {
-		ssd: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&w=900&q=80',
-		ram: 'https://images.unsplash.com/photo-1562976540-1502c2145186?auto=format&fit=crop&w=900&q=80',
+		ssd: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&fm=webp&w=560&q=58',
+		ram: 'https://images.unsplash.com/photo-1562976540-1502c2145186?auto=format&fit=crop&fm=webp&w=560&q=58',
 		batteries:
-			'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&w=900&q=80',
+			'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?auto=format&fit=crop&fm=webp&w=560&q=58',
 		displays:
-			'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80',
+			'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&fm=webp&w=560&q=58',
 		chargers:
-			'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=900&q=80',
+			'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&fm=webp&w=560&q=58',
 		keyboards:
-			'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=900&q=80',
+			'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&fm=webp&w=560&q=58',
 		processors:
-			'https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?auto=format&fit=crop&w=900&q=80',
+			'https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?auto=format&fit=crop&fm=webp&w=560&q=58',
 		cooling:
-			'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?auto=format&fit=crop&w=900&q=80'
+			'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?auto=format&fit=crop&fm=webp&w=560&q=58'
 	};
 
 	const heroImage =
-		'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=1800&q=82';
+		'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&fm=webp&w=1100&q=62';
 	const repairImage =
-		'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80';
+		'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&fm=webp&w=760&q=60';
 
 	function stockAvailabilityCompare(a: Product, b: Product) {
 		const leftInStock = a.stock > 0 ? 0 : 1;
@@ -251,7 +251,8 @@
 						<img
 							src={heroProduct.images?.[0] ?? heroProduct.image}
 							alt={heroProduct.title}
-							fetchpriority="high"
+							loading="lazy"
+							fetchpriority="low"
 							width="520"
 							height="520"
 						/>

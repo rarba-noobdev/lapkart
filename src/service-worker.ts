@@ -19,11 +19,12 @@ const DATA_CACHE = `public-data-${version}`;
 const PRECACHE = [...build, ...files];
 const PUBLIC_DATA_PATHS = new Set(['/api/search/products']);
 const MAX_DATA_CACHE_ENTRIES = 80;
+const PAGE_NETWORK_TIMEOUT_MS = 450;
 
 // Only public, non-personalized pages may be stored in PAGE_CACHE. Caching an
 // authenticated route (orders/profile/order/cart/checkout) would persist one
 // user's private HTML on the device, where it could be served offline to a
-// different user or after sign-out. Those routes stay network-only — no cached
+// different user or after sign-out. Those routes stay network-only - no cached
 // copy is ever written, so there is nothing to leak.
 const PRIVATE_PREFIXES = [
 	'/orders',
@@ -76,7 +77,7 @@ sw.addEventListener('fetch', (event) => {
 	const url = new URL(request.url);
 
 	// Only handle same-origin requests. Supabase, Razorpay, Ola Maps
-	// etc. stay network-only — caching auth/data/payment calls would serve stale
+	// etc. stay network-only - caching auth/data/payment calls would serve stale
 	// or wrong state offline.
 	if (url.origin !== sw.location.origin) return;
 
@@ -92,12 +93,11 @@ sw.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// Public page navigations: network-first so online users always get fresh
-	// SSR data, with the last cached copy as the offline fallback. Authenticated
-	// routes are never cached (see PRIVATE_PREFIXES) and fall through to the
-	// network untouched.
+	// Public page navigations: give the network a short chance, then show the
+	// cached copy while the request keeps refreshing the cache in the background.
+	// Authenticated routes are never cached and fall through to the network.
 	if (request.mode === 'navigate' && isCacheablePage(url.pathname)) {
-		event.respondWith(networkFirst(request, PAGE_CACHE));
+		event.respondWith(fastNetworkFirst(request, PAGE_CACHE, PAGE_NETWORK_TIMEOUT_MS));
 		return;
 	}
 });
@@ -119,17 +119,36 @@ async function cacheFirst(request: Request, cacheName: string): Promise<Response
 	return response;
 }
 
-async function networkFirst(request: Request, cacheName: string): Promise<Response> {
+async function fastNetworkFirst(
+	request: Request,
+	cacheName: string,
+	timeoutMs: number
+): Promise<Response> {
 	const cache = await caches.open(cacheName);
-	try {
-		const response = await fetch(request);
-		if (response.ok) cache.put(request, response.clone());
+	const cached = (await cache.match(request)) || (await cache.match('/'));
+	const network = fetch(request).then(async (response) => {
+		if (response.ok) await cache.put(request, response.clone());
 		return response;
-	} catch (err) {
-		const cached = (await cache.match(request)) || (await cache.match('/'));
-		if (cached) return cached;
-		throw err;
+	});
+
+	if (!cached) {
+		try {
+			return await network;
+		} catch (err) {
+			const fallback = await cache.match('/');
+			if (fallback) return fallback;
+			throw err;
+		}
 	}
+
+	void network.catch(() => null);
+
+	return Promise.race([
+		network,
+		new Promise<Response>((resolve) => {
+			setTimeout(() => resolve(cached), timeoutMs);
+		})
+	]).catch(() => cached);
 }
 
 async function staleWhileRevalidate(

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidate } from '$app/navigation';
+	import { goto, invalidate, preloadData } from '$app/navigation';
 	import { asset, resolve } from '$app/paths';
 	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
@@ -18,7 +18,8 @@
 	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
 	import { hydrateCart } from '$lib/cart';
 	import { loadStoredConsent } from '$lib/cookie-consent.svelte';
-	import { setupNativeAppShell } from '$lib/native/capacitor';
+	import { isNativeApp, setupNativeAppShell } from '$lib/native/capacitor';
+	import { runWhenIdle } from '$lib/performance';
 	import { organizationJsonLd, safeJsonLd, shouldNoIndexPath, websiteJsonLd } from '$lib/seo';
 
 	let { data, children }: LayoutProps = $props();
@@ -77,6 +78,18 @@
 		hydrateCart();
 		let disposed = false;
 		let nativeCleanup: (() => void | Promise<void>) | undefined;
+		const cancelRouteWarmup = runWhenIdle(
+			() => {
+				const routes = [
+					resolve('/products'),
+					resolve('/cart'),
+					user ? resolve('/orders') : resolve('/login')
+				];
+				for (const route of routes) void preloadData(route);
+			},
+			{ timeout: 1400 }
+		);
+
 		void setupNativeAppShell({
 			getPathname: () => window.location.pathname,
 			navigate: (path) => goto(resolve(path as unknown as '/')),
@@ -91,11 +104,40 @@
 			nativeCleanup = cleanup;
 		});
 
-		// Google Analytics (gtag.js). Loaded here instead of an inline app.html
-		// block so it stays CSP-clean (external loader is host-allowlisted, init
-		// runs from bundled JS — no inline script hash to maintain). Consent Mode
-		// v2 starts every storage type denied; analytics cookies are only written
-		// after the user accepts via the cookie banner (DPDP / e-privacy).
+		// Keep analytics off the first render path; native WebView sessions skip it.
+		const cancelAnalytics = runWhenIdle(
+			() => {
+				void isNativeApp()
+					.then((native) => {
+						if (!native) installGoogleAnalytics();
+					})
+					.catch(() => installGoogleAnalytics());
+			},
+			{ timeout: 3500 }
+		);
+
+		const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === 'SIGNED_OUT') {
+				// Purge any cached page HTML so a signed-out (or next) user can't
+				// pull a previous session's pages from the service worker cache.
+				navigator.serviceWorker?.controller?.postMessage({ type: 'clear-pages' });
+			}
+			if (session?.expires_at !== claims?.exp) void invalidate('supabase:auth');
+			if (session?.user?.id !== user?.id) void invalidate('app:profile');
+		});
+
+		return () => {
+			disposed = true;
+			cancelRouteWarmup();
+			cancelAnalytics();
+			void nativeCleanup?.();
+			authListener.subscription.unsubscribe();
+		};
+	});
+
+	function installGoogleAnalytics() {
+		if (window.gtag) return;
+
 		const GA_ID = 'G-154H1YG3SM';
 		window.dataLayer = window.dataLayer || [];
 		function gtag(...args: unknown[]) {
@@ -124,23 +166,7 @@
 		document.head.appendChild(gaScript);
 		gtag('js', new Date());
 		gtag('config', GA_ID);
-
-		const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-			if (event === 'SIGNED_OUT') {
-				// Purge any cached page HTML so a signed-out (or next) user can't
-				// pull a previous session's pages from the service worker cache.
-				navigator.serviceWorker?.controller?.postMessage({ type: 'clear-pages' });
-			}
-			if (session?.expires_at !== claims?.exp) void invalidate('supabase:auth');
-			if (session?.user?.id !== user?.id) void invalidate('app:profile');
-		});
-
-		return () => {
-			disposed = true;
-			void nativeCleanup?.();
-			authListener.subscription.unsubscribe();
-		};
-	});
+	}
 </script>
 
 <svelte:head>

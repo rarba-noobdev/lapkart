@@ -1,3 +1,5 @@
+import { runWhenIdle } from '$lib/performance';
+
 const APP_HOSTS = new Set(['www.lapkart.store', 'lapkart.store']);
 
 type PluginListenerHandle = {
@@ -19,20 +21,25 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 	const { Capacitor } = await import('@capacitor/core');
 	if (!Capacitor.isNativePlatform()) return () => {};
 
-	const [{ App }, { SplashScreen }, { Device }] = await Promise.all([
+	const [{ App }, { SplashScreen }] = await Promise.all([
 		import('@capacitor/app'),
-		import('@capacitor/splash-screen'),
-		import('@capacitor/device')
+		import('@capacitor/splash-screen')
 	]);
 
 	document.documentElement.dataset.lapkartNative = Capacitor.getPlatform();
 	void SplashScreen.hide().catch(() => {});
-	void Device.getInfo()
-		.then((info) => {
-			document.documentElement.dataset.lapkartDevice = info.platform;
-		})
-		.catch(() => {});
-	void registerPushNotifications({ prompt: false });
+	const cancelWarmup = runWhenIdle(
+		() => {
+			void import('@capacitor/device')
+				.then(({ Device }) => Device.getInfo())
+				.then((info) => {
+					document.documentElement.dataset.lapkartDevice = info.platform;
+				})
+				.catch(() => {});
+			void registerPushNotifications({ prompt: false });
+		},
+		{ timeout: 3500 }
+	);
 
 	const listeners: PluginListenerHandle[] = [];
 
@@ -69,6 +76,7 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 	);
 
 	return () => {
+		cancelWarmup();
 		for (const listener of listeners) void listener.remove();
 	};
 }
@@ -139,32 +147,34 @@ export async function registerPushNotifications(options: { prompt: boolean }) {
 	const { Capacitor } = await import('@capacitor/core');
 	if (!Capacitor.isNativePlatform()) return null;
 
-	const { PushNotifications } = await import('@capacitor/push-notifications');
-	let permission = await PushNotifications.checkPermissions();
-	if (permission.receive === 'prompt' && options.prompt) {
-		permission = await PushNotifications.requestPermissions();
-	}
-	if (permission.receive !== 'granted') return null;
+	try {
+		const { PushNotifications } = await import('@capacitor/push-notifications');
+		let permission = await PushNotifications.checkPermissions();
+		if (permission.receive === 'prompt' && options.prompt) {
+			permission = await PushNotifications.requestPermissions();
+		}
+		if (permission.receive !== 'granted') return null;
 
-	const token = await new Promise<string | null>((resolve) => {
-		let settled = false;
-		const finish = (value: string | null) => {
-			if (settled) return;
-			settled = true;
-			resolve(value);
-		};
+		return await new Promise<string | null>((resolve) => {
+			let settled = false;
+			const finish = (value: string | null) => {
+				if (settled) return;
+				settled = true;
+				resolve(value);
+			};
 
-		void PushNotifications.addListener('registration', (result) => {
-			localStorage.setItem('lapkart_push_token', result.value);
-			window.dispatchEvent(new CustomEvent('lapkart:push-token', { detail: result.value }));
-			finish(result.value);
+			void PushNotifications.addListener('registration', (result) => {
+				localStorage.setItem('lapkart_push_token', result.value);
+				window.dispatchEvent(new CustomEvent('lapkart:push-token', { detail: result.value }));
+				finish(result.value);
+			});
+			void PushNotifications.addListener('registrationError', () => finish(null));
+			void PushNotifications.register().catch(() => finish(null));
+			window.setTimeout(() => finish(null), 5000);
 		});
-		void PushNotifications.addListener('registrationError', () => finish(null));
-		void PushNotifications.register().catch(() => finish(null));
-		window.setTimeout(() => finish(null), 5000);
-	});
-
-	return token;
+	} catch {
+		return null;
+	}
 }
 
 function pathFromOwnedUrl(value: string) {
