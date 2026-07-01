@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidate, preloadData } from '$app/navigation';
+	import { goto, invalidate, preloadCode } from '$app/navigation';
 	import { asset, resolve } from '$app/paths';
 	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
@@ -80,14 +80,13 @@
 		let nativeCleanup: (() => void | Promise<void>) | undefined;
 		const cancelRouteWarmup = runWhenIdle(
 			() => {
-				const routes = [
-					resolve('/products'),
-					resolve('/cart'),
-					user ? resolve('/orders') : resolve('/login')
-				];
-				for (const route of routes) void preloadData(route);
+				// Warm route code without issuing speculative data requests that
+				// compete with product images on constrained mobile connections.
+				for (const route of ['/products', '/cart', user ? '/orders' : '/login']) {
+					void preloadCode(route);
+				}
 			},
-			{ timeout: 1400 }
+			{ timeout: 2500 }
 		);
 
 		void setupNativeAppShell({
@@ -207,7 +206,7 @@
 	{/if}
 	{#if !isLoginRoute && !isAdminRoute}
 		<div
-			class="sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 backdrop-blur-xl md:hidden"
+			class="mobile-search-header sticky top-0 z-40 border-b border-[var(--border-faint)] bg-white/95 px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 backdrop-blur-xl md:hidden"
 		>
 			<SearchBar size="md" placeholder="Search parts" />
 		</div>

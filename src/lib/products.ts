@@ -43,7 +43,7 @@ export const productSelectFields =
 	'id,title,brand,category,image,images,source_url,description,sku,search_keywords,status,updated_at,price,mrp,rating,reviews,stock,weight_kg,length_cm,breadth_cm,height_cm,compatibility,warranty,highlights,specifications,authenticity_grade,condition_grade,hsn_code,gst_rate,doa_policy_days,local_delivery_eligible,cod_eligible';
 
 export const productCardSelectFields =
-	'id,title,brand,category,image,images,price,mrp,rating,reviews,stock,compatibility,warranty,highlights,authenticity_grade,condition_grade,local_delivery_eligible,cod_eligible';
+	'id,title,brand,category,image,images,updated_at,price,mrp,rating,reviews,stock';
 
 type ProductClient = SupabaseClient<Database>;
 
@@ -69,8 +69,13 @@ function getClient(client?: ProductClient) {
 	return client ?? supabase;
 }
 
-function excludeHiddenCategories<T extends { neq: (column: string, value: string) => T }>(query: T) {
-	return hiddenCategories.reduce((nextQuery, category) => nextQuery.neq('category', category), query);
+function excludeHiddenCategories<T extends { neq: (column: string, value: string) => T }>(
+	query: T
+) {
+	return hiddenCategories.reduce(
+		(nextQuery, category) => nextQuery.neq('category', category),
+		query
+	);
 }
 
 function escapeSearchTerm(value: string) {
@@ -89,7 +94,9 @@ function fallbackSearchTerms(value: string) {
 		const next = words[index + 1];
 		if (!current || !next) continue;
 
-		terms.add([...words.slice(0, index), `${current}-${next}`, ...words.slice(index + 2)].join(' '));
+		terms.add(
+			[...words.slice(0, index), `${current}-${next}`, ...words.slice(index + 2)].join(' ')
+		);
 	}
 
 	if (words.length > 1) {

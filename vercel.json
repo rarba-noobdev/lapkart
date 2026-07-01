@@ -1,5 +1,7 @@
 {
+	"$schema": "https://openapi.vercel.sh/vercel.json",
 	"framework": "sveltekit",
+	"regions": ["hnd1"],
 	"env": {
 		"PUBLIC_SUPABASE_URL": "https://jcktbslbbidjqwpgvsid.supabase.co",
 		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_enzwuAXQTLfL4S2ABmgGdg_J23hy6s0",

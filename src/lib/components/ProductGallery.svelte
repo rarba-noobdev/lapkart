@@ -123,6 +123,7 @@
 		if (!lightbox) return;
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
+		document.documentElement.classList.add('product-lightbox-open');
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') closeLightbox();
 			else if (event.key === 'ArrowRight') select(index + 1);
@@ -131,6 +132,7 @@
 		window.addEventListener('keydown', onKey);
 		return () => {
 			document.body.style.overflow = previousOverflow;
+			document.documentElement.classList.remove('product-lightbox-open');
 			window.removeEventListener('keydown', onKey);
 		};
 	});
@@ -264,13 +266,7 @@
 					lbZoomed = !lbZoomed;
 				}}
 			>
-				<img
-					src={current}
-					{alt}
-					class="lb-img"
-					class:is-zoomed={lbZoomed}
-					draggable="false"
-				/>
+				<img src={current} {alt} class="lb-img" class:is-zoomed={lbZoomed} draggable="false" />
 			</button>
 		</div>
 
@@ -521,7 +517,7 @@
 	.lb {
 		position: fixed;
 		inset: 0;
-		z-index: 90;
+		z-index: 1000;
 		background: rgba(10, 10, 10, 0.92);
 		backdrop-filter: blur(2px);
 	}
@@ -578,7 +574,7 @@
 		position: absolute;
 		top: max(12px, env(safe-area-inset-top));
 		right: 12px;
-		z-index: 2;
+		z-index: 1001;
 		display: grid;
 		width: 42px;
 		height: 42px;
@@ -596,7 +592,7 @@
 	.lb-nav {
 		position: fixed;
 		top: 50%;
-		z-index: 2;
+		z-index: 1001;
 		display: grid;
 		width: 44px;
 		height: 44px;
@@ -624,7 +620,7 @@
 		position: fixed;
 		bottom: max(14px, env(safe-area-inset-bottom));
 		left: 50%;
-		z-index: 2;
+		z-index: 1001;
 		translate: -50% 0;
 		border-radius: 999px;
 		background: rgba(255, 255, 255, 0.12);
@@ -632,6 +628,12 @@
 		font-size: 12px;
 		font-weight: 500;
 		color: #fff;
+	}
+
+	:global(html.product-lightbox-open .mobile-search-header),
+	:global(html.product-lightbox-open .mobile-tabbar) {
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	@media (max-width: 639px) {

@@ -78,6 +78,10 @@ type ProductIndexRow = ProductRow & {
 const TYPESENSE_COLLECTION_DEFAULT = 'products';
 const PRODUCT_INDEX_FIELDS = `${productSelectFields},created_at`;
 const MAX_QUEUE_EVENTS_PER_REQUEST = 50;
+const TYPESENSE_SEARCH_TIMEOUT_MS = 900;
+const TYPESENSE_WRITE_TIMEOUT_MS = 12_000;
+const TYPESENSE_FAILURE_COOLDOWN_MS = 30_000;
+let typesenseSearchUnavailableUntil = 0;
 const CATEGORY_QUERY_ALIASES = new Map([
 	['ram', 'ram'],
 	['memory', 'ram'],
@@ -290,19 +294,33 @@ function productFromTypesenseDocument(document: TypesenseProductDocument) {
 async function typesenseRequest<T>(
 	path: string,
 	options: RequestInit = {},
-	key = typesenseSearchKey()
+	key = typesenseSearchKey(),
+	timeoutMs = TYPESENSE_SEARCH_TIMEOUT_MS
 ): Promise<T> {
 	const host = typesenseHost();
 	if (!host || !key) throw new Error('Typesense is not configured');
 
-	const response = await fetch(`${host}${path}`, {
-		...options,
-		headers: {
-			...(options.body ? { 'content-type': 'application/json' } : {}),
-			...options.headers,
-			'X-TYPESENSE-API-KEY': key
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	let response: Response;
+	try {
+		response = await fetch(`${host}${path}`, {
+			...options,
+			signal: controller.signal,
+			headers: {
+				...(options.body ? { 'content-type': 'application/json' } : {}),
+				...options.headers,
+				'X-TYPESENSE-API-KEY': key
+			}
+		});
+	} catch (error) {
+		if (controller.signal.aborted) {
+			throw new Error(`Typesense request timed out after ${timeoutMs}ms`, { cause: error });
 		}
-	});
+		throw error;
+	} finally {
+		clearTimeout(timeout);
+	}
 
 	if (!response.ok) {
 		const body = await response.text().catch(() => '');
@@ -368,7 +386,9 @@ export async function searchTypesenseProducts(
 	options: ProductSearchOptions
 ): Promise<TypesenseSearchResult | null> {
 	const queryText = options.query?.trim() ?? '';
-	if (!isTypesenseSearchConfigured() || !queryText || isPrivateSupplierQuery(queryText)) return null;
+	if (!isTypesenseSearchConfigured() || !queryText || isPrivateSupplierQuery(queryText))
+		return null;
+	if (Date.now() < typesenseSearchUnavailableUntil) return null;
 	if (options.category && hiddenCategories.includes(options.category)) {
 		return { products: [], total: 0 };
 	}
@@ -389,9 +409,16 @@ export async function searchTypesenseProducts(
 		sort_by: sortByFor(options)
 	});
 
-	const response = await typesenseRequest<TypesenseSearchResponse>(
-		`/collections/${typesenseCollection()}/documents/search?${params.toString()}`
-	);
+	let response: TypesenseSearchResponse;
+	try {
+		response = await typesenseRequest<TypesenseSearchResponse>(
+			`/collections/${typesenseCollection()}/documents/search?${params.toString()}`
+		);
+		typesenseSearchUnavailableUntil = 0;
+	} catch (error) {
+		typesenseSearchUnavailableUntil = Date.now() + TYPESENSE_FAILURE_COOLDOWN_MS;
+		throw error;
+	}
 	const products = (response.hits ?? [])
 		.map((hit) => hit.document)
 		.filter((document): document is TypesenseProductDocument => Boolean(document))
@@ -412,7 +439,8 @@ async function upsertProductDocument(row: ProductIndexRow) {
 			method: 'POST',
 			body: JSON.stringify(document)
 		},
-		typesenseAdminKey()
+		typesenseAdminKey(),
+		TYPESENSE_WRITE_TIMEOUT_MS
 	);
 }
 
@@ -421,7 +449,8 @@ async function deleteProductDocument(productId: string) {
 		await typesenseRequest(
 			`/collections/${typesenseCollection()}/documents/${encodeURIComponent(productId)}?ignore_not_found=true`,
 			{ method: 'DELETE' },
-			typesenseAdminKey()
+			typesenseAdminKey(),
+			TYPESENSE_WRITE_TIMEOUT_MS
 		);
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('Typesense 404')) return;

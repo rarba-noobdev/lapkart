@@ -21,6 +21,7 @@ function parseSort(value: string | null): ProductSort {
 }
 
 export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
+	const startedAt = performance.now();
 	setHeaders({
 		'cache-control': 'public, max-age=20, s-maxage=120, stale-while-revalidate=300'
 	});
@@ -42,9 +43,20 @@ export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
 			locals.supabase
 		);
 
-		return json(result);
+		return json(result, {
+			headers: {
+				'server-timing': `search;dur=${(performance.now() - startedAt).toFixed(1)}`
+			}
+		});
 	} catch (error) {
 		console.warn('Product search API failed; returning empty result.', error);
-		return json({ products: [], total: 0, source: 'supabase' });
+		return json(
+			{ products: [], total: 0, source: 'supabase' },
+			{
+				headers: {
+					'server-timing': `search;dur=${(performance.now() - startedAt).toFixed(1)}`
+				}
+			}
+		);
 	}
 };

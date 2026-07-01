@@ -4,6 +4,8 @@ import { createServerClient } from '@supabase/ssr';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { isStaffRole, normalizeAppRole, type AppRole } from '$lib/roles';
 
+const SUPABASE_REQUEST_TIMEOUT_MS = 8_000;
+
 export const handle: Handle = async ({ event, resolve }) => {
 	const clearSupabaseAuthCookies = () => {
 		for (const cookie of event.cookies.getAll()) {
@@ -34,7 +36,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 		},
 		global: {
-			fetch: event.fetch
+			fetch: (input, init) => {
+				const timeoutSignal = AbortSignal.timeout(SUPABASE_REQUEST_TIMEOUT_MS);
+				const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+				return event.fetch(input, { ...init, signal });
+			}
 		}
 	});
 

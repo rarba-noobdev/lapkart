@@ -45,6 +45,7 @@
     </queries>
 
     <application
+        android:name=".LapKartApplication"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"

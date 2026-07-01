@@ -15,6 +15,7 @@
 		"android:web": "node scripts/build-capacitor.mjs web",
 		"android:sync": "node scripts/build-capacitor.mjs sync",
 		"android:build": "node scripts/build-capacitor.mjs apk",
+		"android:release": "node scripts/build-capacitor.mjs release",
 		"android:install": "node scripts/build-capacitor.mjs install",
 		"android:open": "cap open android",
 		"typesense:sync": "node scripts/sync-typesense-products.mjs --full --queue",

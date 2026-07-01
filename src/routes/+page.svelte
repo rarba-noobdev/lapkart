@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
 	import {
 		ArrowRight,
 		BadgeCheck,
@@ -20,6 +18,7 @@
 	import ProductCard from '$lib/components/ProductCard.svelte';
 	import { addToCart } from '$lib/cart';
 	import { categories, discountPct, formatINR, type Product } from '$lib/catalog';
+	import { deferredImage, transparentPixel } from '$lib/deferred-image';
 	import { DEFAULT_DESCRIPTION, SITE_NAME, absoluteUrl } from '$lib/seo';
 
 	type HomeData = {
@@ -27,18 +26,6 @@
 	};
 
 	let { data }: { data: HomeData } = $props();
-
-	onMount(() => {
-		if ('requestIdleCallback' in window) {
-			requestIdleCallback(() => {
-				void preloadData('/products');
-			});
-		} else {
-			setTimeout(() => {
-				void preloadData('/products');
-			}, 2000);
-		}
-	});
 
 	const categoryImages: Record<string, string> = {
 		ssd: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&fm=webp&w=560&q=58',
@@ -59,6 +46,8 @@
 
 	const heroImage =
 		'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&fm=webp&w=1100&q=62';
+	const heroImageMobile =
+		'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&fm=webp&w=640&q=58';
 	const repairImage =
 		'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&fm=webp&w=760&q=60';
 
@@ -198,8 +187,20 @@
 </svelte:head>
 
 <main class="home-shell">
-	<section class="home-hero" style={`--hero-image: url('${heroImage}')`}>
-		<div class="home-hero-media" aria-hidden="true"></div>
+	<section class="home-hero">
+		<div class="home-hero-media" aria-hidden="true">
+			<picture>
+				<source media="(max-width: 767px)" srcset={heroImageMobile} />
+				<img
+					src={heroImage}
+					alt=""
+					width="1100"
+					height="733"
+					fetchpriority="high"
+					decoding="async"
+				/>
+			</picture>
+		</div>
 		<div class="home-hero-inner">
 			<div class="home-hero-copy motion-section">
 				<p class="home-kicker">Laptop parts marketplace</p>
@@ -314,9 +315,22 @@
 					href={resolve(`/products?category=${category.slug}`)}
 					class:wide-tile={index === 0}
 					class="category-tile"
-					style={`--tile-image: url('${category.image}')`}
 				>
-					<div class="category-tile-image" aria-hidden="true"></div>
+					<div
+						class="category-tile-image"
+						aria-hidden="true"
+						use:deferredImage={{ src: category.image }}
+					>
+						<img
+							src={transparentPixel}
+							data-deferred-image
+							alt=""
+							width="560"
+							height="360"
+							loading="lazy"
+							decoding="async"
+						/>
+					</div>
 					<div>
 						<h3>{category.name}</h3>
 						<span>Browse parts <ArrowRight class="size-3.5" /></span>
@@ -338,7 +352,21 @@
 
 		<div class="deal-layout">
 			<a href={resolve('/products?sort=discount-desc')} class="feature-promo">
-				<div class="feature-promo-media" style={`background-image: url('${repairImage}')`}></div>
+				<div
+					class="feature-promo-media"
+					aria-hidden="true"
+					use:deferredImage={{ src: repairImage }}
+				>
+					<img
+						src={transparentPixel}
+						data-deferred-image
+						alt=""
+						width="760"
+						height="507"
+						loading="lazy"
+						decoding="async"
+					/>
+				</div>
 				<div class="feature-promo-copy">
 					<p><Percent class="size-4" strokeWidth={2.2} /> Repair week promo</p>
 					<h3>Bundle upgrade parts and keep delivery costs down.</h3>
@@ -475,10 +503,26 @@
 	.home-hero-media {
 		position: absolute;
 		inset: 0;
-		background-image: var(--hero-image);
-		background-position: center right;
-		background-size: cover;
 		opacity: 0.58;
+	}
+
+	.home-hero-media img,
+	.category-tile-image img,
+	.feature-promo-media img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.home-hero-media picture {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
+	.home-hero-media img {
+		object-position: center right;
 	}
 
 	.home-hero-inner {
@@ -765,6 +809,8 @@
 
 	.home-section {
 		padding-top: 44px;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 640px;
 	}
 
 	.section-heading {
@@ -816,11 +862,14 @@
 	.category-tile-image {
 		position: absolute;
 		inset: 0;
-		background-image:
-			linear-gradient(180deg, rgba(15, 15, 15, 0.08), rgba(15, 15, 15, 0.78)), var(--tile-image);
-		background-position: center;
-		background-size: cover;
 		transition: transform 420ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+
+	.category-tile-image::after {
+		position: absolute;
+		inset: 0;
+		content: '';
+		background: linear-gradient(180deg, rgba(15, 15, 15, 0.08), rgba(15, 15, 15, 0.78));
 	}
 
 	.category-tile:hover .category-tile-image {
@@ -869,8 +918,6 @@
 	.feature-promo-media {
 		position: absolute;
 		inset: 0;
-		background-position: center;
-		background-size: cover;
 		opacity: 0.66;
 	}
 
@@ -1057,6 +1104,8 @@
 		padding-top: 28px;
 		padding-bottom: 28px;
 		color: white;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 360px;
 	}
 
 	.service-band-copy h2 {

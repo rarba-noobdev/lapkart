@@ -150,6 +150,8 @@
 	}
 
 	.product-card {
+		content-visibility: auto;
+		contain-intrinsic-size: auto 100px;
 		transition:
 			border-color 180ms cubic-bezier(0.23, 1, 0.32, 1),
 			box-shadow 180ms cubic-bezier(0.23, 1, 0.32, 1),
@@ -174,6 +176,12 @@
 
 		.product-card:hover .product-card-image {
 			transform: scale(1.04);
+		}
+	}
+
+	@media (min-width: 640px) {
+		.product-card {
+			contain-intrinsic-size: auto 320px;
 		}
 	}
 </style>

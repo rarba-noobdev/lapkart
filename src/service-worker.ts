@@ -15,11 +15,21 @@ const PAGE_CACHE = `pages-${version}`;
 // Public JSON/data endpoints that are safe to replay instantly and refresh in
 // the background. Do not add account, cart, order, checkout, or admin APIs.
 const DATA_CACHE = `public-data-${version}`;
+const IMAGE_CACHE = 'product-images-v1';
 
 const PRECACHE = [...build, ...files];
 const PUBLIC_DATA_PATHS = new Set(['/api/search/products']);
 const MAX_DATA_CACHE_ENTRIES = 80;
+const MAX_IMAGE_CACHE_ENTRIES = 160;
 const PAGE_NETWORK_TIMEOUT_MS = 450;
+const CACHEABLE_IMAGE_HOSTS = new Set([
+	'www.power-x.in',
+	'cdn.shopify.com',
+	'techiestore.in',
+	'cdnassets.parts-people.com',
+	'mdcomputers.in',
+	'images.unsplash.com'
+]);
 
 // Only public, non-personalized pages may be stored in PAGE_CACHE. Caching an
 // authenticated route (orders/profile/order/cart/checkout) would persist one
@@ -61,10 +71,11 @@ sw.addEventListener('install', (event) => {
 sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
-			const keep = new Set([ASSET_CACHE, PAGE_CACHE, DATA_CACHE]);
+			const keep = new Set([ASSET_CACHE, PAGE_CACHE, DATA_CACHE, IMAGE_CACHE]);
 			for (const key of await caches.keys()) {
 				if (!keep.has(key)) await caches.delete(key);
 			}
+			await sw.registration.navigationPreload?.enable();
 			await sw.clients.claim();
 		})()
 	);
@@ -75,6 +86,11 @@ sw.addEventListener('fetch', (event) => {
 	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
+
+	if (request.destination === 'image' && CACHEABLE_IMAGE_HOSTS.has(url.hostname)) {
+		event.respondWith(cacheRuntimeImage(request));
+		return;
+	}
 
 	// Only handle same-origin requests. Supabase, Razorpay, Ola Maps
 	// etc. stay network-only - caching auth/data/payment calls would serve stale
@@ -97,7 +113,9 @@ sw.addEventListener('fetch', (event) => {
 	// cached copy while the request keeps refreshing the cache in the background.
 	// Authenticated routes are never cached and fall through to the network.
 	if (request.mode === 'navigate' && isCacheablePage(url.pathname)) {
-		event.respondWith(fastNetworkFirst(request, PAGE_CACHE, PAGE_NETWORK_TIMEOUT_MS));
+		event.respondWith(
+			fastNetworkFirst(request, PAGE_CACHE, PAGE_NETWORK_TIMEOUT_MS, event.preloadResponse)
+		);
 		return;
 	}
 });
@@ -122,19 +140,25 @@ async function cacheFirst(request: Request, cacheName: string): Promise<Response
 async function fastNetworkFirst(
 	request: Request,
 	cacheName: string,
-	timeoutMs: number
+	timeoutMs: number,
+	preloadedResponse?: Promise<Response | undefined>
 ): Promise<Response> {
 	const cache = await caches.open(cacheName);
-	const cached = (await cache.match(request)) || (await cache.match('/'));
-	const network = fetch(request).then(async (response) => {
-		if (response.ok) await cache.put(request, response.clone());
-		return response;
-	});
+	const cached = await cache.match(request);
+	const network = Promise.resolve(preloadedResponse)
+		.then((preloaded) => preloaded ?? fetch(request))
+		.then(async (response) => {
+			if (response.ok) await cache.put(request, response.clone());
+			return response;
+		});
 
 	if (!cached) {
 		try {
 			return await network;
 		} catch (err) {
+			// Only use the home shell as an offline fallback after the requested
+			// page genuinely fails. Returning it on a short timeout shows the
+			// wrong page under deep URLs and breaks relative asset hydration.
 			const fallback = await cache.match('/');
 			if (fallback) return fallback;
 			throw err;
@@ -176,6 +200,19 @@ async function staleWhileRevalidate(
 	const response = await refresh;
 	if (response) return response;
 	throw new TypeError('Public data request failed and no cache entry exists');
+}
+
+async function cacheRuntimeImage(request: Request): Promise<Response> {
+	const cache = await caches.open(IMAGE_CACHE);
+	const cached = await cache.match(request);
+	if (cached) return cached;
+
+	const response = await fetch(request);
+	if (response.ok || response.type === 'opaque') {
+		await cache.put(request, response.clone());
+		await trimCache(cache, MAX_IMAGE_CACHE_ENTRIES);
+	}
+	return response;
 }
 
 async function trimCache(cache: Cache, maxEntries: number) {
