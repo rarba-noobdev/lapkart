@@ -365,6 +365,18 @@ function inferCategoryFromQuery(options: ProductSearchOptions) {
 	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
 }
 
+function exactCategoryForQuery(queryText: string) {
+	const query = normalizeCategoryQuery(queryText);
+	if (!query) return '';
+	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
+}
+
+function shouldUseWildcardCategorySearch(options: ProductSearchOptions, queryText: string) {
+	const exactCategory = exactCategoryForQuery(queryText);
+	if (!exactCategory) return false;
+	return options.category ? options.category === exactCategory : true;
+}
+
 function sortByFor(options: ProductSearchOptions) {
 	switch (options.sort) {
 		case 'price-asc':
@@ -392,9 +404,10 @@ export async function searchTypesenseProducts(
 	if (options.category && hiddenCategories.includes(options.category)) {
 		return { products: [], total: 0 };
 	}
+	const wildcardCategorySearch = shouldUseWildcardCategorySearch(options, queryText);
 
 	const params = new URLSearchParams({
-		q: queryText,
+		q: wildcardCategorySearch ? '*' : queryText,
 		query_by:
 			'title,part_numbers,sku,category,compatibility,brand,search_keywords,description,highlights,warranty',
 		query_by_weights: '10,12,12,8,7,5,6,2,2,1',
@@ -407,7 +420,7 @@ export async function searchTypesenseProducts(
 		limit: String(options.limit),
 		page: String(options.page),
 		filter_by: buildFilterBy(options),
-		sort_by: sortByFor(options)
+		sort_by: wildcardCategorySearch ? 'stock:desc,updated_at_ts:desc' : sortByFor(options)
 	});
 
 	let response: TypesenseSearchResponse;

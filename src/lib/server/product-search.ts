@@ -134,6 +134,33 @@ const CATEGORY_QUERY_ALIASES = new Map([
 	['flex cable', 'flex_cables'],
 	['flex cables', 'flex_cables']
 ]);
+const CATEGORY_TOKEN_ALIASES = new Map([
+	['ram', 'ram'],
+	['memory', 'ram'],
+	['ssd', 'ssd'],
+	['motherboard', 'motherboards'],
+	['motherboards', 'motherboards'],
+	['battery', 'batteries'],
+	['batteries', 'batteries'],
+	['keyboard', 'keyboards'],
+	['keyboards', 'keyboards'],
+	['processor', 'processors'],
+	['processors', 'processors'],
+	['cpu', 'processors'],
+	['cooling', 'cooling'],
+	['fan', 'cooling'],
+	['fans', 'cooling'],
+	['charger', 'chargers'],
+	['chargers', 'chargers'],
+	['adapter', 'chargers'],
+	['adapters', 'chargers'],
+	['palmrest', 'palmrests'],
+	['palmrests', 'palmrests'],
+	['hinge', 'hinges'],
+	['hinges', 'hinges'],
+	['speaker', 'speakers'],
+	['speakers', 'speakers']
+]);
 const STRICT_DEVICE_DISPLAY_PATTERN = /\b(surface\s+pro|tablet|all[-\s]*in[-\s]*one|\baio\b)\b/i;
 const DISPLAY_TERM_PATTERN = /\b(display|screen|lcd|panel)\b/i;
 
@@ -182,9 +209,43 @@ function inferCategoryFromQuery(options: ProductSearchOptions) {
 	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
 }
 
+function inferCategoryFromQueryTokens(options: ProductSearchOptions) {
+	if (options.category || options.brand) return '';
+	const tokens = normalizeCategoryQuery(options.query ?? '')
+		.split(' ')
+		.filter(Boolean);
+	const categories = new Set(
+		tokens.map((token) => CATEGORY_TOKEN_ALIASES.get(token)).filter(Boolean)
+	);
+	return categories.size === 1 ? Array.from(categories)[0] : '';
+}
+
+function stripCategoryIntentTokens(query: string | undefined, category: string) {
+	const stripped = query
+		?.trim()
+		.split(/\s+/)
+		.filter((token) => {
+			const normalized = token.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+			return CATEGORY_TOKEN_ALIASES.get(normalized) !== category;
+		})
+		.join(' ')
+		.trim();
+
+	return stripped || query;
+}
+
 function withInferredCategory(options: ProductSearchOptions): ProductSearchOptions {
 	const inferredCategory = inferCategoryFromQuery(options);
-	return inferredCategory ? { ...options, category: inferredCategory } : options;
+	if (inferredCategory) return { ...options, category: inferredCategory };
+
+	const tokenCategory = inferCategoryFromQueryTokens(options);
+	if (!tokenCategory) return options;
+
+	return {
+		...options,
+		category: tokenCategory,
+		query: stripCategoryIntentTokens(options.query, tokenCategory)
+	};
 }
 
 function hasStrictDeviceDisplayIntent(queryText: string) {
