@@ -1,5 +1,10 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { searchProducts, type ProductSort } from '$lib/server/product-search';
+import {
+	publicApiErrorHeaders,
+	publicApiHeaders,
+	publicApiOptionsResponse
+} from '$lib/server/public-api-headers';
 
 const sortValues = new Set<ProductSort>([
 	'relevance',
@@ -20,7 +25,9 @@ function parseSort(value: string | null): ProductSort {
 	return value && sortValues.has(value as ProductSort) ? (value as ProductSort) : 'relevance';
 }
 
-export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
+export const OPTIONS: RequestHandler = () => publicApiOptionsResponse();
+
+export const GET: RequestHandler = async ({ locals, url }) => {
 	const startedAt = performance.now();
 
 	try {
@@ -41,10 +48,9 @@ export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
 		);
 
 		return json(result, {
-			headers: {
-				'cache-control': 'public, max-age=20, s-maxage=120, stale-while-revalidate=300',
+			headers: publicApiHeaders({
 				'server-timing': `search;dur=${(performance.now() - startedAt).toFixed(1)}`
-			}
+			})
 		});
 	} catch (error) {
 		console.warn('Product search API failed.', error);
@@ -52,10 +58,9 @@ export const GET: RequestHandler = async ({ locals, setHeaders, url }) => {
 			{ message: 'Search is temporarily unavailable.' },
 			{
 				status: 503,
-				headers: {
-					'cache-control': 'no-store',
+				headers: publicApiErrorHeaders({
 					'server-timing': `search;dur=${(performance.now() - startedAt).toFixed(1)}`
-				}
+				})
 			}
 		);
 	}

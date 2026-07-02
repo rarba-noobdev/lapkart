@@ -25,7 +25,9 @@
 			order_id: string | null;
 		}[]
 	);
-	const orders = $derived((data as any).orders as { id: string; created_at: string; total: number }[]);
+	const orders = $derived(
+		(data as any).orders as { id: string; created_at: string; total: number }[]
+	);
 
 	let submitting = $state(false);
 	let showForm = $state(false);
@@ -69,7 +71,8 @@
 			</h1>
 			<p class="mt-1 text-[13px] text-[var(--black-alpha-48)]">
 				Raise a complaint and track its status. We acknowledge within 48 hours and aim to resolve
-				within 30 days.
+				within 30 days. Use the Privacy / data category for access, correction, deletion, or consent
+				requests.
 			</p>
 		</div>
 		<button
@@ -102,7 +105,8 @@
 			class="mt-5 space-y-4 rounded-lg border border-[var(--border-faint)] bg-white p-5"
 		>
 			<label class="block">
-				<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Category</span>
+				<span class="mb-1 block text-[11px] font-medium text-[var(--black-alpha-56)]">Category</span
+				>
 				<select name="category" class="input-field" required>
 					<option value="" disabled selected>Select a category</option>
 					{#each GRIEVANCE_CATEGORIES as cat (cat.value)}
@@ -120,7 +124,7 @@
 						<option value="">Not about a specific order</option>
 						{#each orders as order (order.id)}
 							<option value={order.id}>
-								#{order.id.slice(0, 8)} · {fmtDate(order.created_at)} · {formatINR(order.total)}
+								#{order.id.slice(0, 8)} - {fmtDate(order.created_at)} - {formatINR(order.total)}
 							</option>
 						{/each}
 					</select>
@@ -190,16 +194,21 @@
 							<p class="truncate text-[14px] font-medium text-foreground">{g.subject}</p>
 							<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
 								{fmtDate(g.created_at)}
-								{#if g.order_id}· Order #{g.order_id.slice(0, 8)}{/if}
+								{#if g.order_id}
+									- Order #{g.order_id.slice(0, 8)}{/if}
 							</p>
 						</div>
 						<span
-							class="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium {statusTone[g.status]}"
+							class="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium {statusTone[
+								g.status
+							]}"
 						>
 							{GRIEVANCE_STATUS_LABEL[g.status]}
 						</span>
 					</div>
-					<p class="mt-2 text-[12px] leading-relaxed text-[var(--black-alpha-56)]">{g.description}</p>
+					<p class="mt-2 text-[12px] leading-relaxed text-[var(--black-alpha-56)]">
+						{g.description}
+					</p>
 					{#if g.resolution_note}
 						<div class="mt-3 rounded-md bg-[var(--background-lighter)] p-3">
 							<p class="text-[10px] tracking-[0.1em] text-[var(--black-alpha-56)] uppercase">

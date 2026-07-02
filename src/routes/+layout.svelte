@@ -88,6 +88,23 @@
 			},
 			{ timeout: 2500 }
 		);
+		const cancelNativeCatalogWarmup = runWhenIdle(
+			() => {
+				void isNativeApp()
+					.then((native) => {
+						if (!native || !navigator.onLine) return;
+						for (const endpoint of [
+							'/api/catalog/home',
+							'/api/catalog/category-counts',
+							'/api/search/products?limit=24'
+						]) {
+							void fetch(endpoint, { credentials: 'omit' }).catch(() => null);
+						}
+					})
+					.catch(() => {});
+			},
+			{ timeout: 4500 }
+		);
 
 		void setupNativeAppShell({
 			getPathname: () => window.location.pathname,
@@ -128,6 +145,7 @@
 		return () => {
 			disposed = true;
 			cancelRouteWarmup();
+			cancelNativeCatalogWarmup();
 			cancelAnalytics();
 			void nativeCleanup?.();
 			authListener.subscription.unsubscribe();

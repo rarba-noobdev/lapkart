@@ -18,7 +18,11 @@ const DATA_CACHE = `public-data-${version}`;
 const IMAGE_CACHE = 'product-images-v1';
 
 const PRECACHE = [...build, ...files];
-const PUBLIC_DATA_PATHS = new Set(['/api/search/products']);
+const PUBLIC_DATA_PATHS = new Set([
+	'/api/search/products',
+	'/api/catalog/home',
+	'/api/catalog/category-counts'
+]);
 const MAX_DATA_CACHE_ENTRIES = 80;
 const MAX_IMAGE_CACHE_ENTRIES = 160;
 const PAGE_NETWORK_TIMEOUT_MS = 450;
@@ -49,6 +53,10 @@ const PRIVATE_PREFIXES = [
 
 function isCacheablePage(pathname: string): boolean {
 	return !PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+}
+
+function isPublicDataPath(pathname: string): boolean {
+	return PUBLIC_DATA_PATHS.has(pathname) || pathname.startsWith('/api/products/');
 }
 
 sw.addEventListener('install', (event) => {
@@ -92,7 +100,12 @@ sw.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// Only handle same-origin requests. Supabase, Razorpay, Ola Maps
+	if (url.origin === sw.location.origin && isPublicDataPath(url.pathname)) {
+		event.respondWith(staleWhileRevalidate(request, DATA_CACHE, MAX_DATA_CACHE_ENTRIES));
+		return;
+	}
+
+	// Only handle the rest of same-origin requests. Supabase, Razorpay, Ola Maps
 	// etc. stay network-only - caching auth/data/payment calls would serve stale
 	// or wrong state offline.
 	if (url.origin !== sw.location.origin) return;
@@ -101,11 +114,6 @@ sw.addEventListener('fetch', (event) => {
 	// or stable, and were precached on install).
 	if (PRECACHE.includes(url.pathname)) {
 		event.respondWith(cacheFirst(request, ASSET_CACHE));
-		return;
-	}
-
-	if (PUBLIC_DATA_PATHS.has(url.pathname)) {
-		event.respondWith(staleWhileRevalidate(request, DATA_CACHE, MAX_DATA_CACHE_ENTRIES));
 		return;
 	}
 

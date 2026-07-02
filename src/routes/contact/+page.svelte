@@ -4,15 +4,19 @@
 	const sections = [
 		{
 			title: 'Customer support',
-			body: 'Email support@lapkart.com with your order id, registered phone number, and a short description of the issue. Support is handled Monday to Saturday during business hours.'
+			body: 'Email support@lapkart.store with your order id, registered phone number, and a short description of the issue. Support is handled Monday to Saturday, 10 AM to 6 PM IST.'
 		},
 		{
 			title: 'Order issues',
-			body: 'For active orders, open your order detail page to view tracking, cancellation eligibility, return eligibility, refund status, and invoice information.'
+			body: 'For active orders, open your order detail page to view status, cancellation eligibility, return eligibility, refund status, delivery proof, and invoice information.'
 		},
 		{
 			title: 'Business information',
-			body: 'LapKart operates as an ecommerce storefront for laptop components and replacement hardware. Formal business address and statutory details should be updated here before live payment review.'
+			body: 'LapKart operates as an ecommerce storefront for laptop components and replacement hardware. For legal, invoice, data protection, grievance, or statutory communication, email support@lapkart.store or raise a request through Support & complaints.'
+		},
+		{
+			title: 'Privacy and grievances',
+			body: 'Use Support & complaints for complaints, privacy/data requests, cancellation and refund questions, delivery issues, product defects, and account concerns. We acknowledge complaints within 48 hours and aim to resolve them within the published grievance timeline.'
 		}
 	];
 </script>

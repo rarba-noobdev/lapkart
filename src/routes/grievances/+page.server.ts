@@ -19,7 +19,9 @@ export const load: PageServerLoad = async ({ depends, locals, parent }) => {
 	const [grievancesResult, ordersResult] = await Promise.all([
 		locals.supabase
 			.from('grievances')
-			.select('id,category,subject,description,status,resolution_note,created_at,updated_at,order_id')
+			.select(
+				'id,category,subject,description,status,resolution_note,created_at,updated_at,order_id'
+			)
 			.eq('user_id', user.id)
 			.order('created_at', { ascending: false })
 			.limit(50),
@@ -52,10 +54,13 @@ export const actions: Actions = {
 			return fail(400, { success: false, message: 'Choose a category.' });
 		}
 		if (subject.length < 4 || subject.length > 160) {
-			return fail(400, { success: false, message: 'Subject must be 4–160 characters.' });
+			return fail(400, { success: false, message: 'Subject must be 4-160 characters.' });
 		}
 		if (description.length < 10 || description.length > 4000) {
-			return fail(400, { success: false, message: 'Describe the issue in at least 10 characters.' });
+			return fail(400, {
+				success: false,
+				message: 'Describe the issue in at least 10 characters.'
+			});
 		}
 
 		const { error } = await locals.supabase.from('grievances').insert({
@@ -71,6 +76,9 @@ export const actions: Actions = {
 			return fail(400, { success: false, message: error.message });
 		}
 
-		return { success: true, message: 'Complaint submitted. We will acknowledge it within 48 hours.' };
+		return {
+			success: true,
+			message: 'Complaint submitted. We will acknowledge it within 48 hours.'
+		};
 	}
 };

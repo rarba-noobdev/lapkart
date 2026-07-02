@@ -4,7 +4,7 @@
 	import { WifiOff } from '@lucide/svelte';
 
 	// Shows a quiet banner when the browser goes offline. The cart lives in
-	// localStorage, so it survives — the message just reassures the customer.
+	// localStorage, so it survives. Checkout and payments still need a connection.
 	let offline = $state(false);
 
 	onMount(() => {
@@ -26,6 +26,6 @@
 		role="status"
 	>
 		<WifiOff class="size-3.5 shrink-0" strokeWidth={2.2} />
-		You're offline — your cart is saved on this device.
+		You're offline - saved cart and cached catalog pages may still open.
 	</div>
 {/if}

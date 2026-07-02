@@ -6,7 +6,7 @@
 
 	type PolicySection = {
 		title: string;
-		body: string;
+		body: string | string[];
 	};
 
 	let {
@@ -62,9 +62,13 @@
 		{#each sections as section (section.title)}
 			<article class="p-6">
 				<h2 class="text-title-h5 text-foreground">{section.title}</h2>
-				<p class="text-body-medium mt-3 leading-relaxed text-[var(--black-alpha-64)]">
-					{section.body}
-				</p>
+				<div class="mt-3 space-y-3">
+					{#each Array.isArray(section.body) ? section.body : [section.body] as paragraph, index (`${section.title}-${index}`)}
+						<p class="text-body-medium leading-relaxed text-[var(--black-alpha-64)]">
+							{paragraph}
+						</p>
+					{/each}
+				</div>
 			</article>
 		{/each}
 	</div>

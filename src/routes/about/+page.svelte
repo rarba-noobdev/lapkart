@@ -8,11 +8,15 @@
 		},
 		{
 			title: 'How orders are fulfilled',
-			body: 'Orders are paid through Razorpay, packed by LapKart operations, and fulfilled through manual courier dispatch with status updates shown in your account.'
+			body: 'Orders are paid through Razorpay or eligible cash-on-delivery flows, packed by LapKart operations, and fulfilled through manual courier dispatch with status updates shown in your account.'
 		},
 		{
 			title: 'Support promise',
-			body: 'We prioritize clear compatibility notes, genuine sourcing, safe packaging, and support for cancellation, returns, refunds, and delivery tracking.'
+			body: 'We prioritize clear compatibility notes, visible product condition, safe packaging, and support for cancellation, returns, refunds, privacy requests, and delivery questions.'
+		},
+		{
+			title: 'Data and transparency',
+			body: 'Public catalog data may be cached for speed and limited offline browsing, while private account, order, checkout, and payment workflows require a live connection and are covered by the Privacy policy.'
 		}
 	];
 </script>
