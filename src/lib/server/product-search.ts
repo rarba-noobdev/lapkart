@@ -67,6 +67,27 @@ type ProductSearchCacheEntry = {
 const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 200;
 const searchCache = new Map<string, ProductSearchCacheEntry>();
+const COMMON_QUERY_TOKEN_CORRECTIONS = new Map([
+	['keybord', 'keyboard'],
+	['keyboad', 'keyboard'],
+	['keybrd', 'keyboard'],
+	['latitde', 'latitude'],
+	['lattitude', 'latitude'],
+	['batery', 'battery'],
+	['battri', 'battery'],
+	['chargr', 'charger'],
+	['chargar', 'charger'],
+	['chager', 'charger'],
+	['disply', 'display'],
+	['diplay', 'display'],
+	['screeen', 'screen'],
+	['adaptor', 'adapter'],
+	['motherbord', 'motherboard'],
+	['procesor', 'processor'],
+	['proccessor', 'processor'],
+	['speker', 'speaker'],
+	['hing', 'hinge']
+]);
 const CATEGORY_QUERY_ALIASES = new Map([
 	['ram', 'ram'],
 	['memory', 'ram'],
@@ -122,6 +143,27 @@ export function clearProductSearchCache() {
 
 function asNullableNumber(value: number | undefined) {
 	return Number.isFinite(value) ? value : undefined;
+}
+
+function correctedQueryText(value: string | undefined) {
+	const query = value?.trim();
+	if (!query) return undefined;
+
+	const corrected = query
+		.split(/\s+/)
+		.map((token) => {
+			const normalized = token.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+			return COMMON_QUERY_TOKEN_CORRECTIONS.get(normalized) ?? token;
+		})
+		.join(' ');
+
+	return corrected === query ? value : corrected;
+}
+
+function withCorrectedQuery(options: ProductSearchOptions): ProductSearchOptions {
+	const query = correctedQueryText(options.query);
+	if (query === options.query) return options;
+	return { ...options, query };
 }
 
 function normalizeCategoryQuery(value: string) {
@@ -324,11 +366,12 @@ export async function searchProducts(
 ): Promise<ProductSearchResult> {
 	const limit = Math.min(Math.max(1, Math.floor(options.limit ?? 96)), 250);
 	const page = Math.max(1, Math.floor(options.page ?? 1));
-	const cacheKey = searchCacheKey(options, limit, page);
+	const correctedOptions = withCorrectedQuery(options);
+	const cacheKey = searchCacheKey(correctedOptions, limit, page);
 	const cached = readSearchCache(cacheKey);
 	if (cached) return cached;
 
-	const pending = loadSearchProducts(options, client, limit, page)
+	const pending = loadSearchProducts(correctedOptions, client, limit, page)
 		.then((result) => {
 			writeSearchCache(cacheKey, result);
 			return result;
