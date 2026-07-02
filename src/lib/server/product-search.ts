@@ -67,6 +67,54 @@ type ProductSearchCacheEntry = {
 const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 200;
 const searchCache = new Map<string, ProductSearchCacheEntry>();
+const CATEGORY_QUERY_ALIASES = new Map([
+	['ram', 'ram'],
+	['memory', 'ram'],
+	['ssd', 'ssd'],
+	['storage', 'ssd'],
+	['motherboard', 'motherboards'],
+	['motherboards', 'motherboards'],
+	['battery', 'batteries'],
+	['batteries', 'batteries'],
+	['display', 'displays'],
+	['displays', 'displays'],
+	['screen', 'displays'],
+	['screens', 'displays'],
+	['lcd', 'displays'],
+	['keyboard', 'keyboards'],
+	['keyboards', 'keyboards'],
+	['processor', 'processors'],
+	['processors', 'processors'],
+	['cpu', 'processors'],
+	['cooling fan', 'cooling'],
+	['cooling fans', 'cooling'],
+	['fan', 'cooling'],
+	['fans', 'cooling'],
+	['charger', 'chargers'],
+	['chargers', 'chargers'],
+	['adapter', 'chargers'],
+	['adapters', 'chargers'],
+	['wifi card', 'wifi_cards'],
+	['wifi cards', 'wifi_cards'],
+	['dc jack', 'dc_jacks'],
+	['dc jacks', 'dc_jacks'],
+	['bottom case', 'bottom_cases'],
+	['bottom cases', 'bottom_cases'],
+	['palmrest', 'palmrests'],
+	['palmrests', 'palmrests'],
+	['hinge', 'hinges'],
+	['hinges', 'hinges'],
+	['speaker', 'speakers'],
+	['speakers', 'speakers'],
+	['hdd board', 'hdd_boards'],
+	['hdd boards', 'hdd_boards'],
+	['power button', 'power_buttons'],
+	['power buttons', 'power_buttons'],
+	['flex cable', 'flex_cables'],
+	['flex cables', 'flex_cables']
+]);
+const STRICT_DEVICE_DISPLAY_PATTERN = /\b(surface\s+pro|tablet|all[-\s]*in[-\s]*one|\baio\b)\b/i;
+const DISPLAY_TERM_PATTERN = /\b(display|screen|lcd|panel)\b/i;
 
 export function clearProductSearchCache() {
 	searchCache.clear();
@@ -74,6 +122,59 @@ export function clearProductSearchCache() {
 
 function asNullableNumber(value: number | undefined) {
 	return Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeCategoryQuery(value: string) {
+	return value
+		.toLowerCase()
+		.replace(/[_-]+/g, ' ')
+		.replace(/[^a-z0-9]+/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+function inferCategoryFromQuery(options: ProductSearchOptions) {
+	if (options.category || options.brand) return '';
+	const query = normalizeCategoryQuery(options.query ?? '');
+	if (!query) return '';
+	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
+}
+
+function withInferredCategory(options: ProductSearchOptions): ProductSearchOptions {
+	const inferredCategory = inferCategoryFromQuery(options);
+	return inferredCategory ? { ...options, category: inferredCategory } : options;
+}
+
+function hasStrictDeviceDisplayIntent(queryText: string) {
+	return STRICT_DEVICE_DISPLAY_PATTERN.test(queryText) && DISPLAY_TERM_PATTERN.test(queryText);
+}
+
+function productSearchText(product: Product) {
+	return [
+		product.title,
+		product.brand,
+		product.category,
+		product.compatibility,
+		product.description,
+		product.warranty,
+		...(product.highlights ?? []),
+		...(product.search_keywords ?? [])
+	]
+		.filter(Boolean)
+		.join(' ');
+}
+
+function filterStrictDeviceDisplayIntent(result: ProductSearchResult, queryText: string) {
+	if (!hasStrictDeviceDisplayIntent(queryText)) return result;
+
+	const products = result.products.filter((product) =>
+		STRICT_DEVICE_DISPLAY_PATTERN.test(productSearchText(product))
+	);
+	return {
+		...result,
+		products,
+		total: Math.min(result.total, products.length)
+	};
 }
 
 function searchCacheKey(options: ProductSearchOptions, limit: number, page: number) {
@@ -247,28 +348,32 @@ async function loadSearchProducts(
 	page: number
 ): Promise<ProductSearchResult> {
 	const queryText = options.query?.trim() ?? '';
+	const searchOptions = withInferredCategory(options);
 
-	if (options.category && hiddenCategories.includes(options.category)) {
+	if (searchOptions.category && hiddenCategories.includes(searchOptions.category)) {
 		return { products: [], total: 0, source: 'postgres' };
 	}
 	if (isPrivateSupplierQuery(queryText)) {
 		return { products: [], total: 0, source: 'postgres' };
 	}
 	if (!queryText) {
-		return loadFallbackSearchProducts(options, client, limit, page);
+		return loadFallbackSearchProducts(searchOptions, client, limit, page);
 	}
 
 	try {
 		const typesenseResult = await searchTypesenseProducts({
-			...options,
+			...searchOptions,
 			limit,
 			page
 		});
 		if (typesenseResult) {
-			return {
-				...typesenseResult,
-				source: 'typesense'
-			};
+			return filterStrictDeviceDisplayIntent(
+				{
+					...typesenseResult,
+					source: 'typesense'
+				},
+				queryText
+			);
 		}
 	} catch (typesenseError) {
 		console.warn('Typesense product search failed, falling back to Postgres.', typesenseError);
@@ -276,16 +381,16 @@ async function loadSearchProducts(
 
 	try {
 		const { data, error } = await client.rpc('search_active_products', {
-			p_brand: options.brand || null,
-			p_category: options.category || null,
-			p_in_stock: options.inStock || null,
+			p_brand: searchOptions.brand || null,
+			p_category: searchOptions.category || null,
+			p_in_stock: searchOptions.inStock || null,
 			p_limit: limit,
-			p_max_price: asNullableNumber(options.maxPrice) ?? null,
-			p_min_price: asNullableNumber(options.minPrice) ?? null,
-			p_min_rating: asNullableNumber(options.minRating) ?? null,
+			p_max_price: asNullableNumber(searchOptions.maxPrice) ?? null,
+			p_min_price: asNullableNumber(searchOptions.minPrice) ?? null,
+			p_min_rating: asNullableNumber(searchOptions.minRating) ?? null,
 			p_offset: (page - 1) * limit,
 			p_query: queryText,
-			p_sort: options.sort ?? 'relevance'
+			p_sort: searchOptions.sort ?? 'relevance'
 		});
 
 		if (error) throw error;
@@ -293,18 +398,21 @@ async function loadSearchProducts(
 		const rows = ((data ?? []) as ProductSearchRow[]).filter(
 			(row) => !hiddenCategories.includes(row.category)
 		);
-		if (await shouldUseFallbackForStockOrder(options, client, rows, limit, page)) {
+		if (await shouldUseFallbackForStockOrder(searchOptions, client, rows, limit, page)) {
 			console.warn(
 				'Postgres product search RPC returned stale stock ordering; falling back to stock-first catalog query.'
 			);
-			return loadFallbackSearchProducts(options, client, limit, page);
+			return loadFallbackSearchProducts(searchOptions, client, limit, page);
 		}
 
-		return {
-			products: rows.map(fromSearchRow),
-			total: rows[0]?.total_count ?? 0,
-			source: 'postgres'
-		};
+		return filterStrictDeviceDisplayIntent(
+			{
+				products: rows.map(fromSearchRow),
+				total: rows[0]?.total_count ?? 0,
+				source: 'postgres'
+			},
+			queryText
+		);
 	} catch (searchError) {
 		console.warn(
 			'Postgres product search RPC failed, falling back to basic catalog query.',
@@ -312,5 +420,8 @@ async function loadSearchProducts(
 		);
 	}
 
-	return loadFallbackSearchProducts(options, client, limit, page);
+	return filterStrictDeviceDisplayIntent(
+		await loadFallbackSearchProducts(searchOptions, client, limit, page),
+		queryText
+	);
 }

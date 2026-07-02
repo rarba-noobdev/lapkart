@@ -78,9 +78,9 @@ type ProductIndexRow = ProductRow & {
 const TYPESENSE_COLLECTION_DEFAULT = 'products';
 const PRODUCT_INDEX_FIELDS = `${productSelectFields},created_at`;
 const MAX_QUEUE_EVENTS_PER_REQUEST = 50;
-const TYPESENSE_SEARCH_TIMEOUT_MS = 900;
+const TYPESENSE_SEARCH_TIMEOUT_MS = 2_000;
 const TYPESENSE_WRITE_TIMEOUT_MS = 12_000;
-const TYPESENSE_FAILURE_COOLDOWN_MS = 30_000;
+const TYPESENSE_FAILURE_COOLDOWN_MS = 3_000;
 let typesenseSearchUnavailableUntil = 0;
 const CATEGORY_QUERY_ALIASES = new Map([
 	['ram', 'ram'],
@@ -403,6 +403,7 @@ export async function searchTypesenseProducts(
 		num_typos: '2,0,0,1,1,1,1,1,1,1',
 		min_len_1typo: '4',
 		min_len_2typo: '7',
+		text_match_type: 'max_weight',
 		limit: String(options.limit),
 		page: String(options.page),
 		filter_by: buildFilterBy(options),
