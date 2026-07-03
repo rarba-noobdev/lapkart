@@ -9,6 +9,7 @@
 	import { openInvoiceDocument } from '$lib/native/capacitor';
 	import {
 		ArrowLeft,
+		Ban,
 		Check,
 		ChevronRight,
 		CircleDashed,
@@ -21,8 +22,10 @@
 		Package,
 		ReceiptText,
 		RefreshCw,
+		RotateCcw,
 		ShieldCheck,
 		Truck,
+		Undo2,
 		XCircle
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
@@ -52,6 +55,24 @@
 	let receiptLoading = $state(false);
 	let receiptMessage = $state<string | null>(null);
 	let receiptMessageTone = $state<'info' | 'error'>('info');
+
+	type OrderRequestRow = { id: string; status: string; reason: string | null };
+	type RefundRow = { id: string; status: string; amount: number | null };
+	let manageLoading = $state(true);
+	let canCancel = $state(false);
+	let canReturn = $state(false);
+	let cancellationRequests = $state<OrderRequestRow[]>([]);
+	let returnRequests = $state<OrderRequestRow[]>([]);
+	let refunds = $state<RefundRow[]>([]);
+	let cancelPanelOpen = $state(false);
+	let cancelReason = $state('');
+	let cancelSubmitting = $state(false);
+	let manageMessage = $state<string | null>(null);
+	let manageMessageTone = $state<'info' | 'error'>('info');
+
+	const latestCancellation = $derived(cancellationRequests[0] ?? null);
+	const latestReturn = $derived(returnRequests[0] ?? null);
+	const latestRefund = $derived(refunds[0] ?? null);
 
 	const shortOrderId = $derived(order ? order.id.slice(0, 8).toUpperCase() : '');
 	const orderStatusLabel = $derived(order ? formatStatusLabel(order.status) : '');
@@ -308,6 +329,79 @@
 		}
 	}
 
+	async function loadOrderMeta() {
+		if (!order) return;
+		try {
+			manageLoading = true;
+			const res = await fetch(`${apiBase}/orders/${order.id}`, {
+				headers: await getAuthorizationHeaders()
+			});
+			if (!res.ok) throw new Error('meta load failed');
+			const body = (await res.json()) as {
+				capabilities?: { canCancel?: boolean; canReturn?: boolean };
+				cancellationRequests?: OrderRequestRow[];
+				returnRequests?: OrderRequestRow[];
+				refunds?: RefundRow[];
+			};
+			canCancel = Boolean(body.capabilities?.canCancel);
+			canReturn = Boolean(body.capabilities?.canReturn);
+			cancellationRequests = body.cancellationRequests ?? [];
+			returnRequests = body.returnRequests ?? [];
+			refunds = body.refunds ?? [];
+		} catch {
+			// Leave defaults; the card simply won't offer actions it can't confirm.
+		} finally {
+			manageLoading = false;
+		}
+	}
+
+	async function submitCancellation() {
+		if (!order) return;
+		const reason = cancelReason.trim();
+		if (reason.length < 3) {
+			manageMessageTone = 'error';
+			manageMessage = 'Please add a short reason (at least 3 characters).';
+			return;
+		}
+		try {
+			cancelSubmitting = true;
+			manageMessage = null;
+			const res = await fetch(`${apiBase}/orders/${order.id}/cancellation-requests`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...(await getAuthorizationHeaders()) },
+				body: JSON.stringify({ reason })
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { error?: string } | null;
+				throw new Error(body?.error ?? 'Cancellation could not be submitted');
+			}
+			cancelPanelOpen = false;
+			cancelReason = '';
+			manageMessageTone = 'info';
+			manageMessage = 'Cancellation requested. We will review it shortly.';
+			await loadOrderMeta();
+			void invalidate(`order:${order.id}`);
+		} catch (cancelError) {
+			manageMessageTone = 'error';
+			manageMessage =
+				cancelError instanceof Error ? cancelError.message : 'Cancellation could not be submitted';
+		} finally {
+			cancelSubmitting = false;
+		}
+	}
+
+	function requestStatusLabel(status: string) {
+		const map: Record<string, string> = {
+			pending: 'Under review',
+			requested: 'Under review',
+			approved: 'Approved',
+			rejected: 'Declined',
+			received: 'Item received',
+			refunded: 'Refunded'
+		};
+		return map[status.toLowerCase()] ?? formatStatusLabel(status);
+	}
+
 	function handleTrack() {
 		if (trackAction.mode === 'open' && order?.shipment?.trackingUrl) {
 			window.open(order.shipment.trackingUrl, '_blank', 'noopener,noreferrer');
@@ -331,6 +425,8 @@
 	onMount(() => {
 		const orderId = order?.id;
 		if (!orderId) return;
+
+		void loadOrderMeta();
 
 		let refreshTimer: number | null = null;
 		let fallbackTimer: number | null = null;
@@ -665,6 +761,137 @@
 					{/if}
 				</div>
 
+				<!-- Manage order: cancellation / return / refund -->
+				{#if !manageLoading && (latestCancellation || latestReturn || latestRefund || canCancel || canReturn)}
+					<div class="panel p-4" transition:fade={{ duration: 160 }}>
+						<div class="mb-3 flex items-center gap-2.5">
+							<div class="icon-box"><RotateCcw class="size-3.5" strokeWidth={2} /></div>
+							<h2 class="text-label-small font-semibold text-foreground">Manage order</h2>
+						</div>
+
+						{#if latestRefund}
+							<div class="manage-status">
+								<Undo2 class="size-4 shrink-0 text-[var(--accent-forest)]" strokeWidth={2} />
+								<div>
+									<p class="text-body-small font-medium text-foreground">
+										Refund {requestStatusLabel(latestRefund.status).toLowerCase()}
+									</p>
+									<p class="text-[12px] text-[var(--black-alpha-56)]">
+										{formatINR(Number(latestRefund.amount ?? 0))} to your original payment method
+									</p>
+								</div>
+							</div>
+						{/if}
+
+						{#if latestCancellation}
+							<div class="manage-status">
+								<Ban class="size-4 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
+								<div>
+									<p class="text-body-small font-medium text-foreground">
+										Cancellation · {requestStatusLabel(latestCancellation.status)}
+									</p>
+									{#if latestCancellation.reason}
+										<p class="text-[12px] text-[var(--black-alpha-56)]">
+											“{latestCancellation.reason}”
+										</p>
+									{/if}
+								</div>
+							</div>
+						{:else if canCancel}
+							{#if cancelPanelOpen}
+								<div transition:fade={{ duration: 140 }}>
+									<label
+										class="text-[12px] font-medium text-[var(--black-alpha-64)]"
+										for="cancel-reason"
+									>
+										Why are you cancelling?
+									</label>
+									<textarea
+										id="cancel-reason"
+										bind:value={cancelReason}
+										rows="2"
+										maxlength="500"
+										placeholder="e.g. ordered the wrong part"
+										class="manage-textarea mt-1.5"
+									></textarea>
+									<div class="mt-2 flex gap-2">
+										<button
+											type="button"
+											class="manage-btn manage-btn-danger"
+											disabled={cancelSubmitting}
+											onclick={() => void submitCancellation()}
+										>
+											{cancelSubmitting ? 'Submitting…' : 'Confirm cancellation'}
+										</button>
+										<button
+											type="button"
+											class="manage-btn manage-btn-ghost"
+											disabled={cancelSubmitting}
+											onclick={() => {
+												cancelPanelOpen = false;
+												manageMessage = null;
+											}}
+										>
+											Keep order
+										</button>
+									</div>
+								</div>
+							{:else}
+								<p class="text-body-small text-[var(--black-alpha-64)]">
+									Changed your mind? You can cancel while the order is still being prepared.
+								</p>
+								<button
+									type="button"
+									class="manage-btn manage-btn-outline mt-3"
+									onclick={() => {
+										cancelPanelOpen = true;
+										manageMessage = null;
+									}}
+								>
+									<Ban class="size-4" strokeWidth={2} />
+									Cancel order
+								</button>
+							{/if}
+						{/if}
+
+						{#if latestReturn}
+							<div class="manage-status">
+								<Undo2 class="size-4 shrink-0 text-[var(--heat-100)]" strokeWidth={2} />
+								<div>
+									<p class="text-body-small font-medium text-foreground">
+										Return · {requestStatusLabel(latestReturn.status)}
+									</p>
+									{#if latestReturn.reason}
+										<p class="text-[12px] text-[var(--black-alpha-56)]">“{latestReturn.reason}”</p>
+									{/if}
+								</div>
+							</div>
+						{:else if canReturn}
+							<div class="manage-status manage-status-plain">
+								<Undo2 class="size-4 shrink-0 text-[var(--black-alpha-40)]" strokeWidth={2} />
+								<div>
+									<p class="text-body-small font-medium text-foreground">Need to return this?</p>
+									<p class="text-[12px] text-[var(--black-alpha-56)]">
+										Returns need a photo of the item. Email
+										<a class="text-[var(--heat-100)]" href="mailto:support@lapkart.store"
+											>support@lapkart.store</a
+										> and we’ll start it for you.
+									</p>
+								</div>
+							</div>
+						{/if}
+
+						{#if manageMessage}
+							<p
+								class={`mt-2 text-[12px] ${manageMessageTone === 'error' ? 'text-[var(--accent-crimson)]' : 'text-[var(--accent-forest)]'}`}
+								transition:fade={{ duration: 180 }}
+							>
+								{manageMessage}
+							</p>
+						{/if}
+					</div>
+				{/if}
+
 				<!-- Address -->
 				<div class="panel p-4">
 					<div class="mb-3 flex items-center gap-2.5">
@@ -867,6 +1094,92 @@
 	.receipt-btn:disabled {
 		opacity: 0.55;
 		cursor: not-allowed;
+	}
+
+	.manage-status {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		border-radius: 8px;
+		background: var(--background-lighter);
+		padding: 10px 12px;
+	}
+
+	.manage-status + .manage-status,
+	.manage-status + :global(*) {
+		margin-top: 10px;
+	}
+
+	.manage-status-plain {
+		background: transparent;
+		padding: 0;
+	}
+
+	.manage-textarea {
+		width: 100%;
+		border-radius: 8px;
+		border: 1px solid var(--border-muted);
+		background: white;
+		padding: 8px 10px;
+		font-size: 13px;
+		color: var(--foreground);
+		resize: vertical;
+		outline: none;
+		transition: border-color var(--motion-fast) var(--motion-ease-out);
+	}
+
+	.manage-textarea:focus {
+		border-color: var(--heat-100);
+		box-shadow: 0 0 0 3px var(--heat-8);
+	}
+
+	.manage-btn {
+		display: inline-flex;
+		min-height: 38px;
+		flex: 1;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		border-radius: 8px;
+		padding: 8px 14px;
+		font-size: 13px;
+		font-weight: 650;
+		transition:
+			border-color var(--motion-fast) var(--motion-ease-out),
+			background var(--motion-fast) var(--motion-ease-out);
+	}
+
+	.manage-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.manage-btn-outline {
+		width: 100%;
+		border: 1px solid var(--border-muted);
+		background: white;
+		color: var(--foreground);
+	}
+
+	.manage-btn-outline:hover:not(:disabled) {
+		border-color: var(--accent-crimson);
+		color: var(--accent-crimson);
+	}
+
+	.manage-btn-danger {
+		border: 1px solid var(--accent-crimson);
+		background: var(--accent-crimson);
+		color: white;
+	}
+
+	.manage-btn-danger:hover:not(:disabled) {
+		opacity: 0.92;
+	}
+
+	.manage-btn-ghost {
+		border: 1px solid var(--border-muted);
+		background: white;
+		color: var(--black-alpha-64);
 	}
 
 	.awb-chip {
