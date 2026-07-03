@@ -6,6 +6,7 @@
 	import { formatINR } from '$lib/catalog';
 	import type { OrderSummary } from '$lib/orders';
 	import { getAuthorizationHeaders } from '$lib/supabase-auth';
+	import { openInvoiceDocument } from '$lib/native/capacitor';
 	import {
 		ArrowLeft,
 		Check,
@@ -290,19 +291,14 @@
 				const body = (await response.json().catch(() => null)) as { error?: string } | null;
 				throw new Error(body?.error ?? 'Could not open invoice');
 			}
-			const blob = await response.blob();
-			const url = URL.createObjectURL(blob);
-			const opened = window.open(url, '_blank', 'noopener,noreferrer');
-			if (!opened) {
-				const link = document.createElement('a');
-				link.href = url;
-				link.download = `lapkart-${order.id.slice(0, 8).toUpperCase()}-invoice.html`;
-				document.body.appendChild(link);
-				link.click();
-				link.remove();
-			}
-			window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-			receiptMessage = 'Invoice opened.';
+			const html = await response.text();
+			const ref = order.id.slice(0, 8).toUpperCase();
+			await openInvoiceDocument({
+				html,
+				fileName: `lapkart-${ref}-invoice.html`,
+				title: `LapKart invoice ${ref}`
+			});
+			receiptMessage = 'Invoice ready.';
 		} catch (receiptError) {
 			receiptMessageTone = 'error';
 			receiptMessage =

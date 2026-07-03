@@ -105,6 +105,47 @@ export async function shareUrl(input: { title: string; text?: string; url: strin
 	await navigator.clipboard?.writeText(input.url);
 }
 
+// Opens an order invoice. On native we persist the HTML to the app cache and
+// hand it to the OS share sheet so the customer can save it to Files/Drive or
+// open it in a browser to print as PDF. On the web we open/download the blob.
+export async function openInvoiceDocument(input: {
+	html: string;
+	fileName: string;
+	title: string;
+}) {
+	const { Capacitor } = await import('@capacitor/core');
+
+	if (Capacitor.isNativePlatform()) {
+		const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+		const written = await Filesystem.writeFile({
+			path: input.fileName,
+			data: input.html,
+			directory: Directory.Cache,
+			encoding: Encoding.UTF8
+		});
+		const { Share } = await import('@capacitor/share');
+		await Share.share({
+			title: input.title,
+			url: written.uri,
+			dialogTitle: 'Save or share invoice'
+		});
+		return;
+	}
+
+	const blob = new Blob([input.html], { type: 'text/html' });
+	const url = URL.createObjectURL(blob);
+	const opened = window.open(url, '_blank', 'noopener,noreferrer');
+	if (!opened) {
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = input.fileName;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+	}
+	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function pickImageFile(options: { title?: string; fileNamePrefix?: string } = {}) {
 	const { Capacitor } = await import('@capacitor/core');
 

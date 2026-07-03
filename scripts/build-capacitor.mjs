@@ -7,7 +7,7 @@ const root = process.cwd();
 const isWindows = process.platform === 'win32';
 const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 const npxCmd = isWindows ? 'npx.cmd' : 'npx';
-const gradleCmd = isWindows ? 'gradlew.bat' : './gradlew';
+const gradleCmd = isWindows ? '.\\gradlew.bat' : './gradlew';
 
 const capacitorEnv = {
 	...process.env,
