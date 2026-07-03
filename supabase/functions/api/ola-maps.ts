@@ -165,7 +165,7 @@ export async function getOlaDeliveryRoute(destination: { latitude: number; longi
 		!Number.isFinite(config.lapkartDispatchLatitude) ||
 		!Number.isFinite(config.lapkartDispatchLongitude)
 	) {
-		throw new Error('LapKart dispatch coordinates are not configured');
+		throw new Error('LapKart pickup coordinates are not configured');
 	}
 
 	const data = await olaMapsRequest<{

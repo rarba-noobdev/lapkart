@@ -23,7 +23,7 @@ export const config = {
 	supabaseServiceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
 	razorpayKeyId: Deno.env.get('RAZORPAY_KEY_ID') ?? '',
 	razorpayKeySecret: Deno.env.get('RAZORPAY_KEY_SECRET') ?? '',
-	manualPickupLocation: Deno.env.get('MANUAL_PICKUP_LOCATION') ?? 'LapKart dispatch',
+	manualPickupLocation: Deno.env.get('MANUAL_PICKUP_LOCATION') ?? 'LapKart pickup',
 	manualDefaultWeightKg: numberEnv('MANUAL_DEFAULT_WEIGHT_KG', 0.5),
 	manualDefaultLengthCm: numberEnv('MANUAL_DEFAULT_LENGTH_CM', 20),
 	manualDefaultBreadthCm: numberEnv('MANUAL_DEFAULT_BREADTH_CM', 15),
