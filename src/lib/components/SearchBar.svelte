@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ArrowRight, LoaderCircle, Search } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { ArrowRight, LoaderCircle, Mic, Search } from '@lucide/svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -10,10 +11,22 @@
 	let {
 		placeholder = 'Search parts',
 		size = 'md',
+		rounded = 'md',
+		rotatingTerms = [
+			'laptop battery',
+			'ssd 512gb',
+			'hp pavilion charger',
+			'16gb ddr4 ram',
+			'screen replacement',
+			'cooling fan',
+			'backlit keyboard'
+		],
 		class: className = ''
 	}: {
 		placeholder?: string;
 		size?: 'md' | 'lg';
+		rounded?: 'md' | 'full';
+		rotatingTerms?: string[];
 		class?: string;
 	} = $props();
 
@@ -23,13 +36,69 @@
 	let results = $state<Product[]>([]);
 	let activeIndex = $state(-1);
 	let total = $state(0);
+	let termIndex = $state(0);
+	let voiceSupported = $state(false);
+	let listening = $state(false);
 
 	let wrapper: HTMLDivElement;
+	let input: HTMLInputElement;
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let rotateTimer: ReturnType<typeof setInterval> | undefined;
 	let controller: AbortController | null = null;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let recognition: any = null;
 
 	const trimmed = $derived(query.trim());
 	const flyY = $derived(prefersReducedMotion.current ? 0 : 6);
+	const showRotating = $derived(!query && rotatingTerms.length > 0);
+	const currentTerm = $derived(rotatingTerms[termIndex % rotatingTerms.length]);
+
+	onMount(() => {
+		// Rotating placeholder — pause when the field has text or motion is reduced.
+		rotateTimer = setInterval(() => {
+			if (query || prefersReducedMotion.current) return;
+			termIndex = (termIndex + 1) % rotatingTerms.length;
+		}, 2600);
+
+		// Feature-detect Web Speech API so the mic never renders as a dead button.
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+		if (SR) {
+			voiceSupported = true;
+			recognition = new SR();
+			recognition.lang = 'en-IN';
+			recognition.interimResults = false;
+			recognition.maxAlternatives = 1;
+			recognition.onresult = (event: {
+				results: { [k: number]: { [k: number]: { transcript: string } } };
+			}) => {
+				const said = event.results[0]?.[0]?.transcript?.trim();
+				if (said) {
+					query = said;
+					onInput();
+					input?.focus();
+				}
+			};
+			recognition.onend = () => (listening = false);
+			recognition.onerror = () => (listening = false);
+		}
+
+		return () => {
+			clearInterval(rotateTimer);
+			clearTimeout(debounceTimer);
+			controller?.abort();
+		};
+	});
+
+	function startVoice() {
+		if (!recognition || listening) return;
+		try {
+			listening = true;
+			recognition.start();
+		} catch {
+			listening = false;
+		}
+	}
 
 	function onInput() {
 		clearTimeout(debounceTimer);
@@ -113,39 +182,76 @@
 	<form onsubmit={submitSearch} role="search">
 		<label
 			class={[
-				'group flex items-center overflow-hidden rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] transition-[border-color,background-color,box-shadow] focus-within:border-[var(--black-alpha-24)] focus-within:bg-white focus-within:shadow-[0_0_0_3px_var(--black-alpha-4)]',
-				size === 'lg' ? 'h-11' : 'h-10'
+				'search-shell group relative flex items-center overflow-hidden border border-[var(--border-muted)] bg-[var(--background-lighter)] transition-[border-color,background-color,box-shadow,transform] focus-within:border-[var(--heat-100)] focus-within:bg-white',
+				rounded === 'full' ? 'rounded-full' : 'rounded-md',
+				size === 'lg' ? 'h-11' : rounded === 'full' ? 'h-12' : 'h-10'
 			]}
 		>
 			<span class="sr-only">Search laptop parts</span>
-			<span class="relative ml-3 size-[15px] shrink-0">
+			<span class="relative ml-3.5 size-[16px] shrink-0">
 				{#if loading}
 					<span class="absolute inset-0" in:fade={{ duration: 120 }}>
-						<LoaderCircle class="size-[15px] animate-spin text-[var(--heat-100)]" />
+						<LoaderCircle class="size-[16px] animate-spin text-[var(--heat-100)]" />
 					</span>
 				{:else}
 					<span class="absolute inset-0" in:fade={{ duration: 120 }}>
 						<Search
-							class="size-[15px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--black-alpha-56)]"
+							class="size-[16px] text-[var(--black-alpha-40)] transition-colors group-focus-within:text-[var(--heat-100)]"
 						/>
 					</span>
 				{/if}
 			</span>
-			<input
-				bind:value={query}
-				oninput={onInput}
-				onkeydown={onKeydown}
-				onfocus={onFocus}
-				type="search"
-				name="q"
-				autocomplete="off"
-				aria-label="Search laptop parts"
-				aria-expanded={open}
-				aria-controls="search-suggestions"
-				role="combobox"
-				{placeholder}
-				class="text-body-medium h-full flex-1 border-none bg-transparent px-3 outline-none placeholder:text-[var(--black-alpha-48)]"
-			/>
+
+			<div class="relative flex-1">
+				<input
+					bind:this={input}
+					bind:value={query}
+					oninput={onInput}
+					onkeydown={onKeydown}
+					onfocus={onFocus}
+					type="search"
+					name="q"
+					autocomplete="off"
+					enterkeyhint="search"
+					aria-label="Search laptop parts"
+					aria-expanded={open}
+					aria-controls="search-suggestions"
+					role="combobox"
+					placeholder={showRotating ? '' : placeholder}
+					class="text-body-medium h-full w-full border-none bg-transparent px-3 outline-none placeholder:text-[var(--black-alpha-48)]"
+				/>
+				{#if showRotating}
+					<div
+						class="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-3"
+						aria-hidden="true"
+					>
+						<span class="text-body-medium shrink-0 text-[var(--black-alpha-48)]">Search&nbsp;</span>
+						<span class="relative h-[1.4em] min-w-0 flex-1">
+							{#key currentTerm}
+								<span
+									class="absolute inset-0 flex items-center truncate font-medium text-[var(--black-alpha-56)]"
+									in:fly={{ y: flyY === 0 ? 0 : 14, duration: 340, easing: quintOut }}
+									out:fly={{ y: flyY === 0 ? 0 : -14, duration: 260, easing: quintOut }}
+								>
+									“{currentTerm}”
+								</span>
+							{/key}
+						</span>
+					</div>
+				{/if}
+			</div>
+
+			{#if voiceSupported}
+				<button
+					type="button"
+					onclick={startVoice}
+					class="mic-btn mr-1.5 grid size-9 shrink-0 place-items-center rounded-full text-[var(--black-alpha-40)] transition-colors"
+					class:is-listening={listening}
+					aria-label="Search by voice"
+				>
+					<Mic class="size-[17px]" />
+				</button>
+			{/if}
 		</label>
 	</form>
 
@@ -237,8 +343,46 @@
 </div>
 
 <style>
+	.search-shell {
+		will-change: transform, box-shadow;
+	}
+
+	.search-shell:focus-within {
+		box-shadow:
+			0 0 0 3px var(--heat-12),
+			0 6px 20px -10px var(--heat-40);
+	}
+
+	/* Subtle lift on tap for a tactile, app-like feel. */
+	.search-shell:active {
+		transform: scale(0.992);
+	}
+
 	.search-panel {
 		transform-origin: top center;
+	}
+
+	.mic-btn:hover,
+	.mic-btn:focus-visible {
+		background: var(--heat-4);
+		color: var(--heat-100);
+		outline: none;
+	}
+
+	.mic-btn.is-listening {
+		color: var(--heat-100);
+		background: var(--heat-12);
+		animation: mic-pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes mic-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 var(--heat-40);
+		}
+		50% {
+			box-shadow: 0 0 0 6px transparent;
+		}
 	}
 
 	/* Highlight is keyboard/pointer driven — instant on purpose, no transition. */
@@ -249,5 +393,13 @@
 
 	.search-row:active {
 		transform: scale(0.99);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.search-shell,
+		.mic-btn {
+			transition-duration: 0.01ms !important;
+			animation: none !important;
+		}
 	}
 </style>

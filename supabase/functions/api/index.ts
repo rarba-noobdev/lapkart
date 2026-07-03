@@ -960,71 +960,151 @@ function renderInvoiceHtml({
 	items: Array<Record<string, unknown>>;
 	invoiceNumber: string;
 }) {
+	const inr = (value: unknown) =>
+		`₹${Number(value ?? 0).toLocaleString('en-IN', {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2
+		})}`;
+
 	const rows = items
-		.map((item) => {
+		.map((item, index) => {
 			const qty = Number(item.qty ?? 0);
 			const unit = Number(item.price ?? item.unit_price ?? 0);
 			const lineTotal = roundMoney(qty * unit);
+			const title = escapeHtml(item.title);
+			const brand = item.brand ? escapeHtml(item.brand) : '';
 			return `<tr>
-        <td>${escapeHtml(item.title)}</td>
-        <td>${escapeHtml(item.brand)}</td>
+        <td class="idx">${index + 1}</td>
+        <td>
+          <span class="item-title">${title}</span>
+          ${brand ? `<span class="item-sub">${brand}</span>` : ''}
+        </td>
         <td class="num">${qty}</td>
-        <td class="num">INR ${unit.toFixed(2)}</td>
-        <td class="num">INR ${lineTotal.toFixed(2)}</td>
+        <td class="num">${inr(unit)}</td>
+        <td class="num">${inr(lineTotal)}</td>
       </tr>`;
 		})
 		.join('');
 
+	const orderId = String(order.id ?? '');
+	const orderRef = orderId.slice(0, 8).toUpperCase();
+	const orderDate = order.created_at
+		? new Date(String(order.created_at)).toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric'
+			})
+		: '—';
+	const discount = Number(order.discount_total ?? 0);
+	const paymentLabel =
+		order.payment_method === 'cod'
+			? 'Cash on delivery'
+			: order.payment_method
+				? 'Paid online'
+				: '';
+
 	return `<!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>${escapeHtml(invoiceNumber)} - LapKart receipt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invoice ${escapeHtml(invoiceNumber)} · LapKart</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #111; margin: 32px; }
-    header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #111; padding-bottom: 16px; }
-    h1 { font-size: 28px; margin: 0; }
-    h2 { font-size: 16px; margin: 24px 0 8px; }
-    p { margin: 4px 0; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
-    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
-    th { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #666; }
-    .num { text-align: right; }
-    .totals { margin-left: auto; margin-top: 20px; width: 320px; }
-    .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
-    .grand { border-top: 2px solid #111; font-weight: 700; font-size: 18px; }
-    @media print { body { margin: 18mm; } button { display: none; } }
+    :root { --ink: #171717; --muted: #6b7280; --line: #e5e7eb; --heat: #fa5d19; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); margin: 0; background: #f4f4f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { max-width: 720px; margin: 24px auto; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.06); }
+    .toolbar { display: flex; justify-content: flex-end; padding: 12px 28px 0; }
+    .print-btn { border: 0; background: var(--heat); color: #fff; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 999px; cursor: pointer; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 20px 28px 24px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: baseline; gap: 2px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+    .brand .k { color: var(--heat); }
+    .brand-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); max-width: 220px; }
+    .doc { text-align: right; }
+    .doc .tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--heat); }
+    .doc h1 { font-size: 15px; margin: 4px 0 10px; font-weight: 600; }
+    .doc dl { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.7; }
+    .doc dl b { color: var(--ink); font-weight: 600; }
+    .parties { display: flex; flex-wrap: wrap; gap: 24px; padding: 20px 28px; }
+    .party { flex: 1; min-width: 200px; }
+    .party .label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+    .party p { margin: 2px 0; font-size: 13px; line-height: 1.5; }
+    .party .name { font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 10px 28px; background: #fafafa; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    tbody td { padding: 12px 28px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
+    td.idx { color: var(--muted); width: 28px; }
+    .item-title { display: block; font-weight: 500; }
+    .item-sub { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .num { text-align: right; white-space: nowrap; }
+    th.num { text-align: right; }
+    .totals { margin: 0 0 0 auto; width: 300px; padding: 16px 28px 20px; }
+    .totals .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: var(--muted); }
+    .totals .row b { color: var(--ink); font-weight: 500; }
+    .totals .grand { margin-top: 8px; padding-top: 12px; border-top: 2px solid var(--ink); font-size: 17px; font-weight: 700; color: var(--ink); }
+    .totals .grand span:last-child { color: var(--heat); }
+    footer { padding: 18px 28px 26px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .pay { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+    @media print {
+      body { background: #fff; }
+      .sheet { box-shadow: none; margin: 0; max-width: none; border-radius: 0; }
+      .toolbar { display: none; }
+    }
   </style>
 </head>
 <body>
-  <button onclick="window.print()">Print or save PDF</button>
-  <header>
-    <div>
-      <h1>LapKart</h1>
-      <p>Customer-facing seller for laptop parts</p>
+  <div class="sheet">
+    <div class="toolbar"><button class="print-btn" onclick="window.print()">Download PDF</button></div>
+    <header>
+      <div>
+        <div class="brand">lap<span class="k">kart</span></div>
+        <p class="brand-sub">Laptop parts and replacement hardware · support@lapkart.store</p>
+      </div>
+      <div class="doc">
+        <span class="tag">Invoice</span>
+        <h1>${escapeHtml(invoiceNumber)}</h1>
+        <dl>
+          <div>Order <b>#${escapeHtml(orderRef)}</b></div>
+          <div>Date <b>${escapeHtml(orderDate)}</b></div>
+        </dl>
+      </div>
+    </header>
+
+    <div class="parties">
+      <div class="party">
+        <p class="label">Billed to</p>
+        <p class="name">${escapeHtml(order.shipping_name)}</p>
+        <p>${escapeHtml(order.shipping_address)}</p>
+        <p>${escapeHtml(order.shipping_phone)}</p>
+      </div>
+      <div class="party">
+        <p class="label">Sold by</p>
+        <p class="name">LapKart</p>
+        <p>Reseller · laptop parts</p>
+        <p>support@lapkart.store</p>
+        ${paymentLabel ? `<span class="pay">${escapeHtml(paymentLabel)}</span>` : ''}
+      </div>
     </div>
-    <div>
-      <p><strong>Receipt:</strong> ${escapeHtml(invoiceNumber)}</p>
-      <p><strong>Order:</strong> #${escapeHtml(String(order.id ?? '').slice(0, 8))}</p>
-      <p><strong>Date:</strong> ${escapeHtml(new Date(String(order.created_at)).toLocaleDateString('en-IN'))}</p>
-    </div>
-  </header>
-  <h2>Bill To / Ship To</h2>
-  <p>${escapeHtml(order.shipping_name)}</p>
-  <p>${escapeHtml(order.shipping_address)}</p>
-  <p>${escapeHtml(order.shipping_phone)}</p>
-  <table>
-    <thead>
-      <tr><th>Item</th><th>Brand</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <section class="totals">
-    <div><span>Subtotal</span><span>INR ${Number(order.subtotal ?? 0).toFixed(2)}</span></div>
-    <div><span>Shipping</span><span>INR ${Number(order.shipping ?? 0).toFixed(2)}</span></div>
-    <div><span>Discount${order.coupon_code ? ` (${escapeHtml(order.coupon_code)})` : ''}</span><span>- INR ${Number(order.discount_total ?? 0).toFixed(2)}</span></div>
-    <div class="grand"><span>Total paid</span><span>INR ${Number(order.total ?? 0).toFixed(2)}</span></div>
-  </section>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <section class="totals">
+      <div class="row"><span>Subtotal</span><b>${inr(order.subtotal)}</b></div>
+      <div class="row"><span>Shipping</span><b>${inr(order.shipping)}</b></div>
+      ${discount > 0 ? `<div class="row"><span>Discount${order.coupon_code ? ` · ${escapeHtml(order.coupon_code)}` : ''}</span><b>− ${inr(discount)}</b></div>` : ''}
+      <div class="row grand"><span>Total</span><span>${inr(order.total)}</span></div>
+    </section>
+
+    <footer>
+      Prices are inclusive of applicable taxes. This is a computer-generated invoice and does not require a signature.
+      For any question about this order, reach us at support@lapkart.store.
+    </footer>
+  </div>
 </body>
 </html>`;
 }

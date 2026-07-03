@@ -288,7 +288,7 @@
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as { error?: string } | null;
-				throw new Error(body?.error ?? 'Could not open receipt');
+				throw new Error(body?.error ?? 'Could not open invoice');
 			}
 			const blob = await response.blob();
 			const url = URL.createObjectURL(blob);
@@ -296,17 +296,17 @@
 			if (!opened) {
 				const link = document.createElement('a');
 				link.href = url;
-				link.download = `lapkart-${order.id.slice(0, 8).toUpperCase()}-receipt.html`;
+				link.download = `lapkart-${order.id.slice(0, 8).toUpperCase()}-invoice.html`;
 				document.body.appendChild(link);
 				link.click();
 				link.remove();
 			}
 			window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-			receiptMessage = 'Receipt opened.';
+			receiptMessage = 'Invoice opened.';
 		} catch (receiptError) {
 			receiptMessageTone = 'error';
 			receiptMessage =
-				receiptError instanceof Error ? receiptError.message : 'Could not open receipt';
+				receiptError instanceof Error ? receiptError.message : 'Could not open invoice';
 		} finally {
 			receiptLoading = false;
 		}
@@ -641,14 +641,14 @@
 					</div>
 				</div>
 
-				<!-- Receipt -->
+				<!-- Invoice -->
 				<div class="panel p-4">
 					<div class="mb-3 flex items-center gap-2.5">
 						<div class="icon-box"><ReceiptText class="size-3.5" strokeWidth={2} /></div>
-						<h2 class="text-label-small font-semibold text-foreground">Receipt</h2>
+						<h2 class="text-label-small font-semibold text-foreground">Invoice</h2>
 					</div>
 					<p class="text-body-small text-[var(--black-alpha-64)]">
-						Open a receipt with order totals and line items.
+						Itemised invoice with totals — open it to print or save as PDF.
 					</p>
 					<button
 						type="button"
@@ -657,7 +657,7 @@
 						onclick={() => void openReceipt()}
 					>
 						<Download class={`size-4 ${receiptLoading ? 'animate-pulse' : ''}`} strokeWidth={2} />
-						{receiptLoading ? 'Opening...' : 'Open receipt'}
+						{receiptLoading ? 'Opening…' : 'Open invoice'}
 					</button>
 					{#if receiptMessage}
 						<p

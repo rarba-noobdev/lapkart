@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import {
 		ArrowLeft,
 		ArrowRight,
 		Clock,
 		LoaderCircle,
+		Mic,
 		Search,
 		TrendingUp,
 		X
@@ -20,9 +21,19 @@
 
 	let {
 		placeholder = 'Search parts',
+		rotatingTerms = [
+			'laptop battery',
+			'ssd 512gb',
+			'hp pavilion charger',
+			'16gb ddr4 ram',
+			'screen replacement',
+			'cooling fan',
+			'backlit keyboard'
+		],
 		class: className = ''
 	}: {
 		placeholder?: string;
+		rotatingTerms?: string[];
 		class?: string;
 	} = $props();
 
@@ -36,15 +47,74 @@
 	let activeIndex = $state(-1);
 	let total = $state(0);
 	let recents = $state<string[]>([]);
+	let termIndex = $state(0);
+	let voiceSupported = $state(false);
+	let listening = $state(false);
 
 	let input = $state<HTMLInputElement | undefined>();
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let rotateTimer: ReturnType<typeof setInterval> | undefined;
 	let controller: AbortController | null = null;
 	let popStateBound = false;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let recognition: any = null;
 
 	const trimmed = $derived(query.trim());
 	const reduce = $derived(prefersReducedMotion.current);
 	const popularCategories = allCategories.slice(0, 8);
+	const currentTerm = $derived(rotatingTerms[termIndex % rotatingTerms.length]);
+
+	onMount(() => {
+		// Rotating placeholder on the idle trigger — the Blinkit-style cue.
+		rotateTimer = setInterval(() => {
+			if (open || prefersReducedMotion.current) return;
+			termIndex = (termIndex + 1) % rotatingTerms.length;
+		}, 2600);
+
+		// Feature-detect Web Speech API so the mic never renders as a dead button.
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+		if (SR) {
+			voiceSupported = true;
+			recognition = new SR();
+			recognition.lang = 'en-IN';
+			recognition.interimResults = false;
+			recognition.maxAlternatives = 1;
+			recognition.onresult = (event: {
+				results: { [k: number]: { [k: number]: { transcript: string } } };
+			}) => {
+				const said = event.results[0]?.[0]?.transcript?.trim();
+				if (said) {
+					query = said;
+					onInput();
+				}
+			};
+			recognition.onend = () => (listening = false);
+			recognition.onerror = () => (listening = false);
+		}
+
+		return () => {
+			clearInterval(rotateTimer);
+			clearTimeout(debounceTimer);
+			controller?.abort();
+		};
+	});
+
+	function startVoice() {
+		if (!recognition || listening) return;
+		try {
+			listening = true;
+			void nativeImpact();
+			recognition.start();
+		} catch {
+			listening = false;
+		}
+	}
+
+	async function openWithVoice() {
+		await openOverlay();
+		startVoice();
+	}
 
 	function loadRecents() {
 		try {
@@ -211,13 +281,34 @@
 </script>
 
 <!-- Trigger: looks like a search field, opens the full-screen overlay on tap. -->
-<button type="button" class="search-trigger {className}" onclick={openOverlay}>
-	<Search class="trigger-icon size-[17px]" strokeWidth={2} />
-	<span class="trigger-label">{placeholder}</span>
-	<span class="trigger-cue" aria-hidden="true">
-		<ArrowRight class="size-3.5" strokeWidth={2.2} />
-	</span>
-</button>
+<div class="search-trigger {className}">
+	<button type="button" class="trigger-main" onclick={openOverlay} aria-label="Open search">
+		<Search class="trigger-icon size-[17px]" strokeWidth={2} />
+		<span class="trigger-copy">
+			<span class="trigger-static">Search&nbsp;</span>
+			<span class="trigger-rotate" aria-hidden="true">
+				{#key currentTerm}
+					<span
+						class="trigger-term"
+						in:fly={{ y: reduce ? 0 : 15, duration: reduce ? 0 : 340, easing: quintOut }}
+						out:fly={{ y: reduce ? 0 : -15, duration: reduce ? 0 : 240, easing: quintOut }}
+					>
+						“{currentTerm}”
+					</span>
+				{/key}
+			</span>
+		</span>
+	</button>
+	{#if voiceSupported}
+		<button type="button" class="trigger-mic" onclick={openWithVoice} aria-label="Search by voice">
+			<Mic class="size-[18px]" strokeWidth={2} />
+		</button>
+	{:else}
+		<span class="trigger-cue" aria-hidden="true">
+			<ArrowRight class="size-3.5" strokeWidth={2.2} />
+		</span>
+	{/if}
+</div>
 
 {#if open}
 	<div class="search-overlay" role="dialog" aria-modal="true" aria-label="Search">
@@ -259,7 +350,7 @@
 							autocomplete="off"
 							enterkeyhint="search"
 							aria-label="Search laptop parts"
-							{placeholder}
+							placeholder={listening ? 'Listening…' : placeholder}
 						/>
 						{#if trimmed}
 							<button
@@ -270,6 +361,17 @@
 								in:scale={{ duration: reduce ? 0 : 140, start: 0.6, easing: quintOut }}
 							>
 								<X class="size-4" />
+							</button>
+						{:else if voiceSupported}
+							<button
+								type="button"
+								class="mic-btn"
+								class:is-listening={listening}
+								aria-label="Search by voice"
+								onclick={startVoice}
+								in:scale={{ duration: reduce ? 0 : 140, start: 0.6, easing: quintOut }}
+							>
+								<Mic class="size-[18px]" strokeWidth={2} />
 							</button>
 						{/if}
 					</div>
@@ -409,42 +511,96 @@
 <style>
 	.search-trigger {
 		display: flex;
-		height: 44px;
+		height: 46px;
 		width: 100%;
 		align-items: center;
-		gap: 10px;
+		gap: 4px;
 		border: 1px solid var(--border-muted);
-		border-radius: 10px;
+		border-radius: 999px;
 		background: #fff;
-		padding: 0 10px 0 13px;
+		padding: 0 6px 0 4px;
 		color: var(--black-alpha-48);
-		text-align: left;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 		transition:
 			border-color 200ms var(--motion-ease),
-			box-shadow 200ms var(--motion-ease),
-			transform 120ms var(--motion-ease-out);
+			box-shadow 200ms var(--motion-ease);
 	}
 
-	.search-trigger:active {
+	.search-trigger:focus-within {
+		border-color: var(--heat-100);
+		box-shadow: 0 0 0 3px var(--heat-12);
+	}
+
+	.trigger-main {
+		display: flex;
+		height: 100%;
+		flex: 1;
+		min-width: 0;
+		align-items: center;
+		gap: 10px;
+		padding-left: 11px;
+		text-align: left;
+		transition: transform 120ms var(--motion-ease-out);
+	}
+
+	.trigger-main:active {
 		transform: scale(0.99);
-		border-color: var(--black-alpha-24);
-		box-shadow: 0 0 0 3px var(--black-alpha-4);
 	}
 
-	.search-trigger :global(.trigger-icon) {
+	.trigger-main :global(.trigger-icon) {
 		flex-shrink: 0;
 		color: var(--black-alpha-40);
 	}
 
-	.trigger-label {
-		flex: 1;
+	.trigger-copy {
+		display: flex;
 		min-width: 0;
-		overflow: hidden;
+		flex: 1;
+		align-items: center;
 		font-size: 14px;
 		font-weight: 450;
+	}
+
+	.trigger-static {
+		flex-shrink: 0;
+		color: var(--black-alpha-48);
+	}
+
+	.trigger-rotate {
+		position: relative;
+		height: 1.35em;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.trigger-term {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		overflow: hidden;
+		color: var(--black-alpha-56);
+		font-weight: 500;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.trigger-mic {
+		display: grid;
+		height: 36px;
+		width: 36px;
+		flex-shrink: 0;
+		place-items: center;
+		border-radius: 999px;
+		color: var(--heat-100);
+		transition:
+			background-color 160ms var(--motion-ease),
+			transform 120ms var(--motion-ease-out);
+	}
+
+	.trigger-mic:active {
+		transform: scale(0.9);
+		background: var(--heat-8);
 	}
 
 	.trigger-cue {
@@ -453,7 +609,7 @@
 		width: 28px;
 		flex-shrink: 0;
 		place-items: center;
-		border-radius: 8px;
+		border-radius: 999px;
 		background: var(--heat-8);
 		color: var(--heat-100);
 	}
@@ -595,6 +751,39 @@
 
 	.clear-btn:active {
 		background: var(--black-alpha-12);
+	}
+
+	.mic-btn {
+		display: grid;
+		height: 32px;
+		width: 32px;
+		flex-shrink: 0;
+		place-items: center;
+		border-radius: 999px;
+		color: var(--heat-100);
+		transition:
+			background-color 160ms var(--motion-ease),
+			transform 120ms var(--motion-ease-out);
+	}
+
+	.mic-btn:active {
+		transform: scale(0.9);
+		background: var(--heat-8);
+	}
+
+	.mic-btn.is-listening {
+		background: var(--heat-12);
+		animation: mic-pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes mic-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 var(--heat-40);
+		}
+		50% {
+			box-shadow: 0 0 0 7px transparent;
+		}
 	}
 
 	.overlay-body {
@@ -865,11 +1054,15 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.search-trigger,
+		.trigger-main,
+		.trigger-mic,
+		.mic-btn,
 		.head-btn,
 		.chip,
 		.result-row,
 		.see-all {
 			transition-duration: 0.01ms !important;
+			animation: none !important;
 		}
 	}
 </style>
