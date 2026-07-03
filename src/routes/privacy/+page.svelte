@@ -5,7 +5,7 @@
 		{
 			title: 'Who to contact',
 			body: [
-				'LapKart is the customer-facing seller and storefront responsible for the customer data processed through this website and Android app.',
+				'LapKart is the seller and storefront responsible for the customer data processed through this website and Android app.',
 				'For privacy questions, correction, deletion, consent withdrawal, or grievance requests, contact support@lapkart.store or use the Support & complaints page while signed in.'
 			]
 		},

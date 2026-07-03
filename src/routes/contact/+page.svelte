@@ -12,7 +12,7 @@
 		},
 		{
 			title: 'Business information',
-			body: 'LapKart operates as the customer-facing seller for laptop components and replacement hardware. For legal, receipt, data protection, grievance, or statutory communication, email support@lapkart.store or raise a request through Support & complaints.'
+			body: 'LapKart operates as the seller for laptop components and replacement hardware. For legal, receipt, data protection, grievance, or statutory communication, email support@lapkart.store or raise a request through Support & complaints.'
 		},
 		{
 			title: 'Privacy and grievances',

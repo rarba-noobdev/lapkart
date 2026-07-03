@@ -4,7 +4,7 @@
 	const sections = [
 		{
 			title: 'What we sell',
-			body: 'LapKart sells laptop components including RAM, SSDs, batteries, displays, chargers, keyboards, hinges, cases, cooling parts, and related replacement hardware as the customer-facing reseller.'
+			body: 'LapKart sells laptop components including RAM, SSDs, batteries, displays, chargers, keyboards, hinges, cases, cooling parts, and related replacement hardware.'
 		},
 		{
 			title: 'How orders are fulfilled',

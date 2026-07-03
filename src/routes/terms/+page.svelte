@@ -12,7 +12,7 @@
 		{
 			title: 'LapKart as seller',
 			body: [
-				'LapKart is the customer-facing seller, merchant, and reseller for orders placed through this website and Android app. Customer order confirmation, payment collection, shipping support, cancellation, return, replacement, and refund communication are handled by LapKart.',
+				'LapKart is the seller, merchant, and reseller for orders placed through this website and Android app. Customer order confirmation, payment collection, shipping support, cancellation, return, replacement, and refund communication are handled by LapKart.',
 				'Procurement partners may supply or bill goods to LapKart for internal purchasing, but customers buy from LapKart and should contact only LapKart for order, payment, receipt, delivery, and support questions.'
 			]
 		},

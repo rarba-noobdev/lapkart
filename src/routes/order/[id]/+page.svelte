@@ -146,9 +146,9 @@
 			? [
 					{ label: 'Service', value: formatStatusLabel(order.shippingServiceType) },
 					{ label: 'Courier', value: courierLabel || 'Local courier' },
-					{ label: 'AWB', value: awbLabel },
+					{ label: 'Tracking ID', value: awbLabel },
 					{
-						label: 'ETA',
+						label: 'Expected',
 						value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After pickup'
 					}
 				]
@@ -512,7 +512,7 @@
 							{trackingRefreshing ? 'Refreshing…' : trackAction.label}
 						</button>
 						{#if order.shipment?.awbCode}
-							<span class="awb-chip">AWB {order.shipment.awbCode}</span>
+							<span class="awb-chip">Tracking {order.shipment.awbCode}</span>
 						{/if}
 					</div>
 
