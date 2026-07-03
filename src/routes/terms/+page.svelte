@@ -12,7 +12,7 @@
 		{
 			title: 'LapKart as seller',
 			body: [
-				'LapKart is the customer-facing seller, merchant, and reseller for orders placed through this website and Android app. Customer order confirmation, payment collection, dispatch support, cancellation, return, replacement, and refund communication are handled by LapKart.',
+				'LapKart is the customer-facing seller, merchant, and reseller for orders placed through this website and Android app. Customer order confirmation, payment collection, shipping support, cancellation, return, replacement, and refund communication are handled by LapKart.',
 				'Procurement partners may supply or bill goods to LapKart for internal purchasing, but customers buy from LapKart and should contact only LapKart for order, payment, receipt, delivery, and support questions.'
 			]
 		},
@@ -20,7 +20,7 @@
 			title: 'Product information',
 			body: [
 				'We aim to keep prices, stock, specifications, images, condition notes, compatibility details, delivery charges, and availability accurate. Laptop replacement parts can vary by model, panel number, connector, bracket, voltage, and condition, so customers should verify compatibility before ordering.',
-				'If a catalog, price, stock, compatibility, or payment issue is found before dispatch, support may contact you for correction, replacement choice, or cancellation.'
+				'If a catalog, price, stock, compatibility, or payment issue is found before packing, support may contact you for correction, replacement choice, or cancellation.'
 			]
 		},
 		{

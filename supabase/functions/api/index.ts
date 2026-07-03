@@ -889,7 +889,7 @@ function buildDeliveryPromiseSnapshot(summary: CheckoutSummary, products: Checko
 			freeDeliveryRemaining: summary.pricing.freeDeliveryRemaining
 		},
 		cod: summary.cod,
-		customerMessage: `Tamil Nadu courier from LapKart dispatch, expected ${selectedCourier.etd || 'after dispatch'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before dispatch.`,
+		customerMessage: `Tamil Nadu courier from LapKart, expected ${selectedCourier.etd || 'after pickup'}. Orders paid before 5 PM enter the next-day pickup promise. LapKart records photo and video proof before packing.`,
 		limitations: [
 			'Delivery is currently limited to Tamil Nadu.',
 			'Live map tracking is not provided for courier delivery.',
@@ -1057,21 +1057,29 @@ function hasStaffPermission(role: StaffRole, permission: StaffPermission) {
 	return staffPermissions[role]?.has(permission) ?? false;
 }
 
-async function requireStaff(req: Request, permission: StaffPermission = 'read_admin') {
-	const adminDb = getSupabaseAdmin();
-	const user = await requireUser(req);
+async function getStaffRoleForUser(
+	adminDb: ReturnType<typeof getSupabaseAdmin>,
+	userId: string
+) {
 	const { data: roleRow, error: roleError } = await adminDb
 		.from('user_roles')
 		.select('role')
-		.eq('user_id', user.id)
+		.eq('user_id', userId)
 		.maybeSingle();
 	if (roleError) throw roleError;
 	const role = normalizeRole(roleRow?.role);
-	if (!staffRoleValues.has(role as StaffRole)) throw new HttpError(403, 'Staff role is required');
-	if (!hasStaffPermission(role as StaffRole, permission)) {
+	return staffRoleValues.has(role as StaffRole) ? (role as StaffRole) : null;
+}
+
+async function requireStaff(req: Request, permission: StaffPermission = 'read_admin') {
+	const adminDb = getSupabaseAdmin();
+	const user = await requireUser(req);
+	const role = await getStaffRoleForUser(adminDb, user.id);
+	if (!role) throw new HttpError(403, 'Staff role is required');
+	if (!hasStaffPermission(role, permission)) {
 		throw new HttpError(403, `${permission.replaceAll('_', ' ')} permission is required`);
 	}
-	return { ...user, role: role as StaffRole } satisfies AuthenticatedStaff;
+	return { ...user, role } satisfies AuthenticatedStaff;
 }
 
 async function requireAdmin(req: Request) {
@@ -1205,7 +1213,7 @@ async function logMonitoringEvent(input: {
 }
 
 function manualPickupLocationName() {
-	return config.manualPickupLocation || 'LapKart dispatch';
+	return config.manualPickupLocation || 'LapKart pickup';
 }
 
 function positivePackageNumber(value: unknown, fallback: number) {
@@ -1501,7 +1509,7 @@ async function assignManualAwb(
 		shipmentId: String(shipment.id),
 		awbCode,
 		status: quickDelivery ? 'pickup_scheduled' : 'awb_assigned',
-		message: quickDelivery ? 'AWB assigned and local dispatch scheduled' : 'AWB assigned',
+		message: quickDelivery ? 'AWB assigned and pickup scheduled' : 'AWB assigned',
 		payload: response
 	});
 	if (shipment.order_id) {
@@ -3665,7 +3673,9 @@ async function handle(req: Request) {
 		if (orderError) throw orderError;
 		if (itemsError) throw itemsError;
 		if (invoiceResult.error) throw invoiceResult.error;
-		if (!order || String(order.user_id) !== user.id) {
+		const staffRole = await getStaffRoleForUser(adminDb, user.id);
+		const canReadAnyOrder = staffRole ? hasStaffPermission(staffRole, 'read_admin') : false;
+		if (!order || (!canReadAnyOrder && String(order.user_id) !== user.id)) {
 			throw new HttpError(404, 'Receipt not found');
 		}
 		const invoiceNumber =
@@ -3679,7 +3689,7 @@ async function handle(req: Request) {
 		});
 		return text(req, 200, html, {
 			'Content-Type': 'text/html; charset=utf-8',
-			'Content-Disposition': `inline; filename="${invoiceNumber}.html"`
+			'Content-Disposition': `inline; filename="${invoiceNumber}-receipt.html"`
 		});
 	}
 
@@ -4686,7 +4696,10 @@ async function handle(req: Request) {
 			profitability
 		] = await Promise.all([
 			adminDb.from('orders').select('id,total,status,payment_status,created_at,shipping_name'),
-			adminDb.from('products').select('id,stock', { count: 'exact', head: false }).limit(100),
+			adminDb
+				.from('products')
+				.select('id,stock,category,status', { count: 'exact', head: false })
+				.limit(1000),
 			adminDb.from('profiles').select('id', { count: 'exact', head: false }).limit(100),
 			adminDb
 				.from('order_cancellation_requests')
@@ -4808,6 +4821,116 @@ async function handle(req: Request) {
 			},
 			{}
 		);
+		const labelize = (value: unknown) =>
+			String(value ?? 'unknown')
+				.replaceAll('_', ' ')
+				.replaceAll('-', ' ')
+				.trim()
+				.split(/\s+/)
+				.filter(Boolean)
+				.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+				.join(' ') || 'Unknown';
+		const normalizeBucket = (value: unknown, fallback: string) =>
+			String(value ?? fallback).trim().toLowerCase() || fallback;
+		const orderStatusTotals = orderRows.reduce<Record<string, { count: number; revenue: number }>>(
+			(totals, order) => {
+				const status = normalizeBucket(order.status, 'pending');
+				const current = totals[status] ?? { count: 0, revenue: 0 };
+				current.count += 1;
+				current.revenue += Number(order.total ?? 0);
+				totals[status] = current;
+				return totals;
+			},
+			{}
+		);
+		const paymentTotals = orderRows.reduce<Record<string, { count: number; revenue: number }>>(
+			(totals, order) => {
+				const status = normalizeBucket(order.payment_status, 'pending');
+				const current = totals[status] ?? { count: 0, revenue: 0 };
+				current.count += 1;
+				current.revenue += Number(order.total ?? 0);
+				totals[status] = current;
+				return totals;
+			},
+			{}
+		);
+		const productCategoryTotals = (products.data ?? []).reduce<
+			Record<string, { products: number; lowStock: number; stock: number }>
+		>((totals, product) => {
+			const category = normalizeBucket(product.category, 'uncategorized');
+			const current = totals[category] ?? { products: 0, lowStock: 0, stock: 0 };
+			const stock = Number(product.stock ?? 0);
+			current.products += 1;
+			current.stock += Number.isFinite(stock) ? stock : 0;
+			if (Number.isFinite(stock) && stock <= 5) current.lowStock += 1;
+			totals[category] = current;
+			return totals;
+		}, {});
+		const orderStatuses = orderRows.map((order) => normalizeBucket(order.status, 'pending'));
+		const countStatuses = (statuses: string[]) => {
+			const allowed = new Set(statuses);
+			return orderStatuses.filter((status) => allowed.has(status)).length;
+		};
+		const statusBreakdown = Object.entries(orderStatusTotals)
+			.map(([status, item]) => ({
+				status,
+				label: labelize(status),
+				count: item.count,
+				revenue: roundMoney(item.revenue)
+			}))
+			.sort((left, right) => right.count - left.count)
+			.slice(0, 8);
+		const paymentBreakdown = Object.entries(paymentTotals)
+			.map(([status, item]) => ({
+				status,
+				label: labelize(status),
+				count: item.count,
+				revenue: roundMoney(item.revenue)
+			}))
+			.sort((left, right) => right.count - left.count)
+			.slice(0, 8);
+		const categoryBreakdown = Object.entries(productCategoryTotals)
+			.map(([category, item]) => ({
+				category,
+				label: labelize(category),
+				products: item.products,
+				lowStock: item.lowStock,
+				stock: item.stock
+			}))
+			.sort((left, right) => right.products - left.products)
+			.slice(0, 8);
+		const fulfillmentFunnel = [
+			{
+				id: 'order_placed',
+				label: 'Order placed',
+				count: countStatuses(['pending', 'processing']),
+				hint: 'Needs confirmation'
+			},
+			{
+				id: 'to_be_shipped',
+				label: 'To be shipped',
+				count: countStatuses(['confirmed', 'packed', 'ready_for_delivery']),
+				hint: 'Pack and hand over'
+			},
+			{
+				id: 'in_transit',
+				label: 'In transit',
+				count: countStatuses(['shipped', 'out_for_delivery']),
+				hint: 'With courier'
+			},
+			{
+				id: 'delivered',
+				label: 'Delivered',
+				count: deliveredOrders,
+				hint: 'Completed'
+			},
+			{
+				id: 'returns',
+				label: 'Returns',
+				count: countStatuses(['return_requested', 'returned', 'rto']),
+				hint: 'Review or close'
+			}
+		];
 		return json(req, 200, {
 			orders: orderRows.length,
 			products: products.count ?? 0,
@@ -4822,6 +4945,10 @@ async function handle(req: Request) {
 			estimatedNetMargin,
 			productCost,
 			highRiskOrders,
+			statusBreakdown,
+			paymentBreakdown,
+			categoryBreakdown,
+			fulfillmentFunnel,
 			periodReports: [
 				buildPeriodReport('daily', 'Today', periodStart(0)),
 				buildPeriodReport('weekly', 'Last 7 days', periodStart(6)),

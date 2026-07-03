@@ -101,7 +101,7 @@ export const landings: Landing[] = [
 					'Replacement HP laptop batteries for Pavilion, ProBook, EliteBook, Omen and 15s series. Match by HP part number and voltage. Warranty, COD and Tamil Nadu delivery.',
 				intro: [
 					'HP uses several different battery part numbers across Pavilion, ProBook, EliteBook, Omen and the 15s range, so two HP laptops that look similar can need completely different batteries. Always match the HP part number (for example HT03XL, KI04, or HSTNN-series codes) and the voltage printed on your old battery.',
-					'These HP batteries are listed with capacity and voltage so you can confirm the fit before buying. If you are unsure, send us the HP part number or the laptop model from the bottom sticker and we will confirm compatibility before dispatch.'
+					'These HP batteries are listed with capacity and voltage so you can confirm the fit before buying. If you are unsure, send us the HP part number or the laptop model from the bottom sticker and we will confirm compatibility before packing.'
 				],
 				faqs: [
 					{
@@ -151,7 +151,7 @@ export const landings: Landing[] = [
 					'Replacement Lenovo laptop batteries for IdeaPad, ThinkPad and Yoga series. Match by Lenovo part number and voltage. Warranty, COD and Tamil Nadu delivery.',
 				intro: [
 					'Lenovo spreads battery part numbers across IdeaPad, ThinkPad and Yoga families, and ThinkPad models in particular use many different codes. Match the Lenovo part number (for example L17L3PB0 or similar) and the voltage from your old battery.',
-					'Listings show voltage and capacity so you can confirm the fit. Send the Lenovo part number or model if you want us to verify before dispatch.'
+					'Listings show voltage and capacity so you can confirm the fit. Send the Lenovo part number or model if you want us to verify before packing.'
 				],
 				faqs: [
 					{
@@ -176,7 +176,7 @@ export const landings: Landing[] = [
 					'Replacement Asus laptop batteries for VivoBook, ZenBook, TUF and ROG. Match by Asus part number and voltage. Warranty, COD and Tamil Nadu delivery.',
 				intro: [
 					'Asus uses different battery codes across VivoBook, ZenBook, TUF and ROG (codes like B31N1535 or C31N1620). A VivoBook battery will not fit a TUF gaming model just because both are Asus, so match the Asus part number and voltage from your old battery.',
-					'Each Asus battery lists voltage and capacity. Many slim VivoBook and ZenBook models use internal batteries that need the base removed; send the Asus part number or model for a fit check before dispatch.'
+					'Each Asus battery lists voltage and capacity. Many slim VivoBook and ZenBook models use internal batteries that need the base removed; send the Asus part number or model for a fit check before packing.'
 				],
 				faqs: [
 					{
@@ -226,7 +226,7 @@ export const landings: Landing[] = [
 					'Replacement Toshiba laptop batteries for Satellite, Tecra and Portege. Match by Toshiba PA-series part number and voltage. Warranty, COD, Tamil Nadu delivery.',
 				intro: [
 					'Toshiba batteries use PA-series codes (for example PA5024U or PA5109U) across Satellite, Tecra and Portege models. Match the Toshiba part number and voltage from the old battery rather than the series name.',
-					'Each Toshiba battery lists voltage and capacity. Send the PA code or laptop model for a compatibility check before dispatch.'
+					'Each Toshiba battery lists voltage and capacity. Send the PA code or laptop model for a compatibility check before packing.'
 				],
 				faqs: [
 					{
@@ -266,7 +266,7 @@ export const landings: Landing[] = [
 					'Replacement MSI laptop batteries for GF, GL and Modern gaming/creator series. Match by MSI BTY-series part number and voltage. Warranty, COD, delivery.',
 				intro: [
 					'MSI gaming and creator laptops use BTY-series battery codes (for example BTY-M6K) that vary by model. Match the MSI part number and voltage from the old battery; gaming batteries are higher-capacity.',
-					'Listings show voltage and capacity. Share the BTY code or model for a fit check before dispatch.'
+					'Listings show voltage and capacity. Share the BTY code or model for a fit check before packing.'
 				],
 				faqs: [
 					{
@@ -579,7 +579,7 @@ export const landings: Landing[] = [
 					'Replacement HP laptop keyboards: backlit and non-backlit, with or without frame and power button, for Pavilion, ProBook and 15s. Warranty, COD, Tamil Nadu delivery.',
 				intro: [
 					'HP keyboards differ by backlight, by whether the top frame is included, and by whether the power button is built in. A Pavilion 15 keyboard and a 15s keyboard can look alike yet use different connectors, so match the HP model and the features of your current keyboard.',
-					'These HP keyboards show layout and backlight. Send your HP model number if you want the variant confirmed before dispatch.'
+					'These HP keyboards show layout and backlight. Send your HP model number if you want the variant confirmed before packing.'
 				],
 				faqs: [
 					{
@@ -629,7 +629,7 @@ export const landings: Landing[] = [
 					'Replacement Asus laptop keyboards for VivoBook, ZenBook, TUF and ROG: backlit and non-backlit, with or without frame. Match the Asus model and connector. Warranty, COD.',
 				intro: [
 					'Asus keyboards vary a lot by backlight: many VivoBook models are backlit, gaming TUF/ROG keyboards use RGB or single-colour backlighting with different connectors, and some budget VivoBooks are non-backlit. Confirm whether your current keyboard lights up and whether the frame is included.',
-					'These Asus keyboards mark layout and backlight. Send your Asus model (for example VivoBook 15 X512) to confirm the backlit variant before dispatch.'
+					'These Asus keyboards mark layout and backlight. Send your Asus model (for example VivoBook 15 X512) to confirm the backlit variant before packing.'
 				],
 				faqs: [
 					{
@@ -699,7 +699,7 @@ export const landings: Landing[] = [
 					'Replacement Toshiba laptop keyboards for Satellite and Tecra: backlit and non-backlit variants. Match the Toshiba model and connector. Warranty, COD, delivery.',
 				intro: [
 					'Toshiba Satellite and Tecra keyboards vary by backlight and connector. Confirm whether your current keyboard lights up and match the Toshiba model and ribbon connector before ordering.',
-					'Listings mark layout and backlight. Share your Toshiba model for a variant check before dispatch.'
+					'Listings mark layout and backlight. Share your Toshiba model for a variant check before packing.'
 				],
 				faqs: [
 					{
@@ -777,7 +777,7 @@ export const landings: Landing[] = [
 					'Replacement HP laptop screens for Pavilion, 15s and Omen: HD and FHD panels in 30-pin and 40-pin. Match by panel part number, size and connector. Warranty, COD.',
 				intro: [
 					'HP laptops ship with several panel variants even within one model line, so an HP 15s can use different HD or FHD panels with 30-pin or 40-pin connectors. Match the panel part number on the back of the old screen, plus size, resolution and connector position.',
-					'These HP displays list size, resolution and pin count. Send your HP model and panel code for a fit check before dispatch.'
+					'These HP displays list size, resolution and pin count. Send your HP model and panel code for a fit check before packing.'
 				],
 				faqs: [
 					{
@@ -817,7 +817,7 @@ export const landings: Landing[] = [
 					'Replacement Lenovo laptop screens for IdeaPad and ThinkPad: HD and FHD panels, 30-pin and 40-pin. Match by panel part number and connector. Warranty, COD, delivery.',
 				intro: [
 					'Lenovo IdeaPad and ThinkPad models use several panel variants, and vertical lines on Lenovo screens are a common replacement trigger. Match the Lenovo panel part number, size, resolution and connector position from the old screen.',
-					'Listings show size, resolution and pin count. Send your Lenovo model and panel code for a fit check before dispatch.'
+					'Listings show size, resolution and pin count. Send your Lenovo model and panel code for a fit check before packing.'
 				],
 				faqs: [
 					{
@@ -877,7 +877,7 @@ export const landings: Landing[] = [
 					'Replacement Samsung laptop screens for NP-series notebooks: HD and FHD panels in 30-pin and 40-pin. Match by panel part number and connector. Warranty, COD.',
 				intro: [
 					'Samsung notebook panels (and the panels Samsung manufactures for other brands) come in HD and FHD with different connectors. Match the panel part number, size, resolution and pin count from the back of the old screen.',
-					'Listings show the panel specs. Send your Samsung model or panel code for a fit check before dispatch.'
+					'Listings show the panel specs. Send your Samsung model or panel code for a fit check before packing.'
 				],
 				faqs: [
 					{
@@ -1011,7 +1011,7 @@ export const landings: Landing[] = [
 		intro: [
 			'A RAM and SSD upgrade is the cheapest way to make an old laptop feel new: more RAM stops slowdowns when many tabs or apps are open, and an SSD makes the laptop boot and load far faster than a hard disk. Both must match your laptop, so check the slot type before buying.',
 			'For RAM, match the generation and form factor — most laptops use DDR4 SODIMM, and the speed should match or exceed the existing module. For storage, check whether your laptop takes a 2.5" SATA SSD, an M.2 SATA, or an M.2 NVMe drive; the M.2 types look similar but are not always interchangeable.',
-			'Browse available SSDs below. If you are unsure which RAM or SSD your laptop supports, send us the laptop model and we will confirm the correct type before dispatch.'
+			'Browse available SSDs below. If you are unsure which RAM or SSD your laptop supports, send us the laptop model and we will confirm the correct type before packing.'
 		],
 		faqs: [
 			{

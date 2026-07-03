@@ -123,7 +123,7 @@
 			id: 'upgrade',
 			kicker: 'Upgrade week',
 			title: 'SSD and RAM combos',
-			body: 'Faster boot, cleaner multitasking, and verified match before dispatch.',
+			body: 'Faster boot, cleaner multitasking, and verified match before packing.',
 			href: '/products?category=ssd',
 			icon: Zap
 		},
@@ -147,8 +147,8 @@
 
 	const serviceNotes = [
 		{
-			id: 'dispatch',
-			title: 'Same-day dispatch',
+			id: 'shipping',
+			title: 'Same-day packing',
 			body: 'In-stock orders are packed quickly from local inventory.',
 			icon: Timer
 		},
@@ -456,7 +456,7 @@
 	<section class="service-band">
 		<div class="service-band-copy">
 			<p class="home-kicker">How LapKart keeps orders clean</p>
-			<h2>Fitment, stock, dispatch, and support are visible before checkout.</h2>
+			<h2>Fitment, stock, shipping, and support are visible before checkout.</h2>
 		</div>
 		<div class="service-grid">
 			{#each serviceNotes as note (note.id)}

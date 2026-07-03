@@ -20,7 +20,7 @@
 		{
 			title: 'How data is used',
 			body: [
-				'Data is used to create and secure accounts, keep the cart available on the device, verify payments, generate order receipts and records, estimate delivery charges, manage manual courier dispatch, track order state, process cancellations, returns and refunds, prevent fraud or abuse, respond to support requests, and meet legal or accounting obligations.',
+				'Data is used to create and secure accounts, keep the cart available on the device, verify payments, generate order receipts and records, estimate delivery charges, manage courier shipping, track order state, process cancellations, returns and refunds, prevent fraud or abuse, respond to support requests, and meet legal or accounting obligations.',
 				'Marketing messages are sent only where a valid consent or lawful basis exists. Consent choices can be changed from the available account, support, or consent controls.'
 			]
 		},

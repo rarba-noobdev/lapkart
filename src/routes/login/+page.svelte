@@ -72,7 +72,7 @@
 				<span class="text-[var(--heat-100)]">shipped fast.</span>
 			</h2>
 			<p class="mt-3 text-[14px] leading-relaxed text-white/60 xl:text-[15px]">
-				RAM, SSDs, batteries, displays — with part-number help and same-day dispatch from verified inventory.
+				RAM, SSDs, batteries, displays — with part-number help and same-day packing from verified inventory.
 			</p>
 
 			<div class="mt-8 space-y-4">
@@ -90,7 +90,7 @@
 						<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
 					</div>
 					<div>
-						<p class="text-[13px] font-medium text-white">Same-day dispatch</p>
+						<p class="text-[13px] font-medium text-white">Same-day packing</p>
 						<p class="text-[11px] text-white/55">In-stock items ship from local inventory</p>
 					</div>
 				</div>

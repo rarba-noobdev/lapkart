@@ -283,14 +283,14 @@
 		product.highlights.length > 0
 			? product.highlights
 			: [
-					'We can confirm fit before dispatch.',
+					'We can confirm fit before packing.',
 					'Live stock shown before checkout.',
 					'Return and warranty support after checkout.'
 				]
 	);
 	const visibleHighlights = $derived(highlights.filter((highlight) => !isLabeledSpec(highlight)));
 	const compatibility = $derived(
-		product.compatibility || 'We can confirm fit before dispatch.'
+		product.compatibility || 'We can confirm fit before packing.'
 	);
 	const warranty = $derived(product.warranty || 'Standard support applies.');
 	const packageSize = $derived(formatPackageSize(product));
@@ -821,7 +821,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
 						<PackageCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Tested before dispatch
+						Checked before packing
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
@@ -845,7 +845,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)] sm:col-span-1"
 					>
 						<Truck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Local dispatch
+						Courier shipping
 					</span>
 					{#if product.cod_eligible}
 						<span

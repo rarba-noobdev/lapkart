@@ -36,6 +36,31 @@ export type AdminAnalytics = {
 	estimatedNetMargin: number;
 	productCost: number;
 	highRiskOrders: number;
+	statusBreakdown: Array<{
+		status: string;
+		label: string;
+		count: number;
+		revenue: number;
+	}>;
+	paymentBreakdown: Array<{
+		status: string;
+		label: string;
+		count: number;
+		revenue: number;
+	}>;
+	categoryBreakdown: Array<{
+		category: string;
+		label: string;
+		products: number;
+		lowStock: number;
+		stock: number;
+	}>;
+	fulfillmentFunnel: Array<{
+		id: string;
+		label: string;
+		count: number;
+		hint: string;
+	}>;
 	periodReports: Array<{
 		id: 'daily' | 'weekly' | 'monthly';
 		label: string;

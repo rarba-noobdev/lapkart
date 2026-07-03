@@ -4,7 +4,7 @@
 	import { MANUAL_DISPATCH_CUTOFF_HOUR_IST } from '$lib/shipping';
 
 	/*
-	 * Honest dispatch countdown. Shows the real time remaining until today's
+	 * Honest shipping cutoff. Shows the real time remaining until today's
 	 * same-day-ship cutoff (app_settings.manual_cutoff_hour_ist, mirrored in
 	 * shipping.ts). After the cutoff it switches to "Ships tomorrow". No
 	 * fabricated timer — the number is derived from the actual cutoff and the
@@ -45,7 +45,7 @@
 >
 	<Clock class="size-3.5 shrink-0" strokeWidth={2.2} />
 	{#if now === null}
-		<span>Dispatch cutoff {cutoffHour}:00 IST</span>
+		<span>Shipping cutoff {cutoffHour}:00 IST</span>
 	{:else if remaining}
 		<span>
 			Order in

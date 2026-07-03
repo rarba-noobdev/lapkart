@@ -8,7 +8,7 @@
 		},
 		{
 			title: 'How orders are fulfilled',
-			body: 'Customers buy from LapKart. Parts may be sourced through internal procurement partners, then packed by LapKart operations and fulfilled through manual courier dispatch with status updates shown in your account.'
+			body: 'Customers buy from LapKart. Parts may be sourced through internal procurement partners, then packed by LapKart operations and shipped through courier partners with status updates shown in your account.'
 		},
 		{
 			title: 'Support promise',

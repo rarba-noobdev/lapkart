@@ -2,9 +2,11 @@
 	import { onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import { ChevronRight, Filter, Package, RotateCcw, Search, X } from '@lucide/svelte';
+	import { ChevronRight, Download, FileText, Filter, Package, RotateCcw, Search, X } from '@lucide/svelte';
+	import { apiBase } from '$lib/api-base';
 	import { formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
+	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 	import {
 		adminReasonRequired,
 		canAdminCancelOrder,
@@ -94,6 +96,8 @@
 	let saving = $state(false);
 	let refundSaving = $state(false);
 	let workflowAction = $state<string | null>(null);
+	let receiptLoadingId = $state<string | null>(null);
+	let receiptNotice = $state<string | null>(null);
 	let search = $state('');
 	let statusFilter = $state<OrderStatusFilter>('all');
 	let appliedInitialFilter: string | null = null;
@@ -496,11 +500,13 @@
 		editor = mapOrderToEditor(order);
 		refundEditor = mapOrderToRefundEditor(order);
 		confirmingManualState = false;
+		receiptNotice = null;
 		error = null;
 	}
 
 	function closeDetail() {
 		selectedId = null;
+		receiptNotice = null;
 	}
 
 	// Lock body scroll + close the detail drawer on Escape while it is open.
@@ -524,6 +530,37 @@
 	function openExternal(url: string | null | undefined) {
 		if (!url) return;
 		window.open(url, '_blank', 'noopener,noreferrer');
+	}
+
+	async function openReceipt(order: AdminOrderRecord) {
+		try {
+			receiptLoadingId = order.id;
+			receiptNotice = null;
+			const response = await fetch(`${apiBase}/orders/${order.id}/invoice`, {
+				headers: await getAuthorizationHeaders()
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => null)) as { error?: string } | null;
+				throw new Error(body?.error ?? 'Could not open receipt');
+			}
+			const blob = await response.blob();
+			const url = URL.createObjectURL(blob);
+			const opened = window.open(url, '_blank', 'noopener,noreferrer');
+			if (!opened) {
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = `lapkart-${order.id.slice(0, 8).toUpperCase()}-receipt.html`;
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+			}
+			window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+			receiptNotice = 'Receipt opened.';
+		} catch (receiptError) {
+			error = receiptError instanceof Error ? receiptError.message : 'Could not open receipt';
+		} finally {
+			receiptLoadingId = null;
+		}
 	}
 
 	onMount(() => {
@@ -912,6 +949,47 @@
 					</div>
 				{/if}
 
+				<section
+					class="rounded-lg border border-[var(--border-muted)] bg-white p-4 shadow-sm"
+					in:fly={{ y: 8, duration: 200 }}
+				>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<div class="flex min-w-0 items-center gap-3">
+							<div
+								class="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--heat-8)] text-[var(--heat-100)]"
+							>
+								<FileText class="size-4" strokeWidth={2} />
+							</div>
+							<div class="min-w-0">
+								<h4 class="text-[13px] font-medium text-foreground">Receipt</h4>
+								<p class="mt-0.5 text-[11px] text-[var(--black-alpha-48)]">
+									{selectedOrder.invoice?.invoice_number ||
+										`LK-${selectedOrder.id.slice(0, 8).toUpperCase()}`}
+									{#if selectedOrder.invoice?.generated_at}
+										<span>
+											· {new Date(selectedOrder.invoice.generated_at).toLocaleString('en-IN')}
+										</span>
+									{/if}
+								</p>
+							</div>
+						</div>
+						<div class="flex flex-wrap items-center gap-2">
+							{#if receiptNotice && receiptLoadingId === null}
+								<span class="text-[11px] text-[var(--accent-forest)]">{receiptNotice}</span>
+							{/if}
+							<button
+								type="button"
+								class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-[var(--heat-100)] px-3 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-[var(--heat-100)]/90 disabled:opacity-50"
+								disabled={receiptLoadingId === selectedOrder.id}
+								onclick={() => void openReceipt(selectedOrder)}
+							>
+								<Download class="size-3.5" strokeWidth={2} />
+								{receiptLoadingId === selectedOrder.id ? 'Opening...' : 'Open receipt'}
+							</button>
+						</div>
+					</div>
+				</section>
+
 				<!-- Fulfilment progress timeline -->
 				{#if !timelineTerminal && timelineIndex >= 0}
 					<div
@@ -1236,24 +1314,22 @@
 									</div>
 									<div class="mt-2 flex flex-wrap gap-1.5">
 										{#each selectedOrder.returnRequest.photos ?? [] as photoUrl, index (photoUrl)}
-											<a
-												href={photoUrl}
-												target="_blank"
-												rel="noreferrer"
+											<button
+												type="button"
 												class="rounded-md border border-[var(--border-muted)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--black-alpha-64)] hover:text-[var(--heat-100)]"
+												onclick={() => openExternal(photoUrl)}
 											>
 												Photo {index + 1}
-											</a>
+											</button>
 										{/each}
 										{#each selectedOrder.returnRequest.videos ?? [] as videoUrl, index (videoUrl)}
-											<a
-												href={videoUrl}
-												target="_blank"
-												rel="noreferrer"
+											<button
+												type="button"
 												class="rounded-md border border-[var(--border-muted)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--black-alpha-64)] hover:text-[var(--heat-100)]"
+												onclick={() => openExternal(videoUrl)}
 											>
 												Video {index + 1}
-											</a>
+											</button>
 										{/each}
 									</div>
 								</div>
@@ -1534,20 +1610,20 @@
 									</p>
 								</div>
 								<div>
-									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Invoice</span>
-									<div class="flex items-center gap-1.5">
+									<span class="text-[11px] font-medium text-[var(--black-alpha-48)]">Receipt</span>
+									<div class="flex flex-wrap items-center gap-1.5">
 										<p class="text-[12px] text-foreground">
-											{selectedOrder.invoice?.invoice_number || 'Not generated'}
+											{selectedOrder.invoice?.invoice_number ||
+												`LK-${selectedOrder.id.slice(0, 8).toUpperCase()}`}
 										</p>
-										{#if selectedOrder.invoice?.invoice_url}
-											<button
-												type="button"
-												class="text-[11px] text-[var(--heat-100)] hover:text-[var(--heat-120)] hover:underline"
-												onclick={() => openExternal(selectedOrder.invoice?.invoice_url)}
-											>
-												Open
-											</button>
-										{/if}
+										<button
+											type="button"
+											class="text-[11px] text-[var(--heat-100)] hover:text-[var(--heat-120)] hover:underline"
+											disabled={receiptLoadingId === selectedOrder.id}
+											onclick={() => void openReceipt(selectedOrder)}
+										>
+											{receiptLoadingId === selectedOrder.id ? 'Opening...' : 'Open'}
+										</button>
 									</div>
 								</div>
 								<div>

@@ -275,7 +275,7 @@
 			</div>
 			<div>
 				<h2 class="fq-title">Fulfillment desk</h2>
-				<p class="fq-subtitle">Manual dispatch queue</p>
+				<p class="fq-subtitle">Orders to ship</p>
 			</div>
 		</div>
 		<div class="fq-toolbar-stats">

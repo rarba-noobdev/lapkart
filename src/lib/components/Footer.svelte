@@ -119,7 +119,7 @@
 					{/if}
 				</p>
 				<p class="text-mono-x-small mt-6 tracking-[0.16em] text-white/50 uppercase">
-					{isAdmin ? 'Admin-only session' : 'Fast dispatch, secure checkout, verified sourcing'}
+					{isAdmin ? 'Admin-only session' : 'Fast shipping, secure checkout, verified sourcing'}
 				</p>
 			</div>
 
@@ -154,7 +154,7 @@
 				2026 LapKart. {isAdmin ? 'Operations console.' : 'Laptop parts store.'}
 			</p>
 			<div class="text-mono-x-small tracking-wider text-white/50 uppercase">
-				Chennai service desk | Monday to Saturday
+				Support desk | Monday to Saturday
 			</div>
 		</div>
 	</div>

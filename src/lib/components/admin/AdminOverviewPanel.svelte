@@ -57,6 +57,24 @@
 		revenue: TrendingUp,
 		margin: Activity
 	};
+
+	const maxOrderStatusCount = $derived(
+		Math.max(...(analytics?.statusBreakdown ?? []).map((item) => item.count), 1)
+	);
+	const maxPaymentCount = $derived(
+		Math.max(...(analytics?.paymentBreakdown ?? []).map((item) => item.count), 1)
+	);
+	const maxCategoryProducts = $derived(
+		Math.max(...(analytics?.categoryBreakdown ?? []).map((item) => item.products), 1)
+	);
+	const maxFunnelCount = $derived(
+		Math.max(...(analytics?.fulfillmentFunnel ?? []).map((item) => item.count), 1)
+	);
+
+	function barWidth(value: number, max: number, min = 5) {
+		if (value <= 0) return 0;
+		return Math.max(min, Math.min(100, (value / max) * 100));
+	}
 </script>
 
 <div class="space-y-5">
@@ -177,6 +195,136 @@
 		</div>
 	{/if}
 
+	{#if analytics?.fulfillmentFunnel?.length || analytics?.statusBreakdown?.length}
+		<div class="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]" in:fly={{ y: 12, duration: 300, delay: 310 }}>
+			<div class="insight-card">
+				<div class="insight-head">
+					<div>
+						<p class="insight-eyebrow">Fulfillment funnel</p>
+						<h3 class="insight-title">Orders by next step</h3>
+					</div>
+					<Truck class="size-4 text-[var(--heat-100)]" strokeWidth={2} />
+				</div>
+				<div class="mt-4 grid gap-2 sm:grid-cols-5">
+					{#each analytics.fulfillmentFunnel ?? [] as step (step.id)}
+						<button
+							type="button"
+							class="funnel-step"
+							onclick={() =>
+								openOperations(
+									step.id === 'to_be_shipped' ? 'fulfillment' : 'orders',
+									step.id === 'returns' ? 'returns' : step.id === 'delivered' ? 'delivered' : null
+								)}
+						>
+							<span class="text-[20px] font-semibold text-foreground tabular-nums">
+								{step.count}
+							</span>
+							<span class="mt-1 text-[11px] font-medium text-foreground">{step.label}</span>
+							<span class="mt-0.5 text-[10px] leading-4 text-[var(--black-alpha-48)]">
+								{step.hint}
+							</span>
+							<span class="bar-track mt-3">
+								<span
+									class="bar-fill"
+									style="width: {barWidth(step.count, maxFunnelCount, 10)}%"
+								></span>
+							</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<div class="insight-card">
+				<div class="insight-head">
+					<div>
+						<p class="insight-eyebrow">Order status mix</p>
+						<h3 class="insight-title">Where orders sit now</h3>
+					</div>
+					<Activity class="size-4 text-[var(--black-alpha-48)]" strokeWidth={2} />
+				</div>
+				<div class="mt-4 space-y-3">
+					{#each analytics.statusBreakdown ?? [] as item (item.status)}
+						<div>
+							<div class="mb-1 flex items-center justify-between gap-3">
+								<span class="text-[12px] font-medium text-foreground">{item.label}</span>
+								<span class="text-[11px] text-[var(--black-alpha-48)]">
+									{item.count} / {formatINR(item.revenue)}
+								</span>
+							</div>
+							<span class="bar-track">
+								<span
+									class="bar-fill"
+									style="width: {barWidth(item.count, maxOrderStatusCount)}%"
+								></span>
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	{#if analytics?.paymentBreakdown?.length || analytics?.categoryBreakdown?.length}
+		<div class="grid gap-4 xl:grid-cols-2" in:fly={{ y: 12, duration: 300, delay: 330 }}>
+			<div class="insight-card">
+				<div class="insight-head">
+					<div>
+						<p class="insight-eyebrow">Payment mix</p>
+						<h3 class="insight-title">Payment states</h3>
+					</div>
+					<TrendingUp class="size-4 text-[var(--black-alpha-48)]" strokeWidth={2} />
+				</div>
+				<div class="mt-4 space-y-3">
+					{#each analytics.paymentBreakdown ?? [] as item (item.status)}
+						<div>
+							<div class="mb-1 flex items-center justify-between gap-3">
+								<span class="text-[12px] font-medium text-foreground">{item.label}</span>
+								<span class="text-[11px] text-[var(--black-alpha-48)]">
+									{item.count} / {formatINR(item.revenue)}
+								</span>
+							</div>
+							<span class="bar-track">
+								<span
+									class="bar-fill bar-fill-muted"
+									style="width: {barWidth(item.count, maxPaymentCount)}%"
+								></span>
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			<div class="insight-card">
+				<div class="insight-head">
+					<div>
+						<p class="insight-eyebrow">Catalog stock</p>
+						<h3 class="insight-title">Category risk</h3>
+					</div>
+					<Boxes class="size-4 text-[var(--black-alpha-48)]" strokeWidth={2} />
+				</div>
+				<div class="mt-4 space-y-3">
+					{#each analytics.categoryBreakdown ?? [] as item (item.category)}
+						<div>
+							<div class="mb-1 flex items-center justify-between gap-3">
+								<span class="text-[12px] font-medium text-foreground">{item.label}</span>
+								<span class="text-[11px] text-[var(--black-alpha-48)]">
+									{item.products} SKUs
+									{#if item.lowStock > 0} · {item.lowStock} low{/if}
+								</span>
+							</div>
+							<span class="bar-track">
+								<span
+									class="bar-fill {item.lowStock > 0 ? 'bar-fill-risk' : 'bar-fill-muted'}"
+									style="width: {barWidth(item.products, maxCategoryProducts)}%"
+								></span>
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
 		<div
 			class="rounded-lg border border-[var(--border-faint)] bg-white"
@@ -261,7 +409,7 @@
 							{analytics?.pendingFulfillment ?? 0}
 						</p>
 						<p class="mt-0.5 text-[11px] text-[var(--black-alpha-40)]">
-							Awaiting manual dispatch
+							Ready to ship
 						</p>
 					</div>
 					<Truck class="size-5 text-[var(--heat-100)]" strokeWidth={1.5} />
@@ -280,7 +428,7 @@
 					<p
 						class="text-[10px] font-medium tracking-[0.14em] text-[var(--black-alpha-40)] uppercase"
 					>
-						Monthly revenue
+						Monthly sales
 					</p>
 					<div class="mt-3 flex items-end gap-1" style="height: 80px">
 						{#each analytics.monthlySeries as month, idx (month.month)}
@@ -370,6 +518,81 @@
 
 	.kpi-card:hover .kpi-icon {
 		transform: scale(1.08);
+	}
+
+	.insight-card {
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: white;
+		padding: 16px;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+	}
+
+	.insight-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.insight-eyebrow {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--black-alpha-40);
+	}
+
+	.insight-title {
+		margin-top: 2px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.funnel-step {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		align-items: flex-start;
+		border-radius: 8px;
+		border: 1px solid var(--border-faint);
+		background: var(--background-lighter);
+		padding: 12px;
+		text-align: left;
+		transition:
+			border-color 160ms ease,
+			background 160ms ease;
+	}
+
+	.funnel-step:hover {
+		border-color: var(--heat-40);
+		background: var(--heat-4);
+	}
+
+	.bar-track {
+		display: block;
+		width: 100%;
+		height: 7px;
+		overflow: hidden;
+		border-radius: 999px;
+		background: var(--black-alpha-6);
+	}
+
+	.bar-fill {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		background: var(--heat-100);
+		transition: width 260ms ease;
+	}
+
+	.bar-fill-muted {
+		background: var(--black-alpha-40);
+	}
+
+	.bar-fill-risk {
+		background: var(--accent-honey);
 	}
 
 	.chart-bar {

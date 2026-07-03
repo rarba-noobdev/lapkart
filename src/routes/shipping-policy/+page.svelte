@@ -11,7 +11,7 @@
 			body: 'Shipping is max(INR 50, ceil(package weight in kg) x INR 40). Orders with subtotal of INR 2,000 or more get free delivery.'
 		},
 		{
-			title: 'Dispatch and delivery',
+			title: 'Shipping and delivery',
 			body: 'A local courier contact picks up from LapKart daily. Paid orders placed before 5 PM are targeted for next-day delivery across Tamil Nadu; later orders move to the next pickup cycle.'
 		},
 		{

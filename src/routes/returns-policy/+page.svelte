@@ -8,7 +8,7 @@
 		},
 		{
 			title: 'Return review',
-			body: 'Return requests are reviewed by an admin. Customers must provide clear photos and videos before the request is approved, so the item condition can be compared with LapKart dispatch proof.'
+			body: 'Return requests are reviewed by an admin. Customers must provide clear photos and videos before the request is approved, so the item condition can be compared with LapKart packing proof.'
 		},
 		{
 			title: 'Non-returnable cases',

@@ -1298,7 +1298,7 @@
 												{courier.rate === 0 ? 'Free' : formatINR(courier.rate)}
 											</p>
 											<p class="text-[10px] text-[var(--black-alpha-40)]">
-												{courier.expectedDeliveryDate ?? 'On dispatch'}
+												{courier.expectedDeliveryDate ?? 'After pickup'}
 											</p>
 										</div>
 									</div>

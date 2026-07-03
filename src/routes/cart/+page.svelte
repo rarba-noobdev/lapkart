@@ -364,7 +364,7 @@
 						</span>
 						<span class="text-[var(--border-muted)]">|</span>
 						<span class="inline-flex items-center gap-1.5 text-[11px] text-[var(--black-alpha-56)]">
-							<Truck class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Fast dispatch
+							<Truck class="size-3 text-[var(--heat-100)]" strokeWidth={2} /> Fast shipping
 						</span>
 					</div>
 				</aside>

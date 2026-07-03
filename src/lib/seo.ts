@@ -4,7 +4,7 @@ import { calculateManualDeliveryCharge, MANUAL_DELIVERY_REGION } from '$lib/ship
 export const SITE_NAME = 'LapKart';
 export const SITE_LOGO_PATH = '/brand/lapkart-logo.png';
 export const DEFAULT_DESCRIPTION =
-	'Shop laptop SSDs, RAM, batteries, displays, chargers, keyboards, processors, and replacement parts with part-number help and fast dispatch.';
+	'Shop laptop SSDs, RAM, batteries, displays, chargers, keyboards, processors, and replacement parts with part-number help and fast shipping.';
 const SEO_DESCRIPTION_MAX_LENGTH = 160;
 const PRODUCT_KEYWORD_LIMIT = 32;
 const PRODUCT_KEYWORD_MAX_LENGTH = 160;

@@ -14,6 +14,7 @@
 		Clock,
 		Copy,
 		CreditCard,
+		Download,
 		ExternalLink,
 		MapPin,
 		Package,
@@ -47,6 +48,9 @@
 	let trackingRefreshing = $state(false);
 	let trackingMessageTone = $state<'info' | 'error'>('info');
 	let copiedOrderId = $state(false);
+	let receiptLoading = $state(false);
+	let receiptMessage = $state<string | null>(null);
+	let receiptMessageTone = $state<'info' | 'error'>('info');
 
 	const shortOrderId = $derived(order ? order.id.slice(0, 8).toUpperCase() : '');
 	const orderStatusLabel = $derived(order ? formatStatusLabel(order.status) : '');
@@ -145,7 +149,7 @@
 					{ label: 'AWB', value: awbLabel },
 					{
 						label: 'ETA',
-						value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After dispatch'
+						value: expectedDeliveryDate ? formatDate(expectedDeliveryDate) : 'After pickup'
 					}
 				]
 			: []
@@ -203,7 +207,7 @@
 			{
 				key: 'out_for_delivery',
 				label: 'Out for delivery',
-				detail: stage >= 1 ? courierLabel || 'With courier' : 'Pending dispatch',
+				detail: stage >= 1 ? courierLabel || 'With courier' : 'Waiting for pickup',
 				state: stepStateFor(1)
 			},
 			{
@@ -270,6 +274,41 @@
 				refreshError instanceof Error ? refreshError.message : 'Could not refresh tracking';
 		} finally {
 			trackingRefreshing = false;
+		}
+	}
+
+	async function openReceipt() {
+		if (!order) return;
+		try {
+			receiptLoading = true;
+			receiptMessage = null;
+			receiptMessageTone = 'info';
+			const response = await fetch(`${apiBase}/orders/${order.id}/invoice`, {
+				headers: await getAuthorizationHeaders()
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => null)) as { error?: string } | null;
+				throw new Error(body?.error ?? 'Could not open receipt');
+			}
+			const blob = await response.blob();
+			const url = URL.createObjectURL(blob);
+			const opened = window.open(url, '_blank', 'noopener,noreferrer');
+			if (!opened) {
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = `lapkart-${order.id.slice(0, 8).toUpperCase()}-receipt.html`;
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+			}
+			window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+			receiptMessage = 'Receipt opened.';
+		} catch (receiptError) {
+			receiptMessageTone = 'error';
+			receiptMessage =
+				receiptError instanceof Error ? receiptError.message : 'Could not open receipt';
+		} finally {
+			receiptLoading = false;
 		}
 	}
 
@@ -602,6 +641,34 @@
 					</div>
 				</div>
 
+				<!-- Receipt -->
+				<div class="panel p-4">
+					<div class="mb-3 flex items-center gap-2.5">
+						<div class="icon-box"><ReceiptText class="size-3.5" strokeWidth={2} /></div>
+						<h2 class="text-label-small font-semibold text-foreground">Receipt</h2>
+					</div>
+					<p class="text-body-small text-[var(--black-alpha-64)]">
+						Open a receipt with order totals and line items.
+					</p>
+					<button
+						type="button"
+						class="receipt-btn mt-3"
+						disabled={receiptLoading}
+						onclick={() => void openReceipt()}
+					>
+						<Download class={`size-4 ${receiptLoading ? 'animate-pulse' : ''}`} strokeWidth={2} />
+						{receiptLoading ? 'Opening...' : 'Open receipt'}
+					</button>
+					{#if receiptMessage}
+						<p
+							class={`mt-2 text-[12px] ${receiptMessageTone === 'error' ? 'text-[var(--accent-crimson)]' : 'text-[var(--accent-forest)]'}`}
+							transition:fade={{ duration: 180 }}
+						>
+							{receiptMessage}
+						</p>
+					{/if}
+				</div>
+
 				<!-- Address -->
 				<div class="panel p-4">
 					<div class="mb-3 flex items-center gap-2.5">
@@ -775,6 +842,35 @@
 		box-shadow: none;
 		background: var(--black-alpha-12);
 		color: var(--black-alpha-56);
+	}
+
+	.receipt-btn {
+		display: inline-flex;
+		width: 100%;
+		min-height: 40px;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		border-radius: 8px;
+		border: 1px solid var(--heat-20);
+		background: var(--heat-4);
+		padding: 8px 14px;
+		font-size: 13px;
+		font-weight: 650;
+		color: var(--heat-100);
+		transition:
+			border-color var(--motion-fast) var(--motion-ease-out),
+			background var(--motion-fast) var(--motion-ease-out);
+	}
+
+	.receipt-btn:hover:not(:disabled) {
+		border-color: var(--heat-100);
+		background: white;
+	}
+
+	.receipt-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
 	}
 
 	.awb-chip {

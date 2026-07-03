@@ -340,7 +340,7 @@ export const screenGuides: ScreenGuide[] = [
 				title: 'How to avoid wrong screen orders',
 				body: [
 					'Do not buy only by laptop size. A 15.6-inch display can still differ by resolution, connector, bracket, surface finish, and refresh rate.',
-					'For Tamil Nadu orders, the fastest path is to confirm the part number and connector before dispatch. That prevents courier delays caused by avoidable returns.'
+					'For Tamil Nadu orders, the fastest path is to confirm the part number and connector before packing. That prevents courier delays caused by avoidable returns.'
 				],
 				checklist: [
 					'Match screen part number or compatible panel family',
@@ -728,7 +728,7 @@ export const screenGuides: ScreenGuide[] = [
 		summary: [
 			'The bottom sticker, BIOS, and system info all reveal your laptop model number.',
 			'For parts, the part number on the component itself is even more precise than the model name.',
-			'Send us the model and part number and we will confirm compatibility before dispatch.'
+			'Send us the model and part number and we will confirm compatibility before packing.'
 		],
 		sections: [
 			{
@@ -748,7 +748,7 @@ export const screenGuides: ScreenGuide[] = [
 				title: 'Why the part number beats the model name',
 				body: [
 					'For batteries, screens and keyboards, the part number printed on the component is the safest identifier because one laptop model can ship with several variants. Read the battery part number on its label, the panel code on the back of the screen, or the keyboard variant details, and match that.',
-					'When you have both the laptop model and the component part number, ordering the correct compatible part is straightforward — and you can send both to us to confirm before we dispatch.'
+					'When you have both the laptop model and the component part number, ordering the correct compatible part is straightforward — and you can send both to us to confirm before packing.'
 				]
 			}
 		],

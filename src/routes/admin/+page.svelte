@@ -79,6 +79,31 @@
 		estimatedNetMargin: number;
 		productCost: number;
 		highRiskOrders: number;
+		statusBreakdown: Array<{
+			status: string;
+			label: string;
+			count: number;
+			revenue: number;
+		}>;
+		paymentBreakdown: Array<{
+			status: string;
+			label: string;
+			count: number;
+			revenue: number;
+		}>;
+		categoryBreakdown: Array<{
+			category: string;
+			label: string;
+			products: number;
+			lowStock: number;
+			stock: number;
+		}>;
+		fulfillmentFunnel: Array<{
+			id: string;
+			label: string;
+			count: number;
+			hint: string;
+		}>;
 		periodReports: Array<{
 			id: 'daily' | 'weekly' | 'monthly';
 			label: string;
@@ -335,7 +360,7 @@
 
 	const viewDescriptions: Record<AdminView, string> = {
 		overview: 'Store health, revenue, and what needs attention',
-		operations: 'Orders, dispatch, returns, and refunds',
+		operations: 'Orders, shipping, returns, and refunds',
 		catalog: 'Products, pricing, stock, and catalog search',
 		users: 'Customer accounts and staff roles',
 		promos: 'Coupons and discounts',
@@ -348,7 +373,7 @@
 		icon: typeof LayoutDashboard;
 	}> = [
 		{ id: 'orders', label: 'Orders', icon: Package },
-		{ id: 'fulfillment', label: 'Dispatch', icon: Truck },
+		{ id: 'fulfillment', label: 'To ship', icon: Truck },
 		{ id: 'returns', label: 'Returns', icon: RotateCcw }
 	];
 
@@ -663,7 +688,7 @@
 				id: 'rto',
 				label: 'High RTO risk',
 				count: analytics?.highRiskOrders ?? 0,
-				hint: 'Review before dispatch',
+				hint: 'Review before shipping',
 				action: () => openOperations('orders', 'needs-action')
 			}
 		].filter((card) => card.count > 0)
