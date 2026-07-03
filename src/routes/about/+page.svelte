@@ -4,11 +4,11 @@
 	const sections = [
 		{
 			title: 'What we sell',
-			body: 'LapKart focuses on laptop components including RAM, SSDs, batteries, displays, chargers, keyboards, hinges, cases, cooling parts, and related replacement hardware.'
+			body: 'LapKart sells laptop components including RAM, SSDs, batteries, displays, chargers, keyboards, hinges, cases, cooling parts, and related replacement hardware as the customer-facing reseller.'
 		},
 		{
 			title: 'How orders are fulfilled',
-			body: 'Orders are paid through Razorpay or eligible cash-on-delivery flows, packed by LapKart operations, and fulfilled through manual courier dispatch with status updates shown in your account.'
+			body: 'Customers buy from LapKart. Parts may be sourced through internal procurement partners, then packed by LapKart operations and fulfilled through manual courier dispatch with status updates shown in your account.'
 		},
 		{
 			title: 'Support promise',

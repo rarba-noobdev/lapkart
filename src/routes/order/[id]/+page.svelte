@@ -106,7 +106,7 @@
 	const etaLine = $derived.by(() => {
 		if (!order) return '';
 		if (closedState === 'cancelled') return 'No delivery is scheduled for this order.';
-		if (closedState === 'returned') return 'This order was returned to the seller.';
+		if (closedState === 'returned') return 'This order was returned to LapKart.';
 		if (stage === 2) return 'Your package was delivered.';
 		const eta = expectedDeliveryDate;
 		const courier = courierLabel ? ` · ${courierLabel}` : '';

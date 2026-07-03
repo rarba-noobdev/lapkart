@@ -203,7 +203,7 @@
 		</div>
 		<div class="home-hero-inner">
 			<div class="home-hero-copy motion-section">
-				<p class="home-kicker">Laptop parts marketplace</p>
+				<p class="home-kicker">LapKart laptop parts store</p>
 				<h1>Find the right part before the laptop leaves your bench.</h1>
 				<p class="home-hero-lede">
 					Search SSDs, RAM, displays, batteries, chargers, keyboards, cooling parts, and repair

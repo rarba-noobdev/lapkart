@@ -811,8 +811,7 @@
 				amount: body.razorpayOrder.amount,
 				currency: body.razorpayOrder.currency,
 				name: 'LapKart',
-				description:
-					rows.length > 0 ? `${rows.length} laptop marketplace item(s)` : 'LapKart payment',
+				description: rows.length > 0 ? `${rows.length} LapKart item(s)` : 'LapKart payment',
 				order_id: body.razorpayOrder.order_id,
 				webview_intent: nativeCheckout,
 				prefill: {

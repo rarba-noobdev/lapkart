@@ -426,7 +426,7 @@ export const screenGuides: ScreenGuide[] = [
 				title: 'What actually decides laptop battery price',
 				body: [
 					'Two batteries for the same laptop can have very different prices because of capacity and cell quality. Higher watt-hour (Wh) ratings store more charge and cost more. Original (OEM) batteries carry the manufacturer brand and usually cost the most; compatible batteries built to the same specification cost less.',
-					'In India, you will typically see a wide range for the same model because sellers mix original, compatible, and refurbished stock. The cheapest listing is not always comparable: check the Wh rating and whether it is new, not the price alone.'
+					'In India, you will typically see a wide range for the same model because listings mix OEM, compatible, and refurbished stock. The cheapest listing is not always comparable: check the Wh rating and whether it is new, not the price alone.'
 				],
 				checklist: [
 					'Capacity in Wh (higher = longer runtime)',

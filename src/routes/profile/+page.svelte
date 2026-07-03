@@ -783,8 +783,8 @@
 								Delete your account?
 							</p>
 							<p class="mt-1 text-[11px] leading-relaxed text-[var(--black-alpha-56)]">
-								We will remove your personal data after any legally required retention (such as tax
-								invoices). This cannot be undone once processed.
+								We will remove your personal data after any legally required retention (such as
+								order and accounting records). This cannot be undone once processed.
 							</p>
 							<form
 								method="POST"

@@ -8,11 +8,11 @@
 		},
 		{
 			title: 'Order issues',
-			body: 'For active orders, open your order detail page to view status, cancellation eligibility, return eligibility, refund status, delivery proof, and invoice information.'
+			body: 'For active orders, open your order detail page to view status, cancellation eligibility, return eligibility, refund status, delivery proof, and receipt information.'
 		},
 		{
 			title: 'Business information',
-			body: 'LapKart operates as an ecommerce storefront for laptop components and replacement hardware. For legal, invoice, data protection, grievance, or statutory communication, email support@lapkart.store or raise a request through Support & complaints.'
+			body: 'LapKart operates as the customer-facing seller for laptop components and replacement hardware. For legal, receipt, data protection, grievance, or statutory communication, email support@lapkart.store or raise a request through Support & complaints.'
 		},
 		{
 			title: 'Privacy and grievances',

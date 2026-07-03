@@ -114,8 +114,8 @@
 						Operations workspace for catalog control, user management, order visibility, and
 						fulfillment monitoring.
 					{:else}
-						India's marketplace for genuine laptop components, from RAM and SSDs to batteries,
-						displays, and replacement hardware.
+						LapKart's store for genuine laptop components, from RAM and SSDs to batteries, displays,
+						and replacement hardware.
 					{/if}
 				</p>
 				<p class="text-mono-x-small mt-6 tracking-[0.16em] text-white/50 uppercase">
@@ -151,7 +151,7 @@
 
 		<div class="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
 			<p class="text-mono-x-small tracking-[0.16em] text-white/50 uppercase">
-				2026 LapKart. {isAdmin ? 'Operations console.' : 'Genuine parts marketplace.'}
+				2026 LapKart. {isAdmin ? 'Operations console.' : 'Laptop parts store.'}
 			</p>
 			<div class="text-mono-x-small tracking-wider text-white/50 uppercase">
 				Chennai service desk | Monday to Saturday

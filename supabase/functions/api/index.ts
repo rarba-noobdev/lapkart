@@ -979,7 +979,7 @@ function renderInvoiceHtml({
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${escapeHtml(invoiceNumber)} - LapKart invoice</title>
+  <title>${escapeHtml(invoiceNumber)} - LapKart receipt</title>
   <style>
     body { font-family: Arial, sans-serif; color: #111; margin: 32px; }
     header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #111; padding-bottom: 16px; }
@@ -1001,10 +1001,10 @@ function renderInvoiceHtml({
   <header>
     <div>
       <h1>LapKart</h1>
-      <p>Genuine laptop parts marketplace</p>
+      <p>Customer-facing seller for laptop parts</p>
     </div>
     <div>
-      <p><strong>Invoice:</strong> ${escapeHtml(invoiceNumber)}</p>
+      <p><strong>Receipt:</strong> ${escapeHtml(invoiceNumber)}</p>
       <p><strong>Order:</strong> #${escapeHtml(String(order.id ?? '').slice(0, 8))}</p>
       <p><strong>Date:</strong> ${escapeHtml(new Date(String(order.created_at)).toLocaleDateString('en-IN'))}</p>
     </div>
@@ -3666,7 +3666,7 @@ async function handle(req: Request) {
 		if (itemsError) throw itemsError;
 		if (invoiceResult.error) throw invoiceResult.error;
 		if (!order || String(order.user_id) !== user.id) {
-			throw new HttpError(404, 'Invoice not found');
+			throw new HttpError(404, 'Receipt not found');
 		}
 		const invoiceNumber =
 			typeof invoiceResult.data?.invoice_number === 'string'

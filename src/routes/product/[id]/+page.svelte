@@ -666,7 +666,7 @@
 						{/if}
 					</div>
 					<p class="text-mono-x-small mt-1.5 tracking-wider text-[var(--black-alpha-56)] uppercase">
-						Inclusive of taxes / Tamil Nadu delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
+						LapKart item price / Tamil Nadu delivery from {formatINR(MANUAL_DELIVERY_MIN_CHARGE)}
 						/ free from {formatINR(MANUAL_DELIVERY_FREE_SUBTOTAL)}
 					</p>
 					{#if isAdmin && adminVisibleMessage && !adminEditorVisible}
@@ -833,7 +833,7 @@
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
 					>
 						<ShieldCheck class="size-3.5 shrink-0 text-[var(--heat-100)]" strokeWidth={2.2} />
-						Tax invoice
+						Sold by LapKart
 					</span>
 					<span
 						class="text-body-small inline-flex items-center gap-1.5 text-[var(--black-alpha-56)]"
