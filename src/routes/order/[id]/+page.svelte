@@ -291,11 +291,11 @@
 				const body = (await response.json().catch(() => null)) as { error?: string } | null;
 				throw new Error(body?.error ?? 'Could not open invoice');
 			}
-			const html = await response.text();
+			const blob = await response.blob();
 			const ref = order.id.slice(0, 8).toUpperCase();
 			await openInvoiceDocument({
-				html,
-				fileName: `lapkart-${ref}-invoice.html`,
+				blob,
+				fileName: `lapkart-${ref}-invoice.pdf`,
 				title: `LapKart invoice ${ref}`
 			});
 			receiptMessage = 'Invoice ready.';
@@ -644,7 +644,7 @@
 						<h2 class="text-label-small font-semibold text-foreground">Invoice</h2>
 					</div>
 					<p class="text-body-small text-[var(--black-alpha-64)]">
-						Itemised invoice with totals — open it to print or save as PDF.
+						Itemised PDF invoice with your order totals — open it to view, print, or save.
 					</p>
 					<button
 						type="button"

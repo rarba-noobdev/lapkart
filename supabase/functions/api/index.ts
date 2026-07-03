@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.105.4';
 import { z } from 'npm:zod@3.24.2';
+import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 import { config } from './config.ts';
 import { autocompleteOlaPlaces, getOlaDeliveryRoute, reverseGeocodeOlaPlace } from './ola-maps.ts';
 import { createRazorpayOrder, createRazorpayRefund, verifyRazorpaySignature } from './payments.ts';
@@ -942,6 +943,23 @@ function text(req: Request, status: number, body: string, headers?: Record<strin
 	});
 }
 
+function binary(
+	req: Request,
+	status: number,
+	body: Uint8Array,
+	contentType: string,
+	headers?: Record<string, string>
+) {
+	return new Response(body, {
+		status,
+		headers: {
+			'Content-Type': contentType,
+			...corsHeaders(req),
+			...headers
+		}
+	});
+}
+
 function escapeHtml(value: unknown) {
 	return String(value ?? '')
 		.replaceAll('&', '&amp;')
@@ -1107,6 +1125,189 @@ function renderInvoiceHtml({
   </div>
 </body>
 </html>`;
+}
+
+// Renders the same invoice as a real PDF (pdf-lib, pure JS — Deno safe).
+// Helvetica uses WinAnsi encoding, so amounts use "Rs" (the ₹ glyph is not
+// encodable in the standard fonts and would throw).
+async function renderInvoicePdf({
+	order,
+	items,
+	invoiceNumber
+}: {
+	order: Record<string, unknown>;
+	items: Array<Record<string, unknown>>;
+	invoiceNumber: string;
+}): Promise<Uint8Array> {
+	const doc = await PDFDocument.create();
+	const page = doc.addPage([595.28, 841.89]); // A4
+	const font = await doc.embedFont(StandardFonts.Helvetica);
+	const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+	const { width, height } = page.getSize();
+
+	const heat = rgb(0.98, 0.365, 0.098);
+	const ink = rgb(0.09, 0.09, 0.09);
+	const muted = rgb(0.42, 0.45, 0.5);
+	const lineColor = rgb(0.9, 0.9, 0.92);
+	const M = 48;
+	const right = width - M;
+
+	const money = (v: unknown) =>
+		`Rs ${Number(v ?? 0).toLocaleString('en-IN', {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2
+		})}`;
+
+	type TextOpts = { size?: number; bold?: boolean; color?: typeof ink };
+	const draw = (t: unknown, x: number, y: number, opts: TextOpts = {}) =>
+		page.drawText(String(t ?? ''), {
+			x,
+			y,
+			size: opts.size ?? 10,
+			font: opts.bold ? bold : font,
+			color: opts.color ?? ink
+		});
+	const widthOf = (t: string, size: number, isBold = false) =>
+		(isBold ? bold : font).widthOfTextAtSize(t, size);
+	const drawRight = (t: string, x: number, y: number, opts: TextOpts = {}) =>
+		draw(t, x - widthOf(t, opts.size ?? 10, opts.bold), y, opts);
+	const hline = (y: number) =>
+		page.drawLine({ start: { x: M, y }, end: { x: right, y }, thickness: 1, color: lineColor });
+	const wrap = (t: string, max: number) => {
+		const words = String(t ?? '').split(/\s+/);
+		const lines: string[] = [];
+		let cur = '';
+		for (const w of words) {
+			const next = cur ? `${cur} ${w}` : w;
+			if (next.length > max && cur) {
+				lines.push(cur);
+				cur = w;
+			} else cur = next;
+		}
+		if (cur) lines.push(cur);
+		return lines.length ? lines : [''];
+	};
+
+	let y = height - M;
+
+	// Brand + document meta
+	draw('lap', M, y - 16, { size: 22, bold: true });
+	draw('kart', M + widthOf('lap', 22, true), y - 16, { size: 22, bold: true, color: heat });
+	draw('Laptop parts and replacement hardware', M, y - 32, { size: 9, color: muted });
+	draw('support@lapkart.store', M, y - 44, { size: 9, color: muted });
+
+	drawRight('INVOICE', right, y - 6, { size: 9, bold: true, color: heat });
+	drawRight(invoiceNumber, right, y - 22, { size: 13, bold: true });
+	const orderRef = String(order.id ?? '')
+		.slice(0, 8)
+		.toUpperCase();
+	drawRight(`Order #${orderRef}`, right, y - 37, { size: 9, color: muted });
+	const orderDate = order.created_at
+		? new Date(String(order.created_at)).toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric'
+			})
+		: '-';
+	drawRight(`Date ${orderDate}`, right, y - 49, { size: 9, color: muted });
+
+	y -= 74;
+	hline(y);
+	y -= 26;
+
+	// Parties
+	const colR = M + (width - M * 2) / 2 + 12;
+	draw('BILLED TO', M, y, { size: 8, bold: true, color: muted });
+	draw('SOLD BY', colR, y, { size: 8, bold: true, color: muted });
+	let ly = y - 15;
+	draw(String(order.shipping_name ?? ''), M, ly, { size: 11, bold: true });
+	let ry = y - 15;
+	draw('LapKart', colR, ry, { size: 11, bold: true });
+	ly -= 14;
+	for (const l of wrap(String(order.shipping_address ?? ''), 42)) {
+		draw(l, M, ly, { size: 10, color: muted });
+		ly -= 13;
+	}
+	draw(String(order.shipping_phone ?? ''), M, ly, { size: 10, color: muted });
+	ry -= 14;
+	draw('Reseller - laptop parts', colR, ry, { size: 10, color: muted });
+	ry -= 13;
+	draw('support@lapkart.store', colR, ry, { size: 10, color: muted });
+
+	y = Math.min(ly, ry) - 24;
+
+	// Table header
+	const qtyX = right - 210;
+	const rateX = right - 120;
+	page.drawRectangle({
+		x: M,
+		y: y - 6,
+		width: width - M * 2,
+		height: 22,
+		color: rgb(0.98, 0.98, 0.98)
+	});
+	draw('ITEM', M + 6, y, { size: 8, bold: true, color: muted });
+	drawRight('QTY', qtyX + 30, y, { size: 8, bold: true, color: muted });
+	drawRight('RATE', rateX + 60, y, { size: 8, bold: true, color: muted });
+	drawRight('AMOUNT', right - 6, y, { size: 8, bold: true, color: muted });
+	y -= 16;
+	hline(y);
+	y -= 20;
+
+	// Rows
+	for (const item of items) {
+		const qty = Number(item.qty ?? 0);
+		const unit = Number(item.price ?? item.unit_price ?? 0);
+		const lineTotal = roundMoney(qty * unit);
+		const titleLines = wrap(String(item.title ?? ''), 42);
+		draw(titleLines[0], M + 6, y, { size: 10 });
+		if (item.brand) draw(String(item.brand), M + 6, y - 12, { size: 8, color: muted });
+		drawRight(String(qty), qtyX + 30, y, { size: 10 });
+		drawRight(money(unit), rateX + 60, y, { size: 10 });
+		drawRight(money(lineTotal), right - 6, y, { size: 10 });
+		y -= item.brand ? 30 : 22;
+		hline(y + 8);
+		if (y < 160) break; // single-page guard
+	}
+
+	// Totals
+	y -= 14;
+	const tLabelX = right - 200;
+	const rowsTotals: Array<[string, string, boolean]> = [
+		['Subtotal', money(order.subtotal), false],
+		['Shipping', money(order.shipping), false]
+	];
+	const discount = Number(order.discount_total ?? 0);
+	if (discount > 0) {
+		const label = order.coupon_code ? `Discount (${order.coupon_code})` : 'Discount';
+		rowsTotals.push([label, `- ${money(discount)}`, false]);
+	}
+	for (const [label, value, _b] of rowsTotals) {
+		draw(label, tLabelX, y, { size: 10, color: muted });
+		drawRight(value, right, y, { size: 10 });
+		y -= 18;
+	}
+	y -= 4;
+	page.drawLine({
+		start: { x: tLabelX, y: y + 6 },
+		end: { x: right, y: y + 6 },
+		thickness: 1.4,
+		color: ink
+	});
+	y -= 12;
+	draw('Total', tLabelX, y, { size: 13, bold: true });
+	drawRight(money(order.total), right, y, { size: 13, bold: true, color: heat });
+
+	// Footer
+	draw(
+		'Prices are inclusive of applicable taxes. Computer-generated invoice, no signature required.',
+		M,
+		M + 18,
+		{ size: 8, color: muted }
+	);
+	draw('Questions? support@lapkart.store', M, M + 6, { size: 8, color: muted });
+
+	return await doc.save();
 }
 
 function getSupabaseAdmin() {
@@ -3762,14 +3963,13 @@ async function handle(req: Request) {
 			typeof invoiceResult.data?.invoice_number === 'string'
 				? invoiceResult.data.invoice_number
 				: invoiceNumberForOrder(orderId);
-		const html = renderInvoiceHtml({
+		const pdf = await renderInvoicePdf({
 			order: order as Record<string, unknown>,
 			items: (items ?? []) as Array<Record<string, unknown>>,
 			invoiceNumber
 		});
-		return text(req, 200, html, {
-			'Content-Type': 'text/html; charset=utf-8',
-			'Content-Disposition': `inline; filename="${invoiceNumber}-receipt.html"`
+		return binary(req, 200, pdf, 'application/pdf', {
+			'Content-Disposition': `inline; filename="${invoiceNumber}-invoice.pdf"`
 		});
 	}
 

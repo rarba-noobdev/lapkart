@@ -105,23 +105,20 @@ export async function shareUrl(input: { title: string; text?: string; url: strin
 	await navigator.clipboard?.writeText(input.url);
 }
 
-// Opens an order invoice. On native we persist the HTML to the app cache and
-// hand it to the OS share sheet so the customer can save it to Files/Drive or
-// open it in a browser to print as PDF. On the web we open/download the blob.
-export async function openInvoiceDocument(input: {
-	html: string;
-	fileName: string;
-	title: string;
-}) {
+// Opens an order invoice document (a real PDF). On native we persist the bytes
+// to the app cache and hand the file to the OS share sheet so the customer can
+// save it to Files/Drive or open it in a PDF viewer. On the web we open it in a
+// new tab (browser PDF viewer) and fall back to a download.
+export async function openInvoiceDocument(input: { blob: Blob; fileName: string; title: string }) {
 	const { Capacitor } = await import('@capacitor/core');
 
 	if (Capacitor.isNativePlatform()) {
-		const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+		const base64 = await blobToBase64(input.blob);
+		const { Filesystem, Directory } = await import('@capacitor/filesystem');
 		const written = await Filesystem.writeFile({
 			path: input.fileName,
-			data: input.html,
-			directory: Directory.Cache,
-			encoding: Encoding.UTF8
+			data: base64,
+			directory: Directory.Cache
 		});
 		const { Share } = await import('@capacitor/share');
 		await Share.share({
@@ -132,8 +129,7 @@ export async function openInvoiceDocument(input: {
 		return;
 	}
 
-	const blob = new Blob([input.html], { type: 'text/html' });
-	const url = URL.createObjectURL(blob);
+	const url = URL.createObjectURL(input.blob);
 	const opened = window.open(url, '_blank', 'noopener,noreferrer');
 	if (!opened) {
 		const link = document.createElement('a');
@@ -144,6 +140,19 @@ export async function openInvoiceDocument(input: {
 		link.remove();
 	}
 	window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function blobToBase64(blob: Blob) {
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onloadend = () => {
+			const result = String(reader.result ?? '');
+			// Strip the "data:<mime>;base64," prefix — Filesystem wants raw base64.
+			resolve(result.slice(result.indexOf(',') + 1));
+		};
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(blob);
+	});
 }
 
 export async function pickImageFile(options: { title?: string; fileNamePrefix?: string } = {}) {
