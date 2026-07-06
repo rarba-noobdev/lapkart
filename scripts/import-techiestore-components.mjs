@@ -39,7 +39,13 @@ const BLOCKED_PRODUCT_IMAGE_FILENAMES = [
 	'advanced-safety-for-laptop-battery.png',
 	'battery-box.png'
 ];
-const BLOCKED_PRODUCT_IMAGE_PATTERNS = [/(?:^|[-_/])battery[-_ ]?box\.(?:jpe?g|png|webp|gif)\b/i];
+const BLOCKED_PRODUCT_IMAGE_PATTERNS = [
+	/fits[-_ ]?perfectly(?:[-_]\d+)?\.(?:jpe?g|png|webp|gif)\b/i,
+	/giving[-_ ]?new[-_ ]?life[-_ ]?to[-_ ]?your[-_ ]?laptop(?:[-_]\d+)?\.(?:jpe?g|png|webp|gif)\b/i,
+	/advanced[-_ ]?safety[-_ ]?for[-_ ]?laptop[-_ ]?battery(?:[-_]\d+)?\.(?:jpe?g|png|webp|gif)\b/i,
+	/(?:^|[-_/])battery[-_ ]?box\.(?:jpe?g|png|webp|gif)\b/i,
+	/[-_/]with[-_ ]?box\.(?:jpe?g|png|webp|gif)\b/i
+];
 
 const OEMS = [
 	['alienware', 'Dell'],

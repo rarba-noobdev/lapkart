@@ -56,6 +56,7 @@
 
 	const current = $derived(images[index] ?? images[0]);
 	const hasMany = $derived(images.length > 1);
+	const zoomImage = $derived(cdnImage(current, 1600, { upscale: true, trim: 16 }));
 
 	const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
@@ -207,8 +208,8 @@
 		>
 			{#key current}
 				<img
-					src={cdnImage(current, 900, { upscale: true })}
-					srcset={`${cdnImage(current, 640, { upscale: true })} 640w, ${cdnImage(current, 900, { upscale: true })} 900w, ${cdnImage(current, 1280, { upscale: true })} 1280w`}
+					src={cdnImage(current, 900, { upscale: true, trim: 16 })}
+					srcset={`${cdnImage(current, 640, { upscale: true, trim: 16 })} 640w, ${cdnImage(current, 900, { upscale: true, trim: 16 })} 900w, ${cdnImage(current, 1280, { upscale: true, trim: 16 })} 1280w`}
 					sizes="100vw"
 					{alt}
 					loading="eager"
@@ -238,7 +239,7 @@
 					aria-pressed={i === index}
 					onclick={() => select(i)}
 				>
-					<img src={cdnImage(image, 96)} alt="" loading="lazy" decoding="async" />
+					<img src={cdnImage(image, 96, { trim: 12 })} alt="" loading="lazy" decoding="async" />
 				</button>
 			{/each}
 		</div>
@@ -265,7 +266,7 @@
 			{#key current}
 				<img
 					bind:this={mainImg}
-					src={cdnImage(current, 1200, { upscale: true })}
+					src={cdnImage(current, 1200, { upscale: true, trim: 16 })}
 					{alt}
 					fetchpriority="high"
 					decoding="async"
@@ -292,7 +293,7 @@
 				class="zoom-panel"
 				style:top="{zoom.panelTop}px"
 				style:height="{zoom.panelH}px"
-				style:background-image="url('{current}')"
+				style:background-image="url('{zoomImage}')"
 				style:background-size={zoom.bgSize}
 				style:background-position={zoom.bgPos}
 			></div>
@@ -311,7 +312,7 @@
 					onmouseenter={() => select(i)}
 					onclick={() => select(i)}
 				>
-					<img src={cdnImage(image, 120)} alt="" loading="lazy" decoding="async" />
+					<img src={cdnImage(image, 120, { trim: 12 })} alt="" loading="lazy" decoding="async" />
 				</button>
 			{/each}
 		</div>
@@ -345,7 +346,7 @@
 					lbZoomed = !lbZoomed;
 				}}
 			>
-				<img src={current} {alt} class="lb-img" class:is-zoomed={lbZoomed} draggable="false" />
+				<img src={zoomImage} {alt} class="lb-img" class:is-zoomed={lbZoomed} draggable="false" />
 			</button>
 		</div>
 
