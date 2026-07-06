@@ -484,7 +484,7 @@
 		overscroll-behavior-x: contain;
 		scrollbar-width: none;
 		margin-top: 12px;
-		padding: 2px 2px 4px;
+		padding: 6px 4px 8px;
 		touch-action: pan-x;
 		-webkit-overflow-scrolling: touch;
 	}
@@ -505,15 +505,17 @@
 		background: #fff;
 		padding: 4px;
 		opacity: 0.7;
+		outline: 2px solid transparent;
+		outline-offset: 2px;
 		transition:
 			border-color 180ms var(--motion-ease),
-			box-shadow 180ms var(--motion-ease),
+			outline-color 180ms var(--motion-ease),
 			opacity 180ms var(--motion-ease);
 	}
 
 	.m-thumb.is-active {
-		border-color: var(--heat-100);
-		box-shadow: inset 0 -2px 0 var(--heat-100);
+		border-color: var(--border-faint);
+		outline-color: var(--heat-100);
 		opacity: 1;
 	}
 
@@ -615,7 +617,7 @@
 			overflow-x: auto;
 			max-width: 100%;
 			margin-top: 16px;
-			padding: 4px 2px 2px;
+			padding: 6px 4px 8px;
 			scrollbar-width: none;
 		}
 
@@ -635,8 +637,11 @@
 			background: #fff;
 			padding: 4px;
 			opacity: 0.55;
+			outline: 2px solid transparent;
+			outline-offset: 2px;
 			transition:
 				border-color 200ms var(--motion-ease),
+				outline-color 200ms var(--motion-ease),
 				opacity 200ms var(--motion-ease);
 		}
 
@@ -645,9 +650,9 @@
 		}
 
 		.thumb.is-active {
-			border-color: var(--heat-100);
+			border-color: var(--border-faint);
+			outline-color: var(--heat-100);
 			opacity: 1;
-			box-shadow: 0 0 0 2px var(--heat-8);
 		}
 
 		.thumb img {
