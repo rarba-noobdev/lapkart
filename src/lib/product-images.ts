@@ -4,6 +4,7 @@ const BLOCKED_PRODUCT_IMAGE_FILENAMES = [
 	'advanced-safety-for-laptop-battery.png',
 	'battery-box.png'
 ];
+const BLOCKED_PRODUCT_IMAGE_PATTERNS = [/(?:^|[-_/])battery[-_ ]?box\.(?:jpe?g|png|webp|gif)\b/i];
 
 function decodedImageReference(value: string) {
 	let text = value.toLowerCase();
@@ -26,7 +27,10 @@ export function isBlockedProductImage(value: string | null | undefined) {
 	if (!src) return false;
 
 	const decoded = decodedImageReference(src);
-	return BLOCKED_PRODUCT_IMAGE_FILENAMES.some((filename) => decoded.includes(filename));
+	return (
+		BLOCKED_PRODUCT_IMAGE_FILENAMES.some((filename) => decoded.includes(filename)) ||
+		BLOCKED_PRODUCT_IMAGE_PATTERNS.some((pattern) => pattern.test(decoded))
+	);
 }
 
 function fallbackProductImage(category: string) {

@@ -207,8 +207,8 @@
 		>
 			{#key current}
 				<img
-					src={cdnImage(current, 720)}
-					srcset={`${cdnImage(current, 480)} 480w, ${cdnImage(current, 720)} 720w, ${cdnImage(current, 1080)} 1080w`}
+					src={cdnImage(current, 900, { upscale: true })}
+					srcset={`${cdnImage(current, 640, { upscale: true })} 640w, ${cdnImage(current, 900, { upscale: true })} 900w, ${cdnImage(current, 1280, { upscale: true })} 1280w`}
 					sizes="100vw"
 					{alt}
 					loading="eager"
@@ -265,7 +265,7 @@
 			{#key current}
 				<img
 					bind:this={mainImg}
-					src={cdnImage(current, 900)}
+					src={cdnImage(current, 1200, { upscale: true })}
 					{alt}
 					fetchpriority="high"
 					decoding="async"
@@ -378,6 +378,8 @@
 <style>
 	.gallery {
 		position: relative;
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
 		padding: 12px;
 		overflow: clip;
@@ -410,6 +412,8 @@
 
 	/* ── Mobile swipe carousel ── */
 	.m-track {
+		position: relative;
+		z-index: 1;
 		display: grid;
 		overflow: hidden;
 		scrollbar-width: none;
@@ -422,12 +426,13 @@
 
 	.m-slide {
 		display: grid;
+		width: 100%;
 		min-width: 0;
 		place-items: center;
 		height: min(430px, calc(100vw - 24px));
 		min-height: 280px;
 		overflow: hidden;
-		padding: 10px;
+		padding: 0;
 		transform: translateX(var(--swipe-offset, 0));
 		transition: transform 160ms var(--motion-ease-out);
 		touch-action: pan-y;
@@ -439,8 +444,8 @@
 
 	.m-slide img {
 		display: block;
-		width: auto;
-		height: auto;
+		width: 100%;
+		height: 100%;
 		max-width: 100%;
 		max-height: 100%;
 		object-fit: contain;
@@ -470,6 +475,8 @@
 	}
 
 	.m-thumbs {
+		position: relative;
+		z-index: 2;
 		display: flex;
 		gap: 8px;
 		overflow-x: auto;
@@ -547,6 +554,8 @@
 		}
 
 		.d-main img {
+			width: 100%;
+			height: 100%;
 			max-height: 100%;
 			max-width: 100%;
 			object-fit: contain;
@@ -774,7 +783,7 @@
 		.m-slide {
 			height: min(430px, calc(100vw - 20px));
 			min-height: 292px;
-			padding: 12px;
+			padding: 0;
 		}
 
 		.lb {

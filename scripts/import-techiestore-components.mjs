@@ -39,6 +39,7 @@ const BLOCKED_PRODUCT_IMAGE_FILENAMES = [
 	'advanced-safety-for-laptop-battery.png',
 	'battery-box.png'
 ];
+const BLOCKED_PRODUCT_IMAGE_PATTERNS = [/(?:^|[-_/])battery[-_ ]?box\.(?:jpe?g|png|webp|gif)\b/i];
 
 const OEMS = [
 	['alienware', 'Dell'],
@@ -149,7 +150,10 @@ function isBlockedProductImage(value) {
 	if (!src) return false;
 
 	const decoded = decodedImageReference(src);
-	return BLOCKED_PRODUCT_IMAGE_FILENAMES.some((filename) => decoded.includes(filename));
+	return (
+		BLOCKED_PRODUCT_IMAGE_FILENAMES.some((filename) => decoded.includes(filename)) ||
+		BLOCKED_PRODUCT_IMAGE_PATTERNS.some((pattern) => pattern.test(decoded))
+	);
 }
 
 function scrubVisibleText(value) {
@@ -205,7 +209,10 @@ function unique(values, limit = 500) {
 			.replace(/\btechiestore\b/gi, ' ')
 			.replace(/\btechie\b/gi, ' ')
 			.replace(/\bcompatible\b/gi, '')
-			.replace(/\b(for|laptop|notebook|battery|batteries|adapter|adaptor|charger|keyboard)\b/gi, ' ')
+			.replace(
+				/\b(for|laptop|notebook|battery|batteries|adapter|adaptor|charger|keyboard)\b/gi,
+				' '
+			)
 			.replace(/\s+/g, ' ')
 			.trim();
 		if (!value || value.length < 2 || value.length > 120) continue;
@@ -275,7 +282,9 @@ function extractStrongTexts(html) {
 
 function titleAfterFor(title) {
 	const clean = compact(title).replace(/\([^)]*\)/g, ' ');
-	const match = clean.match(/\b(?:for|compatible for)\s+(.+?)(?:\s+(?:laptop|notebook)\s+(?:battery|charger|adapter|keyboard)\b|\s+\d+(?:\.\d+)?\s*[vV]|\s+\d+\s*[wW]|\s+\d+\s*mAh|\s+\d+-Cell|$)/i);
+	const match = clean.match(
+		/\b(?:for|compatible for)\s+(.+?)(?:\s+(?:laptop|notebook)\s+(?:battery|charger|adapter|keyboard)\b|\s+\d+(?:\.\d+)?\s*[vV]|\s+\d+\s*[wW]|\s+\d+\s*mAh|\s+\d+-Cell|$)/i
+	);
 	return match?.[1] ? [match[1]] : [];
 }
 
@@ -299,11 +308,17 @@ function extractCompatibilityCaptures(text) {
 function shouldKeepModelTerm(value) {
 	const text = compact(value);
 	if (!text || text.length < 2 || text.length > 100) return false;
-	if (/\b(power|voltage|current|pin|cord|warranty|capacity|cell|output|input|safe|quality|replacement|certification|charging|charge|overheat|circuit|protection)\b/i.test(text)) {
+	if (
+		/\b(power|voltage|current|pin|cord|warranty|capacity|cell|output|input|safe|quality|replacement|certification|charging|charge|overheat|circuit|protection)\b/i.test(
+			text
+		)
+	) {
 		return false;
 	}
 	if (/^\d+(?:\.\d+)?\s*(?:w|v|a|mah|wh|mm)$/i.test(text)) return false;
-	return /[a-z].*\d|\d.*[a-z]|\b(series|pavilion|inspiron|latitude|vostro|thinkpad|ideapad|aspire|vivobook|zenbook|macbook|victus|elitebook|probook|chromebook|vaio|satellite|portege|xps|precision|alienware|surface)\b/i.test(text);
+	return /[a-z].*\d|\d.*[a-z]|\b(series|pavilion|inspiron|latitude|vostro|thinkpad|ideapad|aspire|vivobook|zenbook|macbook|victus|elitebook|probook|chromebook|vaio|satellite|portege|xps|precision|alienware|surface)\b/i.test(
+		text
+	);
 }
 
 function splitCompatibilityPhrase(phrase, brand) {
@@ -355,7 +370,10 @@ function extractSpecsFromText(text) {
 function normalizedVariants(value) {
 	const clean = compact(value);
 	const compacted = clean.toLowerCase().replace(/[^a-z0-9]+/g, '');
-	const spaced = clean.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+	const spaced = clean
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
 	const hyphenless = clean.toLowerCase().replace(/[-_/]+/g, '');
 	return unique([clean, spaced, compacted, hyphenless], 8);
 }
@@ -520,12 +538,14 @@ function normalizeProduct(source, product) {
 		reviews: Number(product.review_count) || 0,
 		stock: product.is_in_stock === false ? 0 : 25,
 		compatibility,
-		warranty: source.type === 'battery' ? '1 Year Replacement Warranty' : '6 Months Replacement Warranty',
+		warranty:
+			source.type === 'battery' ? '1 Year Replacement Warranty' : '6 Months Replacement Warranty',
 		highlights: buildHighlights(source.type, brand, specs, partNumbers, models),
 		specifications,
 		authenticity_grade: 'compatible',
 		condition_grade: 'new',
-		hsn_code: source.type === 'battery' ? '85076000' : source.type === 'adapter' ? '85044090' : '84716040',
+		hsn_code:
+			source.type === 'battery' ? '85076000' : source.type === 'adapter' ? '85044090' : '84716040',
 		gst_rate: 18,
 		doa_policy_days: 7,
 		local_delivery_eligible: true,
@@ -584,7 +604,9 @@ async function upsertProducts(client, products) {
 		const batch = products.slice(index, index + UPSERT_BATCH_SIZE);
 		const { error } = await client.from('products').upsert(batch, { onConflict: 'sku' });
 		if (error) throw error;
-		process.stdout.write(`\rUpserted ${Math.min(index + batch.length, products.length)}/${products.length}`);
+		process.stdout.write(
+			`\rUpserted ${Math.min(index + batch.length, products.length)}/${products.length}`
+		);
 	}
 	process.stdout.write('\n');
 }

@@ -10,6 +10,8 @@ type CdnOptions = {
 	quality?: number;
 	/** 'contain' keeps the whole product visible (default); 'cover' crops. */
 	fit?: 'contain' | 'cover';
+	/** Allow the CDN to enlarge small source images for primary gallery views. */
+	upscale?: boolean;
 };
 
 const WESERV = 'https://images.weserv.nl/';
@@ -38,8 +40,8 @@ export function cdnImage(src: string | undefined | null, width: number, opts: Cd
 			output: 'webp',
 			fit: opts.fit ?? 'contain'
 		});
-		// Never upscale beyond the source resolution.
-		params.set('we', '');
+		// Never upscale beyond source resolution unless a primary gallery asks for it.
+		if (!opts.upscale) params.set('we', '');
 		return `${WESERV}?${params.toString()}`;
 	} catch {
 		return src;
