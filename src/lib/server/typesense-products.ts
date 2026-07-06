@@ -371,10 +371,75 @@ function exactCategoryForQuery(queryText: string) {
 	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
 }
 
-// For free-text multi-word queries ("hp battery", "hp pavilion screen"), detect
-// a category word anywhere in the query so we can boost that category to the top
-// without hard-filtering. Without this, a query like "hp battery" ranks HP
-// chargers (strong "hp" match) above actual batteries.
+// Long category keywords eligible for typo-tolerant matching ("batery",
+// "keybord", "pavillion charger", "keybaord"). Short words (ram/ssd/cpu/fan/lcd)
+// stay exact-only to avoid false positives.
+const FUZZY_CATEGORY_KEYWORDS = new Map([
+	['battery', 'batteries'],
+	['batteries', 'batteries'],
+	['display', 'displays'],
+	['displays', 'displays'],
+	['screen', 'displays'],
+	['charger', 'chargers'],
+	['chargers', 'chargers'],
+	['adapter', 'chargers'],
+	['keyboard', 'keyboards'],
+	['keyboards', 'keyboards'],
+	['speaker', 'speakers'],
+	['speakers', 'speakers'],
+	['cooling', 'cooling'],
+	['processor', 'processors'],
+	['storage', 'ssd'],
+	['memory', 'ram'],
+	['motherboard', 'motherboards']
+]);
+
+// True if a and b differ by at most one edit: substitution, insertion, deletion,
+// or a single adjacent transposition — the common single-key typos.
+function isWithinOneEdit(a: string, b: string) {
+	if (a === b) return true;
+	const la = a.length;
+	const lb = b.length;
+	if (Math.abs(la - lb) > 1) return false;
+	if (la === lb) {
+		const diff: number[] = [];
+		for (let i = 0; i < la; i += 1) if (a[i] !== b[i]) diff.push(i);
+		if (diff.length === 1) return true;
+		return (
+			diff.length === 2 &&
+			diff[1] === diff[0] + 1 &&
+			a[diff[0]] === b[diff[1]] &&
+			a[diff[1]] === b[diff[0]]
+		);
+	}
+	const [short, long] = la < lb ? [a, b] : [b, a];
+	let i = 0;
+	let j = 0;
+	let skips = 0;
+	while (i < short.length && j < long.length) {
+		if (short[i] === long[j]) {
+			i += 1;
+			j += 1;
+		} else {
+			j += 1;
+			if ((skips += 1) > 1) return false;
+		}
+	}
+	return true;
+}
+
+function fuzzyCategoryForToken(token: string) {
+	if (token.length < 5) return '';
+	for (const [word, category] of FUZZY_CATEGORY_KEYWORDS) {
+		if (isWithinOneEdit(token, word)) return category;
+	}
+	return '';
+}
+
+// For free-text multi-word queries ("hp battery", "hp pavilion screen", "batery
+// for acer 4710"), detect a category word anywhere in the query so we can boost
+// that category to the top without hard-filtering. Without this, "hp battery"
+// ranks HP chargers (strong "hp" match) above actual batteries.
 function detectBoostCategory(queryText: string) {
 	const tokens = normalizeCategoryQuery(queryText).split(' ').filter(Boolean);
 	if (tokens.length < 2) return ''; // single-word category queries use the exact path
@@ -385,6 +450,10 @@ function detectBoostCategory(queryText: string) {
 	}
 	for (const token of tokens) {
 		const match = CATEGORY_QUERY_ALIASES.get(token);
+		if (match) return match;
+	}
+	for (const token of tokens) {
+		const match = fuzzyCategoryForToken(token);
 		if (match) return match;
 	}
 	return '';
