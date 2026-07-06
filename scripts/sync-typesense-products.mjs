@@ -161,9 +161,49 @@ function normalizeToken(value) {
 		.trim();
 }
 
+function addSearchTerm(output, value) {
+	const normalized = normalizeToken(value ?? '');
+	if (normalized.length < 2) return;
+	output.add(normalized);
+	const compact = normalized.replace(/[^A-Z0-9]+/g, '');
+	if (compact.length >= 3 && compact !== normalized) output.add(compact);
+}
+
+function addModelCodeAliases(output, value) {
+	if (!value) return;
+	const pattern = /[A-Z]?\d{2,4}[-.](?=[A-Z0-9]*\d)[A-Z0-9]{2,}/gi;
+	for (const match of value.matchAll(pattern)) {
+		const token = match[0];
+		const previous = match.index ? value[match.index - 1] : '';
+		if (/^\d/.test(token) && previous && /[A-Z0-9]/i.test(previous)) continue;
+		addSearchTerm(output, token);
+	}
+}
+
+function compatibilityPartSection(value) {
+	const text = value ?? '';
+	const match = text.match(
+		/(?:compatible\s+)?(?:panel\s+)?part numbers?:\s*(.*?)(?:\|\s*models?:|\.?\s*compatible laptop models?:|$)/i
+	);
+	return match?.[1] ?? '';
+}
+
+function compatibilityModelSection(value) {
+	const text = value ?? '';
+	const match = text.match(/(?:compatible laptop models?|models?):\s*(.*)$/i);
+	return match?.[1] ?? '';
+}
+
+function addIdentifierAliases(output, value) {
+	if (!value) return;
+	extractPartNumberCandidates(value, output);
+	addModelCodeAliases(output, value);
+}
+
 function extractPartNumberCandidates(value, output) {
 	if (!value) return;
 	const patterns = [
+		/\b(?=[A-Z0-9.-]{5,}\b)(?=[A-Z0-9.-]*[A-Z])(?=[A-Z0-9.-]*\d)[A-Z0-9]{5,}(?:[-.][A-Z0-9]{2,})*\b/gi,
 		/\b[A-Z]{1,4}\d{2,}[A-Z0-9.-]{1,}\b/gi,
 		/\b\d{2,}[A-Z]{1,4}[A-Z0-9.-]{1,}\b/gi,
 		/\b[A-Z0-9]{2,}[-.][A-Z0-9.-]{2,}\b/gi
@@ -172,7 +212,10 @@ function extractPartNumberCandidates(value, output) {
 	for (const pattern of patterns) {
 		for (const match of value.match(pattern) ?? []) {
 			const token = normalizeToken(match);
-			if (token.length >= 3 && /[A-Z]/.test(token) && /\d/.test(token)) output.add(token);
+			if (token.length >= 3 && /[A-Z]/.test(token) && /\d/.test(token)) {
+				addSearchTerm(output, token);
+				addModelCodeAliases(output, token);
+			}
 		}
 	}
 }
@@ -208,6 +251,34 @@ function extractPartNumbers(row, searchKeywords, highlights) {
 	return Array.from(values).slice(0, 80);
 }
 
+function extractIdentifierTerms(row, searchKeywords, highlights) {
+	const values = new Set();
+	const specs =
+		row.specifications && typeof row.specifications === 'object' ? row.specifications : {};
+	const compatibilityPartNumbers = compatibilityPartSection(row.compatibility);
+	const sources = [
+		row.sku,
+		row.title,
+		compatibilityPartNumbers,
+		row.warranty,
+		...highlights,
+		...searchKeywords,
+		...Object.entries(specs).flatMap(([key, value]) => [key, ...flattenSpecText(value)])
+	];
+
+	for (const source of sources) addIdentifierAliases(values, source);
+	return Array.from(values).slice(0, 140);
+}
+
+function extractModelTerms(row, searchKeywords, highlights) {
+	const values = new Set();
+	const compatibilityModels = compatibilityModelSection(row.compatibility);
+	const sources = [row.title, compatibilityModels, ...highlights, ...searchKeywords];
+
+	for (const source of sources) addModelCodeAliases(values, source);
+	return Array.from(values).slice(0, 180);
+}
+
 function documentFromRow(row) {
 	const title = sanitizeInlineText(row.title) || row.title || '';
 	const brand = sanitizeInlineText(row.brand) || row.category || '';
@@ -233,6 +304,8 @@ function documentFromRow(row) {
 		image,
 		images: images.length ? images : image ? [image] : [],
 		sku: sanitizeInlineText(row.sku),
+		identifier_terms: extractIdentifierTerms(row, searchKeywords, highlights),
+		model_terms: extractModelTerms(row, searchKeywords, highlights),
 		part_numbers: extractPartNumbers(row, searchKeywords, highlights),
 		price,
 		mrp,
@@ -270,6 +343,8 @@ function productSchema(collection) {
 			{ name: 'image', type: 'string', optional: true },
 			{ name: 'images', type: 'string[]', optional: true },
 			{ name: 'sku', type: 'string', optional: true, infix: true },
+			{ name: 'identifier_terms', type: 'string[]', optional: true, infix: true },
+			{ name: 'model_terms', type: 'string[]', optional: true },
 			{ name: 'part_numbers', type: 'string[]', optional: true, infix: true },
 			{ name: 'price', type: 'float', sort: true, range_index: true },
 			{ name: 'mrp', type: 'float', sort: true },

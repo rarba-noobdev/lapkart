@@ -16,6 +16,8 @@ export type TypesenseProductDocument = {
 	image: string;
 	images: string[];
 	sku: string;
+	identifier_terms: string[];
+	model_terms: string[];
 	part_numbers: string[];
 	price: number;
 	mrp: number;
@@ -174,10 +176,50 @@ function normalizeToken(value: string) {
 		.trim();
 }
 
+function addSearchTerm(output: Set<string>, value: string | undefined) {
+	const normalized = normalizeToken(value ?? '');
+	if (normalized.length < 2) return;
+	output.add(normalized);
+	const compact = normalized.replace(/[^A-Z0-9]+/g, '');
+	if (compact.length >= 3 && compact !== normalized) output.add(compact);
+}
+
+function addModelCodeAliases(output: Set<string>, value: string | undefined) {
+	if (!value) return;
+	const pattern = /[A-Z]?\d{2,4}[-.](?=[A-Z0-9]*\d)[A-Z0-9]{2,}/gi;
+	for (const match of value.matchAll(pattern)) {
+		const token = match[0];
+		const previous = match.index ? value[match.index - 1] : '';
+		if (/^\d/.test(token) && previous && /[A-Z0-9]/i.test(previous)) continue;
+		addSearchTerm(output, token);
+	}
+}
+
+function compatibilityPartSection(value: string | undefined) {
+	const text = value ?? '';
+	const match = text.match(
+		/(?:compatible\s+)?(?:panel\s+)?part numbers?:\s*(.*?)(?:\|\s*models?:|\.?\s*compatible laptop models?:|$)/i
+	);
+	return match?.[1] ?? '';
+}
+
+function compatibilityModelSection(value: string | undefined) {
+	const text = value ?? '';
+	const match = text.match(/(?:compatible laptop models?|models?):\s*(.*)$/i);
+	return match?.[1] ?? '';
+}
+
+function addIdentifierAliases(output: Set<string>, value: string | undefined) {
+	if (!value) return;
+	extractPartNumberCandidates(value, output);
+	addModelCodeAliases(output, value);
+}
+
 function extractPartNumberCandidates(value: string | undefined, output: Set<string>) {
 	if (!value) return;
 
 	const patterns = [
+		/\b(?=[A-Z0-9.-]{5,}\b)(?=[A-Z0-9.-]*[A-Z])(?=[A-Z0-9.-]*\d)[A-Z0-9]{5,}(?:[-.][A-Z0-9]{2,})*\b/gi,
 		/\b[A-Z]{1,4}\d{2,}[A-Z0-9.-]{1,}\b/gi,
 		/\b\d{2,}[A-Z]{1,4}[A-Z0-9.-]{1,}\b/gi,
 		/\b[A-Z0-9]{2,}[-.][A-Z0-9.-]{2,}\b/gi
@@ -187,7 +229,10 @@ function extractPartNumberCandidates(value: string | undefined, output: Set<stri
 		const matches = value.match(pattern) ?? [];
 		for (const match of matches) {
 			const token = normalizeToken(match);
-			if (token.length >= 3 && /[A-Z]/.test(token) && /\d/.test(token)) output.add(token);
+			if (token.length >= 3 && /[A-Z]/.test(token) && /\d/.test(token)) {
+				addSearchTerm(output, token);
+				addModelCodeAliases(output, token);
+			}
 		}
 	}
 }
@@ -229,6 +274,40 @@ function extractPartNumbers(product: Product) {
 	return Array.from(values).slice(0, 80);
 }
 
+function extractIdentifierTerms(product: Product) {
+	const values = new Set<string>();
+	const compatibilityPartNumbers = compatibilityPartSection(product.compatibility);
+	const sources = [
+		product.sku,
+		product.title,
+		compatibilityPartNumbers,
+		product.warranty,
+		...(product.highlights ?? []),
+		...(product.search_keywords ?? []),
+		...Object.entries(product.specifications ?? {}).flatMap(([key, value]) => [
+			key,
+			...flattenSpecificationText(value)
+		])
+	];
+
+	for (const source of sources) addIdentifierAliases(values, source);
+	return Array.from(values).slice(0, 140);
+}
+
+function extractModelTerms(product: Product) {
+	const values = new Set<string>();
+	const compatibilityModels = compatibilityModelSection(product.compatibility);
+	const sources = [
+		product.title,
+		compatibilityModels,
+		...(product.highlights ?? []),
+		...(product.search_keywords ?? [])
+	];
+
+	for (const source of sources) addModelCodeAliases(values, source);
+	return Array.from(values).slice(0, 180);
+}
+
 function productDocumentFromRow(row: ProductIndexRow): TypesenseProductDocument {
 	const product = normalizeProductRow(row);
 	const images = product.images?.length ? product.images : product.image ? [product.image] : [];
@@ -243,6 +322,8 @@ function productDocumentFromRow(row: ProductIndexRow): TypesenseProductDocument 
 		image: product.image,
 		images,
 		sku: product.sku ?? '',
+		identifier_terms: extractIdentifierTerms(product),
+		model_terms: extractModelTerms(product),
 		part_numbers: extractPartNumbers(product),
 		price: numberOrZero(product.price),
 		mrp: numberOrZero(product.mrp),
@@ -482,6 +563,24 @@ function sortByFor(options: ProductSearchOptions) {
 	}
 }
 
+function isIdentifierLikeQuery(queryText: string) {
+	const normalized = queryText.trim();
+	if (!normalized) return false;
+	const tokens = normalized.split(/\s+/).filter(Boolean);
+	return tokens.some((token) => /[A-Za-z]/.test(token) && /\d/.test(token)) || /[-./_]/.test(normalized);
+}
+
+function identifierFocusedQuery(queryText: string) {
+	const focused = queryText
+		.trim()
+		.split(/\s+/)
+		.filter((token) => /\d/.test(token) || /[-./_]/.test(token))
+		.join(' ')
+		.trim();
+
+	return focused || queryText;
+}
+
 export async function searchTypesenseProducts(
 	options: ProductSearchOptions
 ): Promise<TypesenseSearchResult | null> {
@@ -503,18 +602,28 @@ export async function searchTypesenseProducts(
 	const relevanceSort = boostCategory
 		? `_eval(category:=${boostCategory}):desc,_text_match:desc,stock:desc`
 		: sortByFor(options);
+	const identifierQuery = isIdentifierLikeQuery(queryText);
+	const searchQueryText = identifierQuery ? identifierFocusedQuery(queryText) : queryText;
+	const queryBy =
+		'identifier_terms,part_numbers,sku,model_terms,title,category,compatibility,brand,search_keywords,description,highlights,warranty';
 
 	const params = new URLSearchParams({
-		q: wildcardCategorySearch ? '*' : queryText,
-		query_by:
-			'title,part_numbers,sku,category,compatibility,brand,search_keywords,description,highlights,warranty',
-		query_by_weights: '10,12,12,8,7,5,6,2,2,1',
-		prefix: 'true',
-		infix: 'off,always,always,off,off,off,off,off,off,off',
-		num_typos: '2,0,0,1,1,1,1,1,1,1',
+		q: wildcardCategorySearch ? '*' : searchQueryText,
+		query_by: queryBy,
+		query_by_weights: '15,13,13,11,8,6,5,4,4,1,1,1',
+		prefix: identifierQuery ? 'false' : 'true',
+		infix: 'off,always,always,off,off,off,off,off,off,off,off,off',
+		num_typos: identifierQuery ? '0' : '0,0,0,0,2,1,1,1,1,1,1,1',
 		min_len_1typo: '4',
 		min_len_2typo: '7',
+		typo_tokens_threshold: identifierQuery ? '0' : '1',
+		drop_tokens_threshold: identifierQuery ? '0' : '1',
+		split_join_tokens: identifierQuery ? 'off' : 'fallback',
+		enable_typos_for_numerical_tokens: identifierQuery ? 'false' : 'true',
+		enable_typos_for_alpha_numerical_tokens: identifierQuery ? 'false' : 'true',
+		prioritize_exact_match: 'true',
 		text_match_type: 'max_weight',
+		validate_field_names: 'false',
 		limit: String(options.limit),
 		page: String(options.page),
 		filter_by: buildFilterBy(options),
