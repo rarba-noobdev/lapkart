@@ -41,6 +41,11 @@ export type TypesenseProductDocument = {
 
 type TypesenseSearchHit = {
 	document?: TypesenseProductDocument;
+	text_match_info?: {
+		best_field_weight?: number;
+		num_tokens_dropped?: number;
+		tokens_matched?: number;
+	};
 };
 
 type TypesenseSearchResponse = {
@@ -83,6 +88,7 @@ const MAX_QUEUE_EVENTS_PER_REQUEST = 50;
 const TYPESENSE_SEARCH_TIMEOUT_MS = 2_000;
 const TYPESENSE_WRITE_TIMEOUT_MS = 12_000;
 const TYPESENSE_FAILURE_COOLDOWN_MS = 3_000;
+const TYPESENSE_IDENTIFIER_CANDIDATE_LIMIT = 250;
 let typesenseSearchUnavailableUntil = 0;
 const CATEGORY_QUERY_ALIASES = new Map([
 	['ram', 'ram'],
@@ -581,6 +587,21 @@ function identifierFocusedQuery(queryText: string) {
 	return focused || queryText;
 }
 
+function identifierQueryTokenCount(queryText: string) {
+	return queryText.match(/[A-Za-z0-9]+/g)?.length ?? 0;
+}
+
+function isCompleteIdentifierMatch(hit: TypesenseSearchHit, expectedTokenCount: number) {
+	const matchInfo = hit.text_match_info;
+	if (!matchInfo || expectedTokenCount < 1) return false;
+
+	return (
+		Number(matchInfo.tokens_matched ?? 0) >= expectedTokenCount &&
+		Number(matchInfo.num_tokens_dropped ?? 0) === 0 &&
+		Number(matchInfo.best_field_weight ?? 0) > 0
+	);
+}
+
 export async function searchTypesenseProducts(
 	options: ProductSearchOptions
 ): Promise<TypesenseSearchResult | null> {
@@ -604,6 +625,7 @@ export async function searchTypesenseProducts(
 		: sortByFor(options);
 	const identifierQuery = isIdentifierLikeQuery(queryText);
 	const searchQueryText = identifierQuery ? identifierFocusedQuery(queryText) : queryText;
+	const identifierTokenCount = identifierQuery ? identifierQueryTokenCount(searchQueryText) : 0;
 	const queryBy =
 		'identifier_terms,part_numbers,sku,model_terms,title,category,compatibility,brand,search_keywords,description,highlights,warranty';
 
@@ -624,8 +646,8 @@ export async function searchTypesenseProducts(
 		prioritize_exact_match: 'true',
 		text_match_type: 'max_weight',
 		validate_field_names: 'false',
-		limit: String(options.limit),
-		page: String(options.page),
+		limit: String(identifierQuery ? TYPESENSE_IDENTIFIER_CANDIDATE_LIMIT : options.limit),
+		page: String(identifierQuery ? 1 : options.page),
 		filter_by: buildFilterBy(options),
 		sort_by: wildcardCategorySearch ? 'stock:desc,updated_at_ts:desc' : relevanceSort
 	});
@@ -640,15 +662,22 @@ export async function searchTypesenseProducts(
 		typesenseSearchUnavailableUntil = Date.now() + TYPESENSE_FAILURE_COOLDOWN_MS;
 		throw error;
 	}
-	const products = (response.hits ?? [])
+	const matchingHits = identifierQuery
+		? (response.hits ?? []).filter((hit) => isCompleteIdentifierMatch(hit, identifierTokenCount))
+		: (response.hits ?? []);
+	const matchedProducts = matchingHits
 		.map((hit) => hit.document)
 		.filter((document): document is TypesenseProductDocument => Boolean(document))
 		.map(productFromTypesenseDocument)
 		.filter((product) => !hiddenCategories.includes(product.category));
+	const offset = (options.page - 1) * options.limit;
+	const products = identifierQuery
+		? matchedProducts.slice(offset, offset + options.limit)
+		: matchedProducts;
 
 	return {
 		products,
-		total: Number(response.found ?? products.length)
+		total: identifierQuery ? matchedProducts.length : Number(response.found ?? products.length)
 	};
 }
 
