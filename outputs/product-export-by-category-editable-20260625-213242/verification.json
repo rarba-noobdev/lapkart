@@ -1,0 +1,205 @@
+{
+  "metadata": {
+    "generated_at": "2026-06-25T21:32:42.170919+05:30",
+    "output_path": "D:\\1REAL PROJECTS HE HE HE\\lapkart\\outputs\\product-export-by-category-editable-20260625-213242\\lapkart-products-by-category-editable.xlsx",
+    "products": 11361,
+    "supabase_total": 11361,
+    "edit_columns": [
+      "id",
+      "title",
+      "brand",
+      "category",
+      "sku",
+      "status",
+      "stock",
+      "selling_price",
+      "price",
+      "mrp",
+      "cost_price",
+      "warranty",
+      "compatibility",
+      "highlights",
+      "search_keywords",
+      "description",
+      "image",
+      "images",
+      "source_url",
+      "authenticity_grade",
+      "condition_grade",
+      "gst_rate",
+      "hsn_code",
+      "max_discount_pct",
+      "cod_allowed",
+      "returnable",
+      "is_universal",
+      "local_delivery_eligible",
+      "doa_policy_days",
+      "weight_kg",
+      "length_cm",
+      "breadth_cm",
+      "height_cm",
+      "rating",
+      "clearance",
+      "specifications",
+      "created_at",
+      "updated_at"
+    ],
+    "raw_columns": [
+      "id",
+      "title",
+      "brand",
+      "category",
+      "sku",
+      "status",
+      "stock",
+      "selling_price",
+      "price",
+      "mrp",
+      "cost_price",
+      "warranty",
+      "compatibility",
+      "highlights",
+      "search_keywords",
+      "description",
+      "image",
+      "images",
+      "source_url",
+      "authenticity_grade",
+      "condition_grade",
+      "gst_rate",
+      "hsn_code",
+      "max_discount_pct",
+      "cod_allowed",
+      "returnable",
+      "is_universal",
+      "local_delivery_eligible",
+      "doa_policy_days",
+      "weight_kg",
+      "length_cm",
+      "breadth_cm",
+      "height_cm",
+      "rating",
+      "clearance",
+      "specifications",
+      "created_at",
+      "updated_at",
+      "cod_eligible",
+      "normalized_search_document",
+      "reviews",
+      "search_document"
+    ],
+    "categories": [
+      {
+        "category": "displays",
+        "sheet": "Displays",
+        "products": 6993
+      },
+      {
+        "category": "ics",
+        "sheet": "ICs",
+        "products": 1071
+      },
+      {
+        "category": "batteries",
+        "sheet": "Batteries",
+        "products": 819
+      },
+      {
+        "category": "chargers",
+        "sheet": "Chargers",
+        "products": 800
+      },
+      {
+        "category": "keyboards",
+        "sheet": "Keyboards",
+        "products": 405
+      },
+      {
+        "category": "speakers",
+        "sheet": "Speakers",
+        "products": 316
+      },
+      {
+        "category": "dc_jacks",
+        "sheet": "DC Jacks",
+        "products": 260
+      },
+      {
+        "category": "flex_cables",
+        "sheet": "Flex Cables",
+        "products": 258
+      },
+      {
+        "category": "cooling",
+        "sheet": "Cooling",
+        "products": 244
+      },
+      {
+        "category": "power_buttons",
+        "sheet": "Power Buttons",
+        "products": 173
+      },
+      {
+        "category": "processors",
+        "sheet": "Processors",
+        "products": 11
+      },
+      {
+        "category": "ssd",
+        "sheet": "SSD",
+        "products": 8
+      },
+      {
+        "category": "palmrests",
+        "sheet": "Palmrests",
+        "products": 3
+      }
+    ],
+    "status_counts": {
+      "active": 10290,
+      "draft": 1071
+    }
+  },
+  "verification": {
+    "sheet_count": 17,
+    "sheets": [
+      "Start Here",
+      "Lookups",
+      "All Products",
+      "Displays",
+      "ICs",
+      "Batteries",
+      "Chargers",
+      "Keyboards",
+      "Speakers",
+      "DC Jacks",
+      "Flex Cables",
+      "Cooling",
+      "Power Buttons",
+      "Processors",
+      "SSD",
+      "Palmrests",
+      "Raw All Columns"
+    ],
+    "all_products_rows": 11361,
+    "category_sheet_counts": {
+      "Displays": 6993,
+      "ICs": 1071,
+      "Batteries": 819,
+      "Chargers": 800,
+      "Keyboards": 405,
+      "Speakers": 316,
+      "DC Jacks": 260,
+      "Flex Cables": 258,
+      "Cooling": 244,
+      "Power Buttons": 173,
+      "Processors": 11,
+      "SSD": 8,
+      "Palmrests": 3
+    },
+    "all_products_freeze": "A5",
+    "all_products_tables": [
+      "AllProductsTable"
+    ]
+  }
+}

@@ -16,7 +16,12 @@ const WESERV = 'https://images.weserv.nl/';
 
 export function cdnImage(src: string | undefined | null, width: number, opts: CdnOptions = {}) {
 	if (!src) return src ?? '';
-	if (src.startsWith('data:') || src.startsWith('blob:') || src.includes('images.weserv.nl')) {
+	if (
+		src.startsWith('/') ||
+		src.startsWith('data:') ||
+		src.startsWith('blob:') ||
+		src.includes('images.weserv.nl')
+	) {
 		return src;
 	}
 

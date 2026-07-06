@@ -1,18 +1,31 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { ArrowLeft, Search } from '@lucide/svelte';
+	import { ArrowLeft, RotateCw, Search, WifiOff } from '@lucide/svelte';
 	import BrandLogo from '$lib/components/BrandLogo.svelte';
+
+	let online = $state(true);
 
 	const status = $derived(page.status);
 	const isNotFound = $derived(status === 404);
-	const heading = $derived(isNotFound ? 'Page not found' : 'Something went wrong');
+	const isOffline = $derived(!online && !isNotFound);
+	const heading = $derived(
+		isOffline ? 'No connection' : isNotFound ? 'Page not found' : 'Something went wrong'
+	);
 	const detail = $derived(
-		isNotFound
+		isOffline
+			? 'Check your connection and try again. Saved public pages may still open, but checkout and account pages need internet.'
+			: isNotFound
 			? 'The part or page you are looking for has moved, sold out, or never existed.'
 			: 'A temporary error stopped this page from loading. Please try again in a moment.'
 	);
+
+	function retry() {
+		window.location.reload();
+	}
 </script>
+
+<svelte:window bind:online />
 
 <svelte:head>
 	<title>{status} - {heading} | LapKart</title>
@@ -23,14 +36,28 @@
 		<div class="err-logo">
 			<BrandLogo variant="error" />
 		</div>
-		<p class="err-status">{status}</p>
+		<p class="err-status">
+			{#if isOffline}
+				<WifiOff class="size-4" strokeWidth={2.2} />
+				Offline
+			{:else}
+				{status}
+			{/if}
+		</p>
 		<h1 class="err-title">{heading}</h1>
 		<p class="err-detail">{detail}</p>
 		<div class="err-actions">
-			<a href={resolve('/')} class="err-primary">
-				<ArrowLeft class="size-4" strokeWidth={2.3} />
-				Back home
-			</a>
+			{#if isOffline}
+				<button type="button" class="err-primary" onclick={retry}>
+					<RotateCw class="size-4" strokeWidth={2.3} />
+					Try again
+				</button>
+			{:else}
+				<a href={resolve('/')} class="err-primary">
+					<ArrowLeft class="size-4" strokeWidth={2.3} />
+					Back home
+				</a>
+			{/if}
 			<a href={resolve('/products')} class="err-secondary">
 				<Search class="size-4" strokeWidth={2.3} />
 				Browse parts
@@ -65,6 +92,10 @@
 	}
 
 	.err-status {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 7px;
 		margin-top: 28px;
 		font-family: var(--font-mono, ui-monospace, monospace);
 		font-size: 13px;
@@ -106,9 +137,11 @@
 		border-radius: 8px;
 		font-size: 13px;
 		font-weight: 650;
+		cursor: pointer;
 	}
 
 	.err-primary {
+		border: 0;
 		background: var(--heat-100, #fa5d19);
 		color: white;
 	}

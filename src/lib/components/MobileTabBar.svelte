@@ -130,6 +130,18 @@
 		box-shadow:
 			0 8px 32px -8px rgba(0, 0, 0, 0.12),
 			0 2px 8px -2px rgba(0, 0, 0, 0.06);
+		transition:
+			opacity 160ms var(--motion-ease),
+			transform 180ms var(--motion-ease-out);
+		will-change: opacity, transform;
+	}
+
+	:global(html[data-lapkart-keyboard='open']) .mobile-tabbar,
+	:global(html[data-lapkart-editing='true']) .mobile-tabbar {
+		display: none !important;
+		transform: translateY(calc(100% + 24px));
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	/* Active-tab pill: one element sliding between tabs (transform-only, GPU). */

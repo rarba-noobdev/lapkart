@@ -122,6 +122,11 @@
 		pointer-events: none;
 	}
 
+	:global(html[data-lapkart-keyboard='open']) .sticky-atc,
+	:global(html[data-lapkart-editing='true']) .sticky-atc {
+		display: none;
+	}
+
 	@media (min-width: 768px) {
 		.sticky-atc {
 			bottom: calc(18px + env(safe-area-inset-bottom));

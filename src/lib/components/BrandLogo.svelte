@@ -47,6 +47,12 @@
 		object-fit: contain;
 	}
 
+	:global(html[data-lapkart-native]) .brand-logo img {
+		box-sizing: border-box;
+		border-radius: calc(var(--brand-logo-size, 34px) * 0.18);
+		padding: calc(var(--brand-logo-size, 34px) * 0.06);
+	}
+
 	.brand-logo__copy {
 		display: inline-flex;
 		min-width: 0;

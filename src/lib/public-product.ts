@@ -1,4 +1,5 @@
 import { categories, type Product, type ProductSpecificationValue } from '$lib/catalog';
+import { sanitizeProductImageSet } from '$lib/product-images';
 
 const PRIVATE_SUPPLIER_PATTERNS = [
 	/parts[-\s]*people/gi,
@@ -29,12 +30,14 @@ const PRIVATE_SPEC_LABELS = new Set([
 ]);
 
 export function sanitizePublicProduct(product: Product): Product {
-	const { source_url: _sourceUrl, ...publicProduct } = product;
+	const publicProduct = { ...product };
+	delete publicProduct.source_url;
 	const title = sanitizeInlineText(product.title) || product.title;
 	const brand = sanitizePublicBrand(product.brand, product.category);
 	const description = sanitizeNarrativeText(product.description);
 	const compatibility = sanitizeNarrativeText(product.compatibility);
 	const warranty = sanitizeNarrativeText(product.warranty);
+	const productImages = sanitizeProductImageSet(product.image, product.images, product.category);
 	const highlights = product.highlights
 		.map((highlight) => sanitizeNarrativeText(highlight))
 		.filter(Boolean);
@@ -46,6 +49,8 @@ export function sanitizePublicProduct(product: Product): Product {
 		...publicProduct,
 		title,
 		brand,
+		image: productImages.image,
+		images: productImages.images,
 		description: description || undefined,
 		compatibility,
 		warranty,
@@ -84,7 +89,9 @@ function sanitizePublicSpecifications(specifications: Product['specifications'])
 	return Object.keys(sanitized).length > 0 ? sanitized : undefined;
 }
 
-function sanitizeSpecValue(value: ProductSpecificationValue): ProductSpecificationValue | undefined {
+function sanitizeSpecValue(
+	value: ProductSpecificationValue
+): ProductSpecificationValue | undefined {
 	if (Array.isArray(value)) {
 		const items = value
 			.map((item) =>

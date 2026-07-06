@@ -28,6 +28,7 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 
 	document.documentElement.dataset.lapkartNative = Capacitor.getPlatform();
 	void SplashScreen.hide().catch(() => {});
+	const cancelKeyboardTracking = trackSoftKeyboardState();
 	const cancelWarmup = runWhenIdle(
 		() => {
 			void import('@capacitor/device')
@@ -77,7 +78,97 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 
 	return () => {
 		cancelWarmup();
+		cancelKeyboardTracking();
 		for (const listener of listeners) void listener.remove();
+	};
+}
+
+function trackSoftKeyboardState() {
+	const root = document.documentElement;
+	const visualViewport = window.visualViewport;
+	let frame = 0;
+	let baselineHeight = Math.max(window.innerHeight, visualViewport?.height ?? 0);
+	let clearFocusTimer = 0;
+
+	function hasEditableFocus() {
+		const active = document.activeElement;
+		if (!(active instanceof HTMLElement)) return false;
+		return (
+			active.tagName === 'INPUT' ||
+			active.tagName === 'TEXTAREA' ||
+			active.tagName === 'SELECT' ||
+			active.isContentEditable ||
+			active.getAttribute('role') === 'textbox'
+		);
+	}
+
+	function setKeyboardOpen(open: boolean) {
+		if (open) root.dataset.lapkartKeyboard = 'open';
+		else delete root.dataset.lapkartKeyboard;
+	}
+
+	function setEditableFocus(focused: boolean) {
+		if (clearFocusTimer) {
+			window.clearTimeout(clearFocusTimer);
+			clearFocusTimer = 0;
+		}
+		if (focused) root.dataset.lapkartEditing = 'true';
+		else delete root.dataset.lapkartEditing;
+	}
+
+	function measure() {
+		frame = 0;
+		const viewport = window.visualViewport;
+		const viewportHeight = viewport?.height ?? window.innerHeight;
+		const viewportBottom = viewportHeight + (viewport?.offsetTop ?? 0);
+
+		if (!hasEditableFocus()) {
+			baselineHeight = Math.max(baselineHeight, window.innerHeight, viewportBottom);
+			setEditableFocus(false);
+			setKeyboardOpen(false);
+			return;
+		}
+
+		const windowOverlap = Math.max(0, window.innerHeight - viewportBottom);
+		const baselineOverlap = Math.max(0, baselineHeight - viewportHeight);
+		setEditableFocus(true);
+		setKeyboardOpen(true);
+		if (windowOverlap > 120 || baselineOverlap > 160) return;
+	}
+
+	function scheduleMeasure() {
+		if (frame) window.cancelAnimationFrame(frame);
+		frame = window.requestAnimationFrame(measure);
+	}
+
+	function handleOrientationChange() {
+		baselineHeight = Math.max(window.innerHeight, window.visualViewport?.height ?? 0);
+		window.setTimeout(scheduleMeasure, 250);
+	}
+
+	function handleFocusOut() {
+		clearFocusTimer = window.setTimeout(scheduleMeasure, 180);
+	}
+
+	window.addEventListener('resize', scheduleMeasure);
+	window.addEventListener('orientationchange', handleOrientationChange);
+	document.addEventListener('focusin', scheduleMeasure, true);
+	document.addEventListener('focusout', handleFocusOut, true);
+	visualViewport?.addEventListener('resize', scheduleMeasure);
+	visualViewport?.addEventListener('scroll', scheduleMeasure);
+	scheduleMeasure();
+
+	return () => {
+		if (frame) window.cancelAnimationFrame(frame);
+		if (clearFocusTimer) window.clearTimeout(clearFocusTimer);
+		window.removeEventListener('resize', scheduleMeasure);
+		window.removeEventListener('orientationchange', handleOrientationChange);
+		document.removeEventListener('focusin', scheduleMeasure, true);
+		document.removeEventListener('focusout', handleFocusOut, true);
+		visualViewport?.removeEventListener('resize', scheduleMeasure);
+		visualViewport?.removeEventListener('scroll', scheduleMeasure);
+		setEditableFocus(false);
+		setKeyboardOpen(false);
 	};
 }
 

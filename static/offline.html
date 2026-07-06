@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+		<title>Offline - LapKart</title>
+		<style>
+			:root {
+				color-scheme: light;
+				--heat: #fa5d19;
+				--ink: #262626;
+				--muted: rgba(38, 38, 38, 0.6);
+				--line: #e8e8e8;
+				font-family:
+					-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				min-height: 100vh;
+				background: #f9f9f9;
+				color: var(--ink);
+			}
+
+			main {
+				display: grid;
+				min-height: 100vh;
+				place-items: center;
+				padding: max(24px, env(safe-area-inset-top)) 20px
+					max(28px, env(safe-area-inset-bottom));
+			}
+
+			.card {
+				width: min(100%, 360px);
+				text-align: center;
+			}
+
+			.logo {
+				display: inline-flex;
+				align-items: center;
+				gap: 10px;
+				font-size: 22px;
+				font-weight: 700;
+				letter-spacing: 0;
+			}
+
+			.mark {
+				display: grid;
+				width: 42px;
+				height: 42px;
+				place-items: center;
+				border: 1px solid var(--line);
+				border-radius: 12px;
+				background: #fff;
+				color: var(--heat);
+				font-weight: 800;
+			}
+
+			p.kicker {
+				margin: 28px 0 0;
+				color: var(--heat);
+				font-size: 12px;
+				font-weight: 700;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+			}
+
+			h1 {
+				margin: 8px 0 0;
+				font-size: 28px;
+				line-height: 1.12;
+				letter-spacing: 0;
+			}
+
+			p.detail {
+				margin: 12px 0 0;
+				color: var(--muted);
+				font-size: 14px;
+				line-height: 1.55;
+			}
+
+			.actions {
+				display: grid;
+				gap: 10px;
+				margin-top: 24px;
+			}
+
+			button,
+			a {
+				display: inline-flex;
+				height: 46px;
+				align-items: center;
+				justify-content: center;
+				border-radius: 999px;
+				font-size: 14px;
+				font-weight: 650;
+				text-decoration: none;
+			}
+
+			button {
+				border: 0;
+				background: var(--heat);
+				color: #fff;
+			}
+
+			a {
+				border: 1px solid var(--line);
+				background: #fff;
+				color: var(--ink);
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<section class="card" aria-labelledby="offline-title">
+				<div class="logo" aria-label="LapKart">
+					<span class="mark">LK</span>
+					<span>LapKart</span>
+				</div>
+				<p class="kicker">Offline</p>
+				<h1 id="offline-title">Connection needed</h1>
+				<p class="detail">
+					LapKart could not reach the store. Check your internet connection and try again.
+					Saved public pages may open once the app has cached them.
+				</p>
+				<div class="actions">
+					<button type="button" onclick="window.location.href='https://www.lapkart.store/'">
+						Try again
+					</button>
+					<a href="https://www.lapkart.store/products">Browse parts</a>
+				</div>
+			</section>
+		</main>
+	</body>
+</html>

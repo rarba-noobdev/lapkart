@@ -53,6 +53,7 @@ function copyFallbackIndex() {
 		throw new Error('Capacitor web build did not produce www/200.html.');
 	}
 	copyFileSync(fallback, index);
+	writeOfflinePage();
 }
 
 function writeRemoteFallback() {
@@ -74,6 +75,17 @@ function writeRemoteFallback() {
 </html>
 `
 	);
+	writeOfflinePage();
+}
+
+function writeOfflinePage() {
+	const source = join(root, 'static', 'offline.html');
+	const targetDir = join(root, 'www');
+	if (!existsSync(source)) {
+		throw new Error('Missing static/offline.html for Capacitor errorPath.');
+	}
+	mkdirSync(targetDir, { recursive: true });
+	copyFileSync(source, join(targetDir, 'offline.html'));
 }
 
 function run(command, args, options = {}) {

@@ -10,6 +10,7 @@ const config: CapacitorConfig = {
 	webDir: 'www',
 	server: {
 		url: serverUrl,
+		errorPath: 'offline.html',
 		cleartext: serverUrl.startsWith('http://')
 	},
 	android: {

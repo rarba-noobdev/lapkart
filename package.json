@@ -19,9 +19,7 @@
 		"android:install": "node scripts/build-capacitor.mjs install",
 		"android:open": "cap open android",
 		"typesense:sync": "node scripts/sync-typesense-products.mjs --full --queue",
-		"typesense:reindex": "node scripts/sync-typesense-products.mjs --full --recreate --queue",
-		"open-design": "open-design-ade",
-		"open-design:mcp": "open-design-mcp"
+		"typesense:reindex": "node scripts/sync-typesense-products.mjs --full --recreate --queue"
 	},
 	"dependencies": {
 		"@capacitor/android": "^8.4.0",
@@ -55,8 +53,6 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^17.4.0",
-		"open-design-ade": "^0.4.2",
-		"open-design-mcp": "^0.16.1",
 		"playwright": "^1.60.0",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",

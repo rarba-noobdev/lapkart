@@ -21,10 +21,15 @@
 	let lightbox = $state(false);
 	let lbZoomed = $state(false);
 	let canHoverZoom = $state(false);
+	let swipePointerId = $state<number | null>(null);
+	let swipeDragX = $state(0);
+	let swipeDragging = $state(false);
+	let swipeStartX = 0;
+	let swipeStartY = 0;
+	let suppressMobileClick = false;
 
 	let mainWrap = $state<HTMLDivElement>();
 	let mainImg = $state<HTMLImageElement>();
-	let track = $state<HTMLDivElement>();
 
 	type ZoomState = {
 		show: boolean;
@@ -69,10 +74,52 @@
 		lbZoomed = false;
 	}
 
-	function onTrackScroll(event: Event) {
-		const el = event.currentTarget as HTMLDivElement;
-		const w = el.clientWidth || 1;
-		index = Math.round(el.scrollLeft / w);
+	function onMobilePointerDown(event: PointerEvent) {
+		if (!hasMany || event.pointerType === 'mouse') return;
+		swipePointerId = event.pointerId;
+		swipeStartX = event.clientX;
+		swipeStartY = event.clientY;
+		swipeDragX = 0;
+		swipeDragging = false;
+		suppressMobileClick = false;
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function onMobilePointerMove(event: PointerEvent) {
+		if (swipePointerId !== event.pointerId) return;
+		const dx = event.clientX - swipeStartX;
+		const dy = event.clientY - swipeStartY;
+		const horizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2;
+
+		if (!swipeDragging && !horizontal) return;
+		event.preventDefault();
+		swipeDragging = true;
+		suppressMobileClick = true;
+		swipeDragX = clamp(dx, -86, 86);
+	}
+
+	function endMobileSwipe(event: PointerEvent) {
+		if (swipePointerId !== event.pointerId) return;
+		const dx = event.clientX - swipeStartX;
+		const shouldChange = swipeDragging && Math.abs(dx) > 42;
+		if (shouldChange) select(dx < 0 ? index + 1 : index - 1);
+
+		swipePointerId = null;
+		swipeDragX = 0;
+		swipeDragging = false;
+		window.setTimeout(() => (suppressMobileClick = false), 0);
+	}
+
+	function cancelMobileSwipe() {
+		swipePointerId = null;
+		swipeDragX = 0;
+		swipeDragging = false;
+		suppressMobileClick = false;
+	}
+
+	function onMobileImageClick() {
+		if (suppressMobileClick) return;
+		openLightbox(index);
 	}
 
 	// ── Desktop hover zoom (Amazon-style lens + side magnifier) ──
@@ -144,32 +191,55 @@
 		<span class="discount-badge">-{discount}% off</span>
 	{/if}
 
-	<!-- Mobile: swipeable snap carousel -->
-	<div class="m-track" bind:this={track} onscroll={onTrackScroll}>
-		{#each images as image, i (image)}
-			<button
-				type="button"
-				class="m-slide"
-				aria-label="Open image {i + 1} of {images.length}"
-				onclick={() => openLightbox(i)}
-			>
+	<!-- Mobile: controlled swipe gallery -->
+	<div class="m-track" aria-roledescription="carousel" aria-label="Product images">
+		<button
+			type="button"
+			class="m-slide"
+			class:is-dragging={swipeDragging}
+			style:--swipe-offset={`${swipeDragX}px`}
+			aria-label="Open image {index + 1} of {images.length}"
+			onclick={onMobileImageClick}
+			onpointerdown={onMobilePointerDown}
+			onpointermove={onMobilePointerMove}
+			onpointerup={endMobileSwipe}
+			onpointercancel={cancelMobileSwipe}
+		>
+			{#key current}
 				<img
-					src={cdnImage(image, 720)}
-					srcset={`${cdnImage(image, 480)} 480w, ${cdnImage(image, 720)} 720w, ${cdnImage(image, 1080)} 1080w`}
+					src={cdnImage(current, 720)}
+					srcset={`${cdnImage(current, 480)} 480w, ${cdnImage(current, 720)} 720w, ${cdnImage(current, 1080)} 1080w`}
 					sizes="100vw"
 					{alt}
-					loading={i === 0 ? 'eager' : 'lazy'}
-					fetchpriority={i === 0 ? 'high' : 'auto'}
+					loading="eager"
+					fetchpriority="high"
 					decoding="async"
+					draggable="false"
+					in:fade={{ duration: 140 }}
 				/>
-			</button>
-		{/each}
+			{/key}
+		</button>
 	</div>
 
 	{#if hasMany}
 		<div class="m-dots" aria-hidden="true">
 			{#each images as image, i (image)}
 				<span class="m-dot" class:is-active={i === index}></span>
+			{/each}
+		</div>
+
+		<div class="m-thumbs" aria-label="Choose product image">
+			{#each images as image, i (image)}
+				<button
+					type="button"
+					class="m-thumb"
+					class:is-active={i === index}
+					aria-label="Show image {i + 1}"
+					aria-pressed={i === index}
+					onclick={() => select(i)}
+				>
+					<img src={cdnImage(image, 96)} alt="" loading="lazy" decoding="async" />
+				</button>
 			{/each}
 		</div>
 	{/if}
@@ -340,15 +410,10 @@
 
 	/* ── Mobile swipe carousel ── */
 	.m-track {
-		display: flex;
-		scroll-snap-type: x mandatory;
-		overflow-x: auto;
-		overflow-y: hidden;
+		display: grid;
+		overflow: hidden;
 		scrollbar-width: none;
-		-webkit-overflow-scrolling: touch;
-		overscroll-behavior-x: contain;
-		overscroll-behavior-y: none;
-		touch-action: pan-x;
+		touch-action: pan-y;
 	}
 
 	.m-track::-webkit-scrollbar {
@@ -357,14 +422,19 @@
 
 	.m-slide {
 		display: grid;
-		flex: 0 0 100%;
 		min-width: 0;
-		scroll-snap-align: center;
 		place-items: center;
 		height: min(430px, calc(100vw - 24px));
 		min-height: 280px;
 		overflow: hidden;
 		padding: 10px;
+		transform: translateX(var(--swipe-offset, 0));
+		transition: transform 160ms var(--motion-ease-out);
+		touch-action: pan-y;
+	}
+
+	.m-slide.is-dragging {
+		transition: none;
 	}
 
 	.m-slide img {
@@ -399,6 +469,52 @@
 		background: var(--heat-100);
 	}
 
+	.m-thumbs {
+		display: flex;
+		gap: 8px;
+		overflow-x: auto;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none;
+		margin-top: 12px;
+		padding: 2px 2px 4px;
+		touch-action: pan-x;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.m-thumbs::-webkit-scrollbar {
+		display: none;
+	}
+
+	.m-thumb {
+		display: grid;
+		width: 50px;
+		height: 50px;
+		flex: 0 0 auto;
+		place-items: center;
+		overflow: hidden;
+		border: 1px solid var(--border-faint);
+		border-radius: 10px;
+		background: #fff;
+		padding: 4px;
+		opacity: 0.7;
+		transition:
+			border-color 180ms var(--motion-ease),
+			box-shadow 180ms var(--motion-ease),
+			opacity 180ms var(--motion-ease);
+	}
+
+	.m-thumb.is-active {
+		border-color: var(--heat-100);
+		box-shadow: inset 0 -2px 0 var(--heat-100);
+		opacity: 1;
+	}
+
+	.m-thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+
 	/* ── Desktop main + thumbs ── */
 	.d-zone {
 		display: none;
@@ -408,9 +524,10 @@
 		display: none;
 	}
 
-	@media (min-width: 640px) {
+	@media (min-width: 1024px) {
 		.m-track,
-		.m-dots {
+		.m-dots,
+		.m-thumbs {
 			display: none;
 		}
 
@@ -485,7 +602,15 @@
 			display: flex;
 			justify-content: center;
 			gap: 8px;
+			overflow-x: auto;
+			max-width: 100%;
 			margin-top: 16px;
+			padding: 4px 2px 2px;
+			scrollbar-width: none;
+		}
+
+		.thumbs::-webkit-scrollbar {
+			display: none;
 		}
 
 		.thumb {

@@ -319,10 +319,12 @@
 
 	.onboarding-logo {
 		display: block;
-		width: 126px;
-		height: 36px;
+		box-sizing: border-box;
+		width: 44px;
+		height: 44px;
+		border-radius: 10px;
+		padding: 3px;
 		object-fit: contain;
-		object-position: left center;
 	}
 
 	.skip-button {
