@@ -13,7 +13,7 @@ export type ProductSpecificationValue =
 	| Record<string, unknown>
 	| Array<Record<string, unknown>>;
 
-const hiddenCategorySlugs = new Set(['ics']);
+const hiddenCategorySlugs = new Set<string>();
 
 export const allCategories: Category[] = [
 	{ slug: 'ram', name: 'RAM' },

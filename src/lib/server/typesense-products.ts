@@ -131,6 +131,12 @@ const CATEGORY_QUERY_ALIASES = new Map([
 	['speakers', 'speakers'],
 	['hdd board', 'hdd_boards'],
 	['hdd boards', 'hdd_boards'],
+	['ic', 'ics'],
+	['ics', 'ics'],
+	['chip', 'ics'],
+	['chips', 'ics'],
+	['integrated circuit', 'ics'],
+	['integrated circuits', 'ics'],
 	['power button', 'power_buttons'],
 	['power buttons', 'power_buttons'],
 	['flex cable', 'flex_cables'],
@@ -422,7 +428,7 @@ function typesenseLiteral(value: string) {
 }
 
 function buildFilterBy(options: ProductSearchOptions) {
-	const filters = ['category:!=ics'];
+	const filters: string[] = [];
 	const inferredCategory = inferCategoryFromQuery(options);
 
 	if (options.category) filters.push(`category:=${typesenseLiteral(options.category)}`);
@@ -478,7 +484,9 @@ const FUZZY_CATEGORY_KEYWORDS = new Map([
 	['processor', 'processors'],
 	['storage', 'ssd'],
 	['memory', 'ram'],
-	['motherboard', 'motherboards']
+	['motherboard', 'motherboards'],
+	['chip', 'ics'],
+	['chips', 'ics']
 ]);
 
 // True if a and b differ by at most one edit: substitution, insertion, deletion,
@@ -573,7 +581,9 @@ function isIdentifierLikeQuery(queryText: string) {
 	const normalized = queryText.trim();
 	if (!normalized) return false;
 	const tokens = normalized.split(/\s+/).filter(Boolean);
-	return tokens.some((token) => /[A-Za-z]/.test(token) && /\d/.test(token)) || /[-./_]/.test(normalized);
+	return (
+		tokens.some((token) => /[A-Za-z]/.test(token) && /\d/.test(token)) || /[-./_]/.test(normalized)
+	);
 }
 
 function identifierFocusedQuery(queryText: string) {

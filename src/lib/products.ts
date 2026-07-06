@@ -174,7 +174,6 @@ export async function getProduct(id: string, client?: ProductClient) {
 		.select(productSelectFields)
 		.eq('id', id)
 		.eq('status', 'active')
-		.neq('category', 'ics')
 		.maybeSingle();
 
 	if (error) throw error;

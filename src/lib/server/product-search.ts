@@ -129,6 +129,12 @@ const CATEGORY_QUERY_ALIASES = new Map([
 	['speakers', 'speakers'],
 	['hdd board', 'hdd_boards'],
 	['hdd boards', 'hdd_boards'],
+	['ic', 'ics'],
+	['ics', 'ics'],
+	['chip', 'ics'],
+	['chips', 'ics'],
+	['integrated circuit', 'ics'],
+	['integrated circuits', 'ics'],
 	['power button', 'power_buttons'],
 	['power buttons', 'power_buttons'],
 	['flex cable', 'flex_cables'],
@@ -159,7 +165,11 @@ const CATEGORY_TOKEN_ALIASES = new Map([
 	['hinge', 'hinges'],
 	['hinges', 'hinges'],
 	['speaker', 'speakers'],
-	['speakers', 'speakers']
+	['speakers', 'speakers'],
+	['ic', 'ics'],
+	['ics', 'ics'],
+	['chip', 'ics'],
+	['chips', 'ics']
 ]);
 const STRICT_DEVICE_DISPLAY_PATTERN = /\b(surface\s+pro|tablet|all[-\s]*in[-\s]*one|\baio\b)\b/i;
 const DISPLAY_TERM_PATTERN = /\b(display|screen|lcd|panel)\b/i;

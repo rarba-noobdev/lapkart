@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const DEFAULT_COLLECTION = 'products';
 const PAGE_SIZE = 500;
-const HIDDEN_CATEGORIES = new Set(['ics']);
+const HIDDEN_CATEGORIES = new Set();
 const PRIVATE_SUPPLIER_PATTERNS = [
 	/parts[-\s]*people/gi,
 	/ipc[-\s]*computer/gi,
