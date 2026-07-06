@@ -55,7 +55,7 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 				query: query || undefined,
 				brand: brand || undefined,
 				sort,
-				inStock,
+				inStock: true,
 				minPrice,
 				maxPrice,
 				minRating,

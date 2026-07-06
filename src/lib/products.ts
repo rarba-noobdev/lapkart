@@ -209,7 +209,8 @@ export async function listCatalogProductPage(
 	let query = getClient(client)
 		.from('products')
 		.select(productCardSelectFields, { count: 'exact' })
-		.eq('status', 'active');
+		.eq('status', 'active')
+		.gt('stock', 0);
 
 	query = excludeHiddenCategories(query);
 
@@ -246,10 +247,6 @@ export async function listCatalogProductPage(
 				? searchFilters.join(',')
 				: 'title.ilike.%__lapkart_no_search_term__%'
 		);
-	}
-
-	if (options.inStock) {
-		query = query.gt('stock', 0);
 	}
 
 	if (Number.isFinite(options.minPrice)) {
@@ -309,6 +306,7 @@ export async function listRelatedProducts(
 		.select(productCardSelectFields)
 		.eq('category', category)
 		.eq('status', 'active')
+		.gt('stock', 0)
 		.neq('id', excludeId)
 		.order('rating', { ascending: false })
 		.limit(limit);

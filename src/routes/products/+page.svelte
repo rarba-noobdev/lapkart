@@ -24,7 +24,6 @@
 		| 'brand'
 		| 'minPrice'
 		| 'maxPrice'
-		| 'inStock'
 		| 'minRating'
 		| 'sort';
 	type SearchParamKey = FilterKey | 'page';
@@ -76,7 +75,6 @@
 	const brand = $derived(filters.brand);
 	const minPrice = $derived(filters.minPrice);
 	const maxPrice = $derived(filters.maxPrice);
-	const inStock = $derived(filters.inStock);
 	const minRating = $derived(filters.minRating);
 	const sort = $derived(filters.sort);
 
@@ -105,9 +103,7 @@
 		Boolean(navigating.to && navigating.to.url.pathname === resolve('/products'))
 	);
 	const hasNonCanonicalFilters = $derived(
-		Boolean(
-			q || brand || minPrice || maxPrice || inStock || minRating || activeSort !== 'relevance'
-		)
+		Boolean(q || brand || minPrice || maxPrice || minRating || activeSort !== 'relevance')
 	);
 	const shouldNoIndex = $derived(hasNonCanonicalFilters);
 	const canonicalPath = $derived.by(() => {
@@ -142,7 +138,6 @@
 		if (brand) filters.push({ key: 'brand', label: brand });
 		if (minPrice) filters.push({ key: 'minPrice', label: `Min ${formatINR(Number(minPrice))}` });
 		if (maxPrice) filters.push({ key: 'maxPrice', label: `Max ${formatINR(Number(maxPrice))}` });
-		if (inStock) filters.push({ key: 'inStock', label: 'In stock' });
 		if (minRating) filters.push({ key: 'minRating', label: `${minRating}+ rating` });
 		if (activeSort !== 'relevance') {
 			filters.push({
@@ -311,21 +306,24 @@
 				All
 			</a>
 			{#each categories as item (item.slug)}
-				<a
-					href={resolve(
-						q
-							? `/products?category=${item.slug}&q=${encodeURIComponent(q)}`
-							: `/products?category=${item.slug}`
-					)}
-					aria-current={category === item.slug ? 'page' : undefined}
-					class={`inline-flex h-9 shrink-0 snap-start items-center rounded-full border px-3.5 text-[13px] font-medium transition-colors ${
-						category === item.slug
-							? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
-							: 'border-[var(--border-muted)] bg-white text-foreground'
-					}`}
-				>
-					{item.name}
-				</a>
+				{@const count = categoryCounts[item.slug] ?? 0}
+				{#if count > 0 || category === item.slug}
+					<a
+						href={resolve(
+							q
+								? `/products?category=${item.slug}&q=${encodeURIComponent(q)}`
+								: `/products?category=${item.slug}`
+						)}
+						aria-current={category === item.slug ? 'page' : undefined}
+						class={`inline-flex h-9 shrink-0 snap-start items-center rounded-full border px-3.5 text-[13px] font-medium transition-colors ${
+							category === item.slug
+								? 'border-[var(--heat-100)] bg-[var(--heat-8)] text-[var(--heat-100)]'
+								: 'border-[var(--border-muted)] bg-white text-foreground'
+						}`}
+					>
+						{item.name}
+					</a>
+				{/if}
 			{/each}
 
 			<button
@@ -427,20 +425,6 @@
 							/>
 						</div>
 					</div>
-					<label
-						class="text-label-small flex h-10 cursor-pointer items-center gap-3 self-end rounded-md border border-[var(--border-muted)] bg-white px-3 text-foreground"
-					>
-						<input
-							type="checkbox"
-							checked={inStock}
-							class="size-4 accent-[var(--heat-100)]"
-							onchange={(event) =>
-								updateSearch({
-									inStock: (event.currentTarget as HTMLInputElement).checked ? 'true' : undefined
-								})}
-						/>
-						In stock only
-					</label>
 				</div>
 			</div>
 		{/if}
@@ -475,21 +459,23 @@
 				</li>
 				{#each categories as item (item.slug)}
 					{@const count = categoryCounts[item.slug] ?? 0}
-					<li>
-						<button
-							type="button"
-							aria-pressed={category === item.slug}
-							class={`text-label-small flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition-colors ${
-								category === item.slug
-									? 'bg-[var(--heat-8)] text-[var(--heat-100)]'
-									: 'text-foreground hover:bg-[var(--black-alpha-4)]'
-							}`}
-							onclick={() => updateSearch({ category: item.slug, brand: undefined })}
-						>
-							{item.name}
-							<span class="text-mono-x-small text-[var(--black-alpha-40)]">{count}</span>
-						</button>
-					</li>
+					{#if count > 0 || category === item.slug}
+						<li>
+							<button
+								type="button"
+								aria-pressed={category === item.slug}
+								class={`text-label-small flex w-full items-center justify-between rounded-md px-3 py-2 text-left transition-colors ${
+									category === item.slug
+										? 'bg-[var(--heat-8)] text-[var(--heat-100)]'
+										: 'text-foreground hover:bg-[var(--black-alpha-4)]'
+								}`}
+								onclick={() => updateSearch({ category: item.slug, brand: undefined })}
+							>
+								{item.name}
+								<span class="text-mono-x-small text-[var(--black-alpha-40)]">{count}</span>
+							</button>
+						</li>
+					{/if}
 				{/each}
 			</ul>
 		</section>
@@ -543,26 +529,6 @@
 						})}
 				/>
 			</div>
-		</section>
-
-		<section>
-			<h4 class="text-mono-x-small mb-2 tracking-[0.18em] text-[var(--black-alpha-48)] uppercase">
-				Availability
-			</h4>
-			<label
-				class="text-label-small flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-foreground hover:bg-[var(--black-alpha-4)]"
-			>
-				<input
-					type="checkbox"
-					checked={inStock}
-					class="size-4 accent-[var(--heat-100)]"
-					onchange={(event) =>
-						updateSearch({
-							inStock: (event.currentTarget as HTMLInputElement).checked ? 'true' : undefined
-						})}
-				/>
-				In stock only
-			</label>
 		</section>
 
 		<section>

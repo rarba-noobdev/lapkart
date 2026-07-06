@@ -43,6 +43,7 @@
 		X
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { fade, fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
@@ -53,6 +54,17 @@
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
 		text: string;
+	};
+
+	type AdminRequestOptions = {
+		cache?: boolean;
+		force?: boolean;
+	};
+
+	type AdminGetCacheEntry<T = unknown> = {
+		expiresAt: number;
+		value?: T;
+		pending?: Promise<T>;
 	};
 
 	type AdminRequestIssue = {
@@ -441,7 +453,6 @@
 	let initializedForUserId: string | null = null;
 	const initialView = viewFromSearch(page.url.searchParams.get('section'));
 	let view = $state<AdminView>(initialView);
-	let prevView = $state<AdminView>(initialView);
 	let operationsSection = $state<OperationsSection>('orders');
 	let ordersInitialFilter = $state<string | null>(null);
 	let ordersInitialSearch = $state<string | null>(null);
@@ -452,6 +463,7 @@
 		initialView === 'overview' ? ['overview'] : ['overview', initialView]
 	);
 	let realtimeRefreshTimer: number | null = null;
+	let adminWarmTimerIds: number[] = [];
 	let pendingRealtimeRefresh = {
 		analytics: false,
 		products: false,
@@ -487,6 +499,10 @@
 	let productSearchTimer: number | null = null;
 	const PRODUCT_PAGE_SIZE = 60;
 	const SHEET_ALL_PAGE_SIZE = 100;
+	const ADMIN_GET_CACHE_TTL_MS = 90_000;
+	const ADMIN_GET_CACHE_MAX_ENTRIES = 80;
+	const ADMIN_WARMUP_DELAY_MS = 450;
+	const adminGetCache = new SvelteMap<string, AdminGetCacheEntry>();
 	let selectedProductId = $state<string | 'new' | null>(null);
 	let productEditor = $state<ProductEditorState>(emptyProductEditor());
 	let productSaving = $state(false);
@@ -609,12 +625,6 @@
 	let couponSaving = $state(false);
 	let couponDeleting = $state(false);
 	let couponNotice = $state<Notice | null>(null);
-
-	const flyDirection = $derived.by(() => {
-		const currentIdx = tabs.findIndex((t) => t.id === view);
-		const prevIdx = tabs.findIndex((t) => t.id === prevView);
-		return currentIdx >= prevIdx ? 1 : -1;
-	});
 
 	const filteredUsers = $derived.by(() =>
 		users.filter((user) =>
@@ -1508,7 +1518,19 @@
 		return `${base}: ${body.issues.slice(0, 3).map(adminIssueMessage).join('; ')}`;
 	}
 
-	async function requestAdmin<T>(path: string, init?: RequestInit): Promise<T> {
+	function trimAdminGetCache() {
+		while (adminGetCache.size > ADMIN_GET_CACHE_MAX_ENTRIES) {
+			const oldest = adminGetCache.keys().next().value;
+			if (!oldest) return;
+			adminGetCache.delete(oldest);
+		}
+	}
+
+	function clearAdminGetCache() {
+		adminGetCache.clear();
+	}
+
+	async function fetchAdmin<T>(path: string, init?: RequestInit): Promise<T> {
 		const response = await fetch(`${apiBase}${path}`, {
 			...init,
 			headers: {
@@ -1522,10 +1544,52 @@
 		return (body ?? {}) as T;
 	}
 
-	async function loadAnalytics() {
+	async function requestAdmin<T>(
+		path: string,
+		init?: RequestInit,
+		options: AdminRequestOptions = {}
+	): Promise<T> {
+		const method = (init?.method ?? 'GET').toUpperCase();
+		const canCache = method === 'GET' && options.cache !== false;
+
+		if (!canCache) {
+			const result = await fetchAdmin<T>(path, init);
+			if (method !== 'GET') clearAdminGetCache();
+			return result;
+		}
+
+		const now = Date.now();
+		const cached = adminGetCache.get(path) as AdminGetCacheEntry<T> | undefined;
+		if (!options.force && cached?.value !== undefined && cached.expiresAt > now) {
+			adminGetCache.delete(path);
+			adminGetCache.set(path, cached);
+			return cached.value;
+		}
+		if (!options.force && cached?.pending) return cached.pending;
+
+		const pending = fetchAdmin<T>(path, init)
+			.then((value) => {
+				adminGetCache.set(path, {
+					expiresAt: Date.now() + ADMIN_GET_CACHE_TTL_MS,
+					value
+				});
+				trimAdminGetCache();
+				return value;
+			})
+			.catch((error) => {
+				adminGetCache.delete(path);
+				throw error;
+			});
+
+		adminGetCache.set(path, { expiresAt: now + ADMIN_GET_CACHE_TTL_MS, pending });
+		trimAdminGetCache();
+		return pending;
+	}
+
+	async function loadAnalytics(force = false) {
 		try {
 			overviewError = null;
-			analytics = await requestAdmin<AdminAnalytics>('/admin/analytics');
+			analytics = await requestAdmin<AdminAnalytics>('/admin/analytics', undefined, { force });
 		} catch (loadError) {
 			overviewError = loadError instanceof Error ? loadError.message : 'Could not load analytics';
 		}
@@ -1554,7 +1618,9 @@
 			const response = await requestAdmin<{
 				products: AdminProduct[];
 				pagination?: { page: number; total: number; totalPages: number };
-			}>(`/admin/products?${productListParams(productPage, PRODUCT_PAGE_SIZE)}`);
+			}>(`/admin/products?${productListParams(productPage, PRODUCT_PAGE_SIZE)}`, undefined, {
+				force
+			});
 			products = response.products ?? [];
 			productTotal = response.pagination?.total ?? products.length;
 			productTotalPages = response.pagination?.totalPages ?? 1;
@@ -1598,7 +1664,9 @@
 			const response = await requestAdmin<{
 				products: AdminProduct[];
 				pagination?: { page: number; total: number; totalPages: number };
-			}>(`/admin/products?${productListParams(page, SHEET_ALL_PAGE_SIZE)}`);
+			}>(`/admin/products?${productListParams(page, SHEET_ALL_PAGE_SIZE)}`, undefined, {
+				force: replace
+			});
 			const incomingRows = response.products ?? [];
 			const nextRows = replace ? incomingRows : mergeProductRows(sheetProducts, incomingRows);
 			const total = response.pagination?.total ?? nextRows.length;
@@ -1789,7 +1857,9 @@
 		try {
 			usersLoading = true;
 			usersError = null;
-			const response = await requestAdmin<{ users: AdminUserRecord[] }>('/admin/users');
+			const response = await requestAdmin<{ users: AdminUserRecord[] }>('/admin/users', undefined, {
+				force
+			});
 			users = response.users ?? [];
 			usersLoaded = true;
 			syncUserEditor();
@@ -1805,7 +1875,9 @@
 		try {
 			couponsLoading = true;
 			couponsError = null;
-			const response = await requestAdmin<{ coupons: AdminCoupon[] }>('/admin/coupons');
+			const response = await requestAdmin<{ coupons: AdminCoupon[] }>('/admin/coupons', undefined, {
+				force
+			});
 			coupons = response.coupons ?? [];
 			couponsLoaded = true;
 			syncCouponEditor();
@@ -1871,11 +1943,39 @@
 		if (nextView === 'promos') void loadCoupons();
 	}
 
+	function clearAdminWarmupTimers() {
+		for (const timerId of adminWarmTimerIds) window.clearTimeout(timerId);
+		adminWarmTimerIds = [];
+	}
+
+	function mountAdminView(nextView: AdminView) {
+		if (mountedViews.includes(nextView)) return;
+		mountedViews = [...mountedViews, nextView];
+	}
+
+	function scheduleAdminWarmup() {
+		clearAdminWarmupTimers();
+		const warmViews: AdminView[] = ['operations', 'catalog', 'users', 'promos', 'support'];
+		const timers: number[] = [];
+
+		for (const [index, nextView] of warmViews.entries()) {
+			const timerId = window.setTimeout(
+				() => {
+					adminWarmTimerIds = adminWarmTimerIds.filter((id) => id !== timerId);
+					mountAdminView(nextView);
+					loadSectionData(nextView);
+				},
+				ADMIN_WARMUP_DELAY_MS + index * 350
+			);
+			timers.push(timerId);
+		}
+		adminWarmTimerIds = timers;
+	}
+
 	function setView(nextView: AdminView) {
 		if (nextView === view) return;
-		prevView = view;
 		view = nextView;
-		if (!mountedViews.includes(nextView)) mountedViews = [...mountedViews, nextView];
+		mountAdminView(nextView);
 		loadSectionData(nextView);
 
 		const nextUrl = new URL(window.location.href);
@@ -1985,7 +2085,7 @@
 			};
 			realtimeRefreshTimer = null;
 
-			if (nextRefresh.analytics) void loadAnalytics();
+			if (nextRefresh.analytics) void loadAnalytics(true);
 			if (nextRefresh.products && productsLoaded) void loadProducts(true);
 			if (nextRefresh.users && usersLoaded) void loadUsers(true);
 			if (nextRefresh.coupons && couponsLoaded) void loadCoupons(true);
@@ -2415,7 +2515,10 @@
 		if (initializedForUserId === currentUser.id) return;
 
 		initializedForUserId = currentUser.id;
-		void loadAdmin().then(() => loadSectionData(view));
+		void loadAdmin().then(() => {
+			loadSectionData(view);
+			scheduleAdminWarmup();
+		});
 		void loadNotifications();
 		const timelineTimer = window.setInterval(() => {
 			timelineNow = Date.now();
@@ -2456,6 +2559,7 @@
 
 		return () => {
 			window.clearInterval(timelineTimer);
+			clearAdminWarmupTimers();
 			if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 			if (productSearchTimer) window.clearTimeout(productSearchTimer);
 			pendingRealtimeRefresh = {
@@ -2723,15 +2827,14 @@
 				</div>
 			</div>
 		{:else}
-			<!-- Animated content area using {#key} for tab transitions -->
 			<div class="admin-content-area">
-				{#key view}
+				{#each mountedViews as mountedView (mountedView)}
 					<div
-						class="admin-panel"
-						in:fly={{ x: 24 * flyDirection, duration: 280, delay: 80, easing: cubicOut }}
-						out:fade={{ duration: 120 }}
+						class="admin-panel {view === mountedView ? 'is-active' : 'is-hidden'}"
+						hidden={view !== mountedView}
+						aria-hidden={view !== mountedView}
 					>
-						{#if view === 'overview'}
+						{#if mountedView === 'overview'}
 							<AdminOverviewPanel
 								{analytics}
 								{overviewError}
@@ -2742,7 +2845,7 @@
 								{openOperations}
 								openOrder={openRecentOrder}
 							/>
-						{:else if view === 'catalog'}
+						{:else if mountedView === 'catalog'}
 							<!-- CATALOG TAB -->
 							{#if productsLoading && !products.length}
 								<div class="catalog-skeleton">
@@ -4050,7 +4153,7 @@
 									</aside>
 								{/if}
 							{/if}
-						{:else if view === 'operations'}
+						{:else if mountedView === 'operations'}
 							<AdminOperationsPanel
 								sections={operationsSections}
 								{operationsSection}
@@ -4060,7 +4163,7 @@
 								initialSelectId={ordersInitialSelectId}
 								setOperationsSection={(section) => (operationsSection = section)}
 							/>
-						{:else if view === 'users'}
+						{:else if mountedView === 'users'}
 							<!-- USERS TAB -->
 							{#if usersLoading && !users.length}
 								<div class="grid gap-4 lg:grid-cols-2">
@@ -4272,7 +4375,7 @@
 									</div>
 								</div>
 							{/if}
-						{:else if view === 'promos'}
+						{:else if mountedView === 'promos'}
 							<!-- PROMOS TAB -->
 							<div class="mb-5 rounded-lg border border-[var(--border-faint)] bg-white p-4">
 								<AdminPromotionsManager />
@@ -4598,14 +4701,14 @@
 									</div>
 								</div>
 							{/if}
-						{:else if view === 'support'}
+						{:else if mountedView === 'support'}
 							<div class="space-y-8">
 								<AdminGrievanceManager />
 								<AdminSupportManager />
 							</div>
 						{/if}
 					</div>
-				{/key}
+				{/each}
 			</div>
 		{/if}
 	</main>
@@ -4834,6 +4937,27 @@
 
 	.admin-panel {
 		width: 100%;
+	}
+
+	.admin-panel.is-active {
+		animation: admin-panel-enter 120ms ease-out;
+	}
+
+	@keyframes admin-panel-enter {
+		from {
+			opacity: 0.92;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.admin-panel.is-active {
+			animation: none;
+		}
 	}
 
 	/* ── Skeleton ── */

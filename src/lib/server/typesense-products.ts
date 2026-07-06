@@ -428,13 +428,12 @@ function typesenseLiteral(value: string) {
 }
 
 function buildFilterBy(options: ProductSearchOptions) {
-	const filters: string[] = [];
+	const filters = ['stock:>0'];
 	const inferredCategory = inferCategoryFromQuery(options);
 
 	if (options.category) filters.push(`category:=${typesenseLiteral(options.category)}`);
 	else if (inferredCategory) filters.push(`category:=${typesenseLiteral(inferredCategory)}`);
 	if (options.brand) filters.push(`brand:=${typesenseLiteral(options.brand)}`);
-	if (options.inStock) filters.push('stock:>0');
 	if (Number.isFinite(options.minPrice)) filters.push(`price:>=${options.minPrice}`);
 	if (Number.isFinite(options.maxPrice)) filters.push(`price:<=${options.maxPrice}`);
 	if (Number.isFinite(options.minRating)) filters.push(`rating:>=${options.minRating}`);
@@ -679,7 +678,7 @@ export async function searchTypesenseProducts(
 		.map((hit) => hit.document)
 		.filter((document): document is TypesenseProductDocument => Boolean(document))
 		.map(productFromTypesenseDocument)
-		.filter((product) => !hiddenCategories.includes(product.category));
+		.filter((product) => !hiddenCategories.includes(product.category) && product.stock > 0);
 	const offset = (options.page - 1) * options.limit;
 	const products = identifierQuery
 		? matchedProducts.slice(offset, offset + options.limit)

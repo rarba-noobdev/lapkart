@@ -38,7 +38,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 				brand: url.searchParams.get('brand') || undefined,
 				minPrice: parseNumber(url.searchParams.get('minPrice')),
 				maxPrice: parseNumber(url.searchParams.get('maxPrice')),
-				inStock: url.searchParams.get('inStock') === 'true',
+				inStock: true,
 				minRating: parseNumber(url.searchParams.get('minRating')),
 				sort: parseSort(url.searchParams.get('sort')),
 				limit: Math.min(parseNumber(url.searchParams.get('limit')) ?? 60, 250),

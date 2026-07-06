@@ -437,7 +437,7 @@ export async function searchProducts(
 ): Promise<ProductSearchResult> {
 	const limit = Math.min(Math.max(1, Math.floor(options.limit ?? 96)), 250);
 	const page = Math.max(1, Math.floor(options.page ?? 1));
-	const correctedOptions = withCorrectedQuery(options);
+	const correctedOptions = withCorrectedQuery({ ...options, inStock: true });
 	const cacheKey = searchCacheKey(correctedOptions, limit, page);
 	const cached = readSearchCache(cacheKey);
 	if (cached) return cached;
@@ -510,7 +510,7 @@ async function loadSearchProducts(
 		if (error) throw error;
 
 		const rows = ((data ?? []) as ProductSearchRow[]).filter(
-			(row) => !hiddenCategories.includes(row.category)
+			(row) => !hiddenCategories.includes(row.category) && Number(row.stock ?? 0) > 0
 		);
 		if (await shouldUseFallbackForStockOrder(searchOptions, client, rows, limit, page)) {
 			console.warn(
