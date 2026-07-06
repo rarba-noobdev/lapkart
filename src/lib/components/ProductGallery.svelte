@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { ChevronLeft, ChevronRight, X, ZoomIn } from '@lucide/svelte';
 	import { fade } from 'svelte/transition';
+	import { cdnImage } from '$lib/img';
 
 	let {
 		images,
@@ -152,7 +153,15 @@
 				aria-label="Open image {i + 1} of {images.length}"
 				onclick={() => openLightbox(i)}
 			>
-				<img src={image} {alt} loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+				<img
+					src={cdnImage(image, 720)}
+					srcset={`${cdnImage(image, 480)} 480w, ${cdnImage(image, 720)} 720w, ${cdnImage(image, 1080)} 1080w`}
+					sizes="100vw"
+					{alt}
+					loading={i === 0 ? 'eager' : 'lazy'}
+					fetchpriority={i === 0 ? 'high' : 'auto'}
+					decoding="async"
+				/>
 			</button>
 		{/each}
 	</div>
@@ -186,7 +195,7 @@
 			{#key current}
 				<img
 					bind:this={mainImg}
-					src={current}
+					src={cdnImage(current, 900)}
 					{alt}
 					fetchpriority="high"
 					decoding="async"
@@ -232,7 +241,7 @@
 					onmouseenter={() => select(i)}
 					onclick={() => select(i)}
 				>
-					<img src={image} alt="" loading="lazy" decoding="async" />
+					<img src={cdnImage(image, 120)} alt="" loading="lazy" decoding="async" />
 				</button>
 			{/each}
 		</div>

@@ -3,10 +3,12 @@
 	import { Star } from '@lucide/svelte';
 	import type { Product } from '$lib/catalog';
 	import { discountPct, formatINR } from '$lib/catalog';
+	import { cdnImage } from '$lib/img';
 	import { MANUAL_DELIVERY_FREE_SUBTOTAL } from '$lib/shipping';
 
 	let { product, eager = false } = $props<{ product: Product; eager?: boolean }>();
 
+	const rawImage = $derived(product.images?.[0] ?? product.image);
 	const discount = $derived(discountPct(product));
 	// Honest scarcity: badge shows only for genuinely low real stock (<= 5).
 	const lowStock = $derived(product.stock > 0 && product.stock <= 5);
@@ -21,7 +23,9 @@
 >
 	<div class="product-card-media">
 		<img
-			src={product.images?.[0] ?? product.image}
+			src={cdnImage(rawImage, 400)}
+			srcset={`${cdnImage(rawImage, 200)} 200w, ${cdnImage(rawImage, 400)} 400w, ${cdnImage(rawImage, 640)} 640w`}
+			sizes="(min-width: 1024px) 300px, (min-width: 640px) 45vw, 100px"
 			alt={product.title}
 			width="400"
 			height="400"

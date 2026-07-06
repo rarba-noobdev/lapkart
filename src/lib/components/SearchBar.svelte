@@ -7,6 +7,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { formatINR, type Product } from '$lib/catalog';
+	import { cdnImage } from '$lib/img';
 
 	let {
 		placeholder = 'Search parts',
@@ -296,7 +297,7 @@
 									class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[var(--border-faint)] bg-[var(--background-lighter)] p-1"
 								>
 									<img
-										src={product.images?.[0] ?? product.image}
+										src={cdnImage(product.images?.[0] ?? product.image, 80)}
 										alt=""
 										class="size-full object-contain"
 										loading="lazy"

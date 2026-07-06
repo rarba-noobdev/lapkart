@@ -16,6 +16,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { allCategories, formatINR, type Product } from '$lib/catalog';
+	import { cdnImage } from '$lib/img';
 	import BrandLogo from '$lib/components/BrandLogo.svelte';
 	import { nativeImpact } from '$lib/native/capacitor';
 
@@ -475,7 +476,7 @@
 								>
 									<span class="result-thumb">
 										<img
-											src={product.images?.[0] ?? product.image}
+											src={cdnImage(product.images?.[0] ?? product.image, 104)}
 											alt=""
 											loading="lazy"
 											decoding="async"
