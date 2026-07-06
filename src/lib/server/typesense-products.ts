@@ -371,6 +371,25 @@ function exactCategoryForQuery(queryText: string) {
 	return CATEGORY_QUERY_ALIASES.get(query) ?? '';
 }
 
+// For free-text multi-word queries ("hp battery", "hp pavilion screen"), detect
+// a category word anywhere in the query so we can boost that category to the top
+// without hard-filtering. Without this, a query like "hp battery" ranks HP
+// chargers (strong "hp" match) above actual batteries.
+function detectBoostCategory(queryText: string) {
+	const tokens = normalizeCategoryQuery(queryText).split(' ').filter(Boolean);
+	if (tokens.length < 2) return ''; // single-word category queries use the exact path
+	for (let i = 0; i < tokens.length - 1; i += 1) {
+		const bigram = `${tokens[i]} ${tokens[i + 1]}`;
+		const match = CATEGORY_QUERY_ALIASES.get(bigram);
+		if (match) return match;
+	}
+	for (const token of tokens) {
+		const match = CATEGORY_QUERY_ALIASES.get(token);
+		if (match) return match;
+	}
+	return '';
+}
+
 function shouldUseWildcardCategorySearch(options: ProductSearchOptions, queryText: string) {
 	const exactCategory = exactCategoryForQuery(queryText);
 	if (!exactCategory) return false;
@@ -405,6 +424,16 @@ export async function searchTypesenseProducts(
 		return { products: [], total: 0 };
 	}
 	const wildcardCategorySearch = shouldUseWildcardCategorySearch(options, queryText);
+	// Boost an intent category only on free-text relevance searches — not when the
+	// user picked an explicit category/brand filter or a manual sort order.
+	const boostCategory =
+		!wildcardCategorySearch && !options.category && (!options.sort || options.sort === 'relevance')
+			? detectBoostCategory(queryText)
+			: '';
+
+	const relevanceSort = boostCategory
+		? `_eval(category:=${boostCategory}):desc,_text_match:desc,stock:desc`
+		: sortByFor(options);
 
 	const params = new URLSearchParams({
 		q: wildcardCategorySearch ? '*' : queryText,
@@ -420,7 +449,7 @@ export async function searchTypesenseProducts(
 		limit: String(options.limit),
 		page: String(options.page),
 		filter_by: buildFilterBy(options),
-		sort_by: wildcardCategorySearch ? 'stock:desc,updated_at_ts:desc' : sortByFor(options)
+		sort_by: wildcardCategorySearch ? 'stock:desc,updated_at_ts:desc' : relevanceSort
 	});
 
 	let response: TypesenseSearchResponse;

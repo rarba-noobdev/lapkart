@@ -135,7 +135,9 @@ function sanitizeArray(values) {
 }
 
 function sanitizeKeywords(values) {
-	return Array.isArray(values) ? values.map((value) => sanitizeInlineText(value)).filter(Boolean) : [];
+	return Array.isArray(values)
+		? values.map((value) => sanitizeInlineText(value)).filter(Boolean)
+		: [];
 }
 
 function numberOrZero(value) {
@@ -189,7 +191,8 @@ function flattenSpecText(value) {
 
 function extractPartNumbers(row, searchKeywords, highlights) {
 	const values = new Set();
-	const specs = row.specifications && typeof row.specifications === 'object' ? row.specifications : {};
+	const specs =
+		row.specifications && typeof row.specifications === 'object' ? row.specifications : {};
 	const sources = [
 		row.sku,
 		row.title,
@@ -217,7 +220,8 @@ function documentFromRow(row) {
 				.filter((image) => typeof image === 'string' && image.trim())
 				.map((image) => image.trim())
 		: [];
-	const image = typeof row.image === 'string' && row.image.trim() ? row.image.trim() : images[0] || '';
+	const image =
+		typeof row.image === 'string' && row.image.trim() ? row.image.trim() : images[0] || '';
 	const price = numberOrZero(row.price);
 	const mrp = numberOrZero(row.mrp);
 
@@ -254,6 +258,11 @@ function documentFromRow(row) {
 function productSchema(collection) {
 	return {
 		name: collection,
+		// Split compound part numbers (e.g. "L43245-LG4", "HPM1-L43245-LG4") into
+		// their component tokens so an exact SKU query like "L43245" matches as a
+		// full token (high relevance) instead of only a low-scored infix substring.
+		// Without this, a near-miss like "L43248" typo-matched and outranked exact hits.
+		token_separators: ['-', '/', '.', '_', ',', ':'],
 		fields: [
 			{ name: 'title', type: 'string' },
 			{ name: 'brand', type: 'string', facet: true },
@@ -371,9 +380,12 @@ async function importDocuments(typesense, collection, documents) {
 
 async function deleteDocument(typesense, collection, productId) {
 	await typesense
-		.request(`/collections/${collection}/documents/${encodeURIComponent(productId)}?ignore_not_found=true`, {
-			method: 'DELETE'
-		})
+		.request(
+			`/collections/${collection}/documents/${encodeURIComponent(productId)}?ignore_not_found=true`,
+			{
+				method: 'DELETE'
+			}
+		)
 		.catch((error) => {
 			if (error.status !== 404) throw error;
 		});
