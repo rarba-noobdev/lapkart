@@ -40,6 +40,16 @@
 	};
 
 	const olaMapsKey = import.meta.env.VITE_OLA_MAPS_API_KEY ?? '';
+	const QUICK_LOCATION_OPTIONS: PositionOptions = {
+		enableHighAccuracy: false,
+		timeout: 3500,
+		maximumAge: 5 * 60 * 1000
+	};
+	const PRECISE_LOCATION_OPTIONS: PositionOptions = {
+		enableHighAccuracy: true,
+		timeout: 7000,
+		maximumAge: 30 * 1000
+	};
 
 	let {
 		value,
@@ -140,32 +150,49 @@
 		void resolvePin(pin, selectedPlaceId);
 	}
 
-	async function useBrowserLocation() {
+	function requestPosition(options: PositionOptions) {
+		return new Promise<GeolocationPosition>((resolve, reject) => {
+			navigator.geolocation.getCurrentPosition(resolve, reject, options);
+		});
+	}
+
+	async function readCurrentPosition() {
+		try {
+			return await requestPosition(QUICK_LOCATION_OPTIONS);
+		} catch (locationError) {
+			if ((locationError as GeolocationPositionError | undefined)?.code === 1) {
+				throw locationError;
+			}
+			return requestPosition(PRECISE_LOCATION_OPTIONS);
+		}
+	}
+
+	async function useCurrentLocation() {
 		if (!navigator.geolocation) {
-			error = 'Browser location is not available on this device';
+			error = 'Current location is not available on this device';
 			return;
 		}
 
 		locating = true;
 		error = null;
 
-		navigator.geolocation.getCurrentPosition(
-			(position) => {
-				const pin: DeliveryPin = {
-					latitude: roundCoordinate(position.coords.latitude),
-					longitude: roundCoordinate(position.coords.longitude),
-					source: 'browser_geolocation'
-				};
+		try {
+			const position = await readCurrentPosition();
+			const pin: DeliveryPin = {
+				latitude: roundCoordinate(position.coords.latitude),
+				longitude: roundCoordinate(position.coords.longitude),
+				source: 'browser_geolocation'
+			};
 
-				commitPin(pin);
-				locating = false;
-			},
-			() => {
-				error = 'Could not read browser location';
-				locating = false;
-			},
-			{ enableHighAccuracy: true, timeout: 10000 }
-		);
+			commitPin(pin);
+		} catch (locationError) {
+			error =
+				(locationError as GeolocationPositionError | undefined)?.code === 1
+					? 'Allow location access to use current location'
+					: 'Could not get your current location. Search for an address instead.';
+		} finally {
+			locating = false;
+		}
 	}
 
 	function selectSuggestion(suggestion: Suggestion) {
@@ -335,7 +362,7 @@
 				<div
 					class="text-body-small max-w-[22rem] rounded-[16px] border border-white/70 bg-white/90 px-4 py-3 text-[var(--black-alpha-72)] backdrop-blur-sm"
 				>
-					Search for an address or use browser GPS to attach the delivery pin.
+					Search for an address or use current location to set the delivery pin.
 				</div>
 			{/if}
 		</div>
@@ -344,7 +371,7 @@
 	<div
 		class="flex flex-col gap-3 border-t border-[var(--border-faint)] p-4 sm:flex-row sm:items-center sm:justify-between"
 	>
-		<div>
+		<div class="min-w-0">
 			<p class="text-mono-x-small tracking-[0.16em] text-[var(--black-alpha-48)] uppercase">
 				{addressLabel}
 			</p>
@@ -367,11 +394,11 @@
 
 		<button
 			type="button"
-			class="text-label-medium inline-flex h-11 items-center justify-center rounded-md border border-[var(--border-muted)] bg-[var(--background-lighter)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-60"
+			class="text-label-medium inline-flex h-11 w-full items-center justify-center rounded-full border border-[var(--border-muted)] bg-[var(--background-lighter)] px-4 text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
 			disabled={disabled || locating}
-			onclick={useBrowserLocation}
+			onclick={useCurrentLocation}
 		>
-			{locating ? 'Locating...' : 'Use browser GPS'}
+			{locating ? 'Getting location...' : 'Use current location'}
 		</button>
 	</div>
 </div>

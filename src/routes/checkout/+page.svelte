@@ -1104,7 +1104,7 @@
 									onAddressResolved={applyResolvedAddress}
 								/>
 								<p class="mt-1.5 text-[10px] leading-relaxed text-[var(--black-alpha-40)]">
-									Use your current location to auto-fill the address fields below.
+									Use current location or search a landmark to fill the address faster.
 								</p>
 							</div>
 
