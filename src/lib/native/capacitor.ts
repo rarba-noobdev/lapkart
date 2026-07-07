@@ -68,7 +68,12 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 	listeners.push(
 		await App.addListener('appUrlOpen', ({ url }) => {
 			const path = pathFromOwnedUrl(url);
-			if (path) void options.navigate(path);
+			if (!path) return;
+			if (path.startsWith('/auth/callback')) {
+				window.location.assign(path);
+				return;
+			}
+			void options.navigate(path);
 		})
 	);
 
