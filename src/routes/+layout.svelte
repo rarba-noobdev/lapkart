@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidate, preloadCode } from '$app/navigation';
+	import { goto, invalidate, preloadCode, preloadData } from '$app/navigation';
 	import { asset, resolve } from '$app/paths';
 	import { page, navigating, updated } from '$app/state';
 	import { onMount } from 'svelte';
@@ -93,7 +93,8 @@
 			() => {
 				void isNativeApp()
 					.then((native) => {
-						if (!native || !navigator.onLine) return;
+						if (!native || !navigator.onLine || shouldAvoidBackgroundWarmup()) return;
+						void preloadData('/products').catch(() => null);
 						for (const endpoint of [
 							'/api/catalog/home',
 							'/api/catalog/category-counts',
@@ -184,6 +185,16 @@
 		document.head.appendChild(gaScript);
 		gtag('js', new Date());
 		gtag('config', GA_ID);
+	}
+
+	function shouldAvoidBackgroundWarmup() {
+		const connection = (
+			navigator as Navigator & {
+				connection?: { saveData?: boolean; effectiveType?: string };
+			}
+		).connection;
+
+		return connection?.saveData === true || connection?.effectiveType === 'slow-2g';
 	}
 </script>
 

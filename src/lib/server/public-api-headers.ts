@@ -1,4 +1,4 @@
-const PUBLIC_API_CACHE = 'public, max-age=20, s-maxage=120, stale-while-revalidate=300';
+const PUBLIC_API_CACHE = 'public, max-age=45, s-maxage=300, stale-while-revalidate=900';
 
 const PUBLIC_API_CORS_HEADERS = {
 	'access-control-allow-origin': '*',

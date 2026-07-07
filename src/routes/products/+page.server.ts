@@ -31,7 +31,7 @@ function parsePage(value: string | null) {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-export const load: PageServerLoad = async ({ depends, locals, url, setHeaders }) => {
+export const load: PageServerLoad = async ({ depends, locals, parent, url, setHeaders }) => {
 	depends('app:products');
 
 	const category = url.searchParams.get('category') ?? '';
@@ -44,11 +44,8 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 	const minRating = parseNumber(url.searchParams.get('minRating'));
 	const page = parsePage(url.searchParams.get('page'));
 	const emptyResult: ProductSearchResult = { products: [], total: 0, source: 'supabase' };
-	const [{ user }, result, categoryCounts] = await Promise.all([
-		locals.safeGetSession().catch((error) => {
-			console.warn('Product listing session lookup failed; rendering public catalog.', error);
-			return { user: null, session: null };
-		}),
+	const [layoutData, result, categoryCounts] = await Promise.all([
+		parent(),
 		searchProducts(
 			{
 				category: category || undefined,
@@ -73,7 +70,7 @@ export const load: PageServerLoad = async ({ depends, locals, url, setHeaders })
 		})
 	]);
 
-	setHeaders({ 'cache-control': publicCatalogCacheControl(user) });
+	setHeaders({ 'cache-control': publicCatalogCacheControl(layoutData.user) });
 
 	return {
 		products: result.products,

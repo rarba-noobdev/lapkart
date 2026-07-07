@@ -3,14 +3,14 @@ import type { PageServerLoad } from './$types';
 import { getCachedProduct, getCachedRelatedProducts } from '$lib/server/catalog-cache';
 import { publicCatalogCacheControl } from '$lib/server/cache-control';
 
-export const load: PageServerLoad = async ({ depends, locals, params, setHeaders }) => {
+export const load: PageServerLoad = async ({ depends, locals, parent, params, setHeaders }) => {
 	depends(`product:${params.id}`);
 
-	const [{ user }, product] = await Promise.all([
-		locals.safeGetSession(),
+	const [layoutData, product] = await Promise.all([
+		parent(),
 		getCachedProduct(params.id, locals.supabase)
 	]);
-	setHeaders({ 'cache-control': publicCatalogCacheControl(user) });
+	setHeaders({ 'cache-control': publicCatalogCacheControl(layoutData.user) });
 
 	if (!product) {
 		error(404, 'Product not found');

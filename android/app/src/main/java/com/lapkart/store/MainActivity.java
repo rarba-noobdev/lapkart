@@ -2,6 +2,7 @@ package com.lapkart.store;
 
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.ServiceWorkerController;
@@ -49,6 +50,18 @@ public class MainActivity extends BridgeActivity {
         WebSettings settings = webView.getSettings();
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setDomStorageEnabled(true);
+        settings.setGeolocationEnabled(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setBlockNetworkImage(false);
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            settings.setOffscreenPreRaster(true);
+        }
+
         configurePullToRefresh(webView);
         installKeyboardChromeGuard(webView);
 

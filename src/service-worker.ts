@@ -23,10 +23,11 @@ const PUBLIC_DATA_PATHS = new Set([
 	'/api/catalog/home',
 	'/api/catalog/category-counts'
 ]);
-const MAX_DATA_CACHE_ENTRIES = 80;
+const MAX_DATA_CACHE_ENTRIES = 180;
 const MAX_IMAGE_CACHE_ENTRIES = 160;
-const PAGE_NETWORK_TIMEOUT_MS = 450;
+const PAGE_NETWORK_TIMEOUT_MS = 300;
 const CACHEABLE_IMAGE_HOSTS = new Set([
+	'images.weserv.nl',
 	'www.power-x.in',
 	'cdn.shopify.com',
 	'techiestore.in',
@@ -57,6 +58,12 @@ function isCacheablePage(pathname: string): boolean {
 
 function isPublicDataPath(pathname: string): boolean {
 	return PUBLIC_DATA_PATHS.has(pathname) || pathname.startsWith('/api/products/');
+}
+
+function pagePathFromSvelteData(pathname: string): string | null {
+	if (!pathname.endsWith('/__data.json')) return null;
+	const pagePath = pathname.slice(0, -'/__data.json'.length);
+	return pagePath || '/';
 }
 
 sw.addEventListener('install', (event) => {
@@ -101,6 +108,12 @@ sw.addEventListener('fetch', (event) => {
 	}
 
 	if (url.origin === sw.location.origin && isPublicDataPath(url.pathname)) {
+		event.respondWith(staleWhileRevalidate(request, DATA_CACHE, MAX_DATA_CACHE_ENTRIES));
+		return;
+	}
+
+	const dataPagePath = pagePathFromSvelteData(url.pathname);
+	if (url.origin === sw.location.origin && dataPagePath && isCacheablePage(dataPagePath)) {
 		event.respondWith(staleWhileRevalidate(request, DATA_CACHE, MAX_DATA_CACHE_ENTRIES));
 		return;
 	}
