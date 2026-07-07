@@ -32,11 +32,17 @@
 		coupon: Zap
 	};
 
-	async function load() {
+	async function load(force = false) {
 		loading = promotions.length === 0;
 		error = null;
 		try {
-			const response = await requestAdmin<{ promotions: Promotion[] }>('/admin/promotions');
+			const response = await requestAdmin<{ promotions: Promotion[] }>(
+				'/admin/promotions',
+				undefined,
+				{
+					force
+				}
+			);
 			promotions = response.promotions ?? [];
 		} catch (loadError) {
 			error = loadError instanceof Error ? loadError.message : 'Could not load promotions';
@@ -52,7 +58,7 @@
 				method: 'PATCH',
 				body: JSON.stringify({ active: !promo.active })
 			});
-			await load();
+			await load(true);
 		} catch (toggleError) {
 			error = toggleError instanceof Error ? toggleError.message : 'Could not update promotion';
 		} finally {
@@ -80,7 +86,7 @@
 			type="button"
 			class="inline-flex h-8 items-center rounded-md border border-[var(--border-muted)] bg-white px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
 			disabled={loading}
-			onclick={load}
+			onclick={() => load(true)}
 		>
 			{loading ? 'Loading…' : 'Refresh'}
 		</button>

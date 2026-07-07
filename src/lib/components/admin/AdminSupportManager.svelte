@@ -3,6 +3,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import { getAuthContext } from '$lib/auth-context';
 	import {
+		clearAdminGetCache,
 		requestAdmin,
 		toneClasses,
 		type AdminProductQuestion,
@@ -19,14 +20,23 @@
 	let activeAction = $state<string | null>(null);
 	let realtimeRefreshTimer: number | null = null;
 
-	async function loadSupport(showLoading = questions.length === 0 && events.length === 0) {
+	async function loadSupport(
+		showLoading = questions.length === 0 && events.length === 0,
+		force = false
+	) {
 		try {
 			if (showLoading) loading = true;
 			error = null;
 
 			const [questionResponse, eventResponse] = await Promise.all([
-				requestAdmin<{ questions: AdminProductQuestion[] }>('/admin/product-questions'),
-				requestAdmin<{ events: AdminStockNotificationEvent[] }>('/admin/stock-notification-events')
+				requestAdmin<{ questions: AdminProductQuestion[] }>('/admin/product-questions', undefined, {
+					force
+				}),
+				requestAdmin<{ events: AdminStockNotificationEvent[] }>(
+					'/admin/stock-notification-events',
+					undefined,
+					{ force }
+				)
 			]);
 
 			questions = questionResponse.questions ?? [];
@@ -46,9 +56,10 @@
 	}
 
 	function scheduleSupportRefresh() {
+		clearAdminGetCache();
 		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 		realtimeRefreshTimer = window.setTimeout(() => {
-			void loadSupport(false);
+			void loadSupport(false, true);
 		}, 350);
 	}
 
@@ -116,14 +127,26 @@
 		void loadSupport();
 		const channel = auth.supabase
 			.channel('admin-support-manager')
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'product_questions' }, scheduleSupportRefresh)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'product_questions' },
+				scheduleSupportRefresh
+			)
 			.on(
 				'postgres_changes',
 				{ event: '*', schema: 'public', table: 'stock_notification_events' },
 				scheduleSupportRefresh
 			)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_notifications' }, scheduleSupportRefresh)
-			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, scheduleSupportRefresh)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'stock_notifications' },
+				scheduleSupportRefresh
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'products' },
+				scheduleSupportRefresh
+			)
 			.subscribe();
 
 		return () => {
@@ -147,7 +170,7 @@
 				type="button"
 				class="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border-muted)] px-3 text-[12px] font-medium text-foreground transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)]"
 				disabled={loading}
-				onclick={() => void loadSupport()}
+				onclick={() => void loadSupport(true, true)}
 			>
 				{loading ? 'Refreshing...' : 'Refresh'}
 			</button>
@@ -164,8 +187,10 @@
 		<div class="mt-4 space-y-2">
 			{#if loading}
 				<div class="space-y-2">
-					{#each Array(3) as _, i}
-						<div class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+					{#each Array(3) as _, i (i)}
+						<div
+							class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+						>
 							<div class="flex gap-3">
 								<div class="h-12 w-12 shrink-0 rounded-md bg-[var(--black-alpha-6)]"></div>
 								<div class="flex-1 space-y-2">
@@ -271,8 +296,10 @@
 		<div class="mt-4 space-y-2">
 			{#if loading}
 				<div class="space-y-2">
-					{#each Array(3) as _, i}
-						<div class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3">
+					{#each Array(3) as _, i (i)}
+						<div
+							class="animate-pulse rounded-lg border border-[var(--border-faint)] bg-[var(--background-lighter)] p-3"
+						>
 							<div class="flex gap-3">
 								<div class="h-12 w-12 shrink-0 rounded-md bg-[var(--black-alpha-6)]"></div>
 								<div class="flex-1 space-y-2">
@@ -312,7 +339,9 @@
 
 							<div class="min-w-0 flex-1">
 								<div class="flex flex-wrap items-center justify-between gap-2">
-									<p class="truncate text-[12px] font-medium text-foreground">{stockTitle(event)}</p>
+									<p class="truncate text-[12px] font-medium text-foreground">
+										{stockTitle(event)}
+									</p>
 									<span
 										class="rounded-sm border border-[var(--border-faint)] bg-[var(--background-lighter)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[var(--black-alpha-48)] uppercase"
 									>

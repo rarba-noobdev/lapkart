@@ -6,6 +6,7 @@
 	import { formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
 	import {
+		clearAdminGetCache,
 		orderCanCreateShipment,
 		postJson,
 		requestAdmin,
@@ -60,13 +61,15 @@
 		);
 	}
 
-	async function refresh(showLoading = orders.length === 0) {
+	async function refresh(showLoading = orders.length === 0, force = false) {
 		try {
 			if (showLoading) loading = true;
 			error = null;
 			const [accountResponse, queueResponse] = await Promise.allSettled([
-				requestAdmin<ManualFulfillmentAccount>('/manual-fulfillment/account'),
-				requestAdmin<{ orders: FulfillmentOrder[] }>('/admin/fulfillment/orders')
+				requestAdmin<ManualFulfillmentAccount>('/manual-fulfillment/account', undefined, { force }),
+				requestAdmin<{ orders: FulfillmentOrder[] }>('/admin/fulfillment/orders', undefined, {
+					force
+				})
 			]);
 			if (queueResponse.status === 'rejected') throw queueResponse.reason;
 			account = accountResponse.status === 'fulfilled' ? accountResponse.value : null;
@@ -82,9 +85,10 @@
 	}
 
 	function scheduleFulfillmentRefresh() {
+		clearAdminGetCache();
 		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 		realtimeRefreshTimer = window.setTimeout(() => {
-			void refresh(false);
+			void refresh(false, true);
 		}, 350);
 	}
 
@@ -281,9 +285,7 @@
 		<div class="fq-toolbar-stats">
 			<div class="fq-stat">
 				<span class="fq-stat-label">Provider</span>
-				<span class="fq-stat-value">
-					Manual
-				</span>
+				<span class="fq-stat-value"> Manual </span>
 			</div>
 			<div class="fq-stat">
 				<span class="fq-stat-label">Pickup</span>
@@ -298,7 +300,12 @@
 				<span class="fq-stat-label">Queue</span>
 				<span class="fq-stat-value">{orders.length}</span>
 			</div>
-			<button type="button" class="fq-btn" disabled={loading} onclick={() => void refresh()}>
+			<button
+				type="button"
+				class="fq-btn"
+				disabled={loading}
+				onclick={() => void refresh(true, true)}
+			>
 				<RotateCcw class="size-3.5" strokeWidth={2} />
 				{loading ? 'Refreshing...' : 'Refresh'}
 			</button>
@@ -516,7 +523,7 @@
 										onclick={() =>
 											void runAction(
 												createKey,
-											'/shipments/manual/create',
+												'/shipments/manual/create',
 												postJson({ orderId: order.id })
 											)}
 									>
@@ -532,7 +539,7 @@
 										onclick={() =>
 											void runAction(
 												awbKey,
-											'/shipments/manual/assign-awb',
+												'/shipments/manual/assign-awb',
 												postJson({ shipmentId: shipment.id })
 											)}
 									>
@@ -552,7 +559,7 @@
 										onclick={() =>
 											void runAction(
 												pickupKey,
-											'/shipments/manual/pickup',
+												'/shipments/manual/pickup',
 												postJson({ shipmentId: shipment.id })
 											)}
 									>

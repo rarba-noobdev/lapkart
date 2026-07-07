@@ -21,11 +21,13 @@
 	import {
 		isNativeApp,
 		nativeImpact,
+		nativePushEnabled,
 		registerPushNotifications,
 		requestLocationPermission
 	} from '$lib/native/capacitor';
 
 	const storageKey = 'lapkart_native_onboarding_v1';
+	const legalAcceptanceVersion = '2026-07-07';
 
 	// 0..2 = value slides, 3 = permissions, 4 = sign-in choice.
 	const VALUE_SLIDES = [
@@ -55,6 +57,7 @@
 	let locGranted = $state(false);
 	let notifBusy = $state(false);
 	let locBusy = $state(false);
+	let legalAccepted = $state(false);
 
 	const isValueStep = $derived(step < VALUE_SLIDES.length);
 	const valueSlide = $derived(isValueStep ? VALUE_SLIDES[step] : null);
@@ -72,7 +75,7 @@
 		};
 		window.addEventListener('lapkart:onboarding-back', handleNativeBack);
 		void isNativeApp().then((native) => {
-			if (active && native && localStorage.getItem(storageKey) !== 'complete') visible = true;
+			if (active && native && !hasCompletedOnboarding()) visible = true;
 		});
 		return () => {
 			active = false;
@@ -91,9 +94,48 @@
 		};
 	});
 
+	function hasCompletedOnboarding() {
+		const stored = localStorage.getItem(storageKey);
+		if (stored === 'complete') return true;
+		if (!stored) return false;
+		try {
+			const value = JSON.parse(stored) as { status?: string };
+			return value.status === 'complete';
+		} catch {
+			return false;
+		}
+	}
+
+	function persistCompletion() {
+		localStorage.setItem(
+			storageKey,
+			JSON.stringify({
+				status: 'complete',
+				completedAt: new Date().toISOString(),
+				legalAcceptedAt: new Date().toISOString(),
+				legalAcceptanceVersion,
+				termsPath: '/terms',
+				privacyPath: '/privacy'
+			})
+		);
+	}
+
+	function canComplete() {
+		if (legalAccepted) return true;
+		step = AUTH_STEP;
+		void nativeImpact();
+		return false;
+	}
+
 	function finish() {
-		localStorage.setItem(storageKey, 'complete');
+		if (!canComplete()) return;
+		persistCompletion();
 		visible = false;
+		void nativeImpact();
+	}
+
+	function skipIntro() {
+		step = AUTH_STEP;
 		void nativeImpact();
 	}
 
@@ -128,7 +170,10 @@
 	}
 
 	function signIn() {
-		finish();
+		if (!canComplete()) return;
+		persistCompletion();
+		visible = false;
+		void nativeImpact();
 		void goto(resolve('/login'));
 	}
 </script>
@@ -144,7 +189,7 @@
 		<header class="onboarding-header">
 			<img src={asset('/brand/lapkart-logo.svg')} alt="LapKart" class="onboarding-logo" />
 			{#if step !== AUTH_STEP}
-				<button type="button" class="skip-button" onclick={finish}>Skip</button>
+				<button type="button" class="skip-button" onclick={skipIntro}>Skip</button>
 			{/if}
 		</header>
 
@@ -193,31 +238,37 @@
 			<section class="onboarding-panel" in:fly={{ x: 28, duration: 260 }}>
 				<p class="onboarding-eyebrow">Quick setup</p>
 				<h1 id="onboarding-title">Get the best experience</h1>
-				<p class="onboarding-body">Both are optional and you can change them anytime.</p>
+				<p class="onboarding-body">
+					{nativePushEnabled
+						? 'These are optional and you can change them anytime.'
+						: 'Location access is optional and can be changed anytime.'}
+				</p>
 
 				<div class="perm-list">
-					<div class="perm-row">
-						<span class="perm-icon"><Bell size={20} strokeWidth={2} /></span>
-						<div class="perm-text">
-							<strong>Order updates</strong>
-							<span>Get notified when your order ships and arrives.</span>
+					{#if nativePushEnabled}
+						<div class="perm-row">
+							<span class="perm-icon"><Bell size={20} strokeWidth={2} /></span>
+							<div class="perm-text">
+								<strong>Order updates</strong>
+								<span>Get notified when your order ships and arrives.</span>
+							</div>
+							<button
+								type="button"
+								class="perm-action"
+								class:is-on={notifGranted}
+								disabled={notifBusy || notifGranted}
+								onclick={enableNotifications}
+							>
+								{#if notifBusy}
+									<LoaderCircle size={15} class="spin" strokeWidth={2.2} />
+								{:else if notifGranted}
+									<Check size={15} strokeWidth={2.6} /> On
+								{:else}
+									Enable
+								{/if}
+							</button>
 						</div>
-						<button
-							type="button"
-							class="perm-action"
-							class:is-on={notifGranted}
-							disabled={notifBusy || notifGranted}
-							onclick={enableNotifications}
-						>
-							{#if notifBusy}
-								<LoaderCircle size={15} class="spin" strokeWidth={2.2} />
-							{:else if notifGranted}
-								<Check size={15} strokeWidth={2.6} /> On
-							{:else}
-								Enable
-							{/if}
-						</button>
-					</div>
+					{/if}
 
 					<div class="perm-row">
 						<span class="perm-icon"><MapPin size={20} strokeWidth={2} /></span>
@@ -251,6 +302,25 @@
 				<p class="onboarding-body">
 					Sign in to save addresses, track orders, and reorder parts in a tap.
 				</p>
+				<label class="legal-check" for="native-onboarding-legal">
+					<input
+						id="native-onboarding-legal"
+						type="checkbox"
+						bind:checked={legalAccepted}
+						aria-describedby="native-onboarding-legal-help"
+					/>
+					<span>
+						I agree to LapKart's
+						<a href={resolve('/terms')} onclick={(event) => event.stopPropagation()}>Terms</a>
+						and
+						<a href={resolve('/privacy')} onclick={(event) => event.stopPropagation()}
+							>Privacy Policy</a
+						>.
+					</span>
+				</label>
+				<p id="native-onboarding-legal-help" class="legal-help">
+					This is saved on this device after you continue.
+				</p>
 			</section>
 		{/if}
 
@@ -268,11 +338,18 @@
 
 			{#if step === AUTH_STEP}
 				<div class="auth-actions">
-					<button type="button" class="next-button" onclick={signIn}>
+					<button type="button" class="next-button" disabled={!legalAccepted} onclick={signIn}>
 						<span>Sign in or create account</span>
 						<ArrowRight size={20} strokeWidth={2.1} />
 					</button>
-					<button type="button" class="ghost-button" onclick={finish}>Continue as guest</button>
+					<button
+						type="button"
+						class="ghost-button"
+						disabled={!legalAccepted}
+						onclick={finish}
+					>
+						Continue as guest
+					</button>
 				</div>
 			{:else}
 				<div class="onboarding-actions">
@@ -470,6 +547,43 @@
 		justify-items: start;
 	}
 
+	.legal-check {
+		display: grid;
+		grid-template-columns: 22px minmax(0, 1fr);
+		align-items: start;
+		gap: 11px;
+		width: 100%;
+		margin-top: 22px;
+		border: 1px solid var(--border-muted);
+		border-radius: 12px;
+		padding: 13px 14px;
+		background: #ffffff;
+		color: var(--black-alpha-72);
+		font-size: 13px;
+		font-weight: 620;
+		line-height: 1.45;
+	}
+
+	.legal-check input {
+		width: 18px;
+		height: 18px;
+		margin: 1px 0 0;
+		accent-color: var(--heat-100);
+	}
+
+	.legal-check a {
+		color: var(--foreground);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.legal-help {
+		margin: 8px 0 0;
+		color: var(--black-alpha-48);
+		font-size: 12px;
+		line-height: 1.45;
+	}
+
 	.auth-mark {
 		display: grid;
 		width: 96px;
@@ -638,6 +752,12 @@
 	.back-button:disabled {
 		opacity: 0;
 		pointer-events: none;
+	}
+
+	.next-button:disabled,
+	.ghost-button:disabled {
+		cursor: not-allowed;
+		opacity: 0.48;
 	}
 
 	.next-button {

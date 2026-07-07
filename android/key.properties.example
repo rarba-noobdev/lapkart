@@ -1,0 +1,4 @@
+storeFile=release/lapkart-upload.jks
+storePassword=replace-with-keystore-password
+keyAlias=lapkart-upload
+keyPassword=replace-with-key-password

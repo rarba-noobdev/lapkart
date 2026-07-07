@@ -76,6 +76,7 @@
 
 	onMount(() => {
 		hydrateCart();
+		loadStoredConsent();
 		let disposed = false;
 		let nativeCleanup: (() => void | Promise<void>) | undefined;
 		const cancelRouteWarmup = runWhenIdle(

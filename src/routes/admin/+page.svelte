@@ -9,13 +9,16 @@
 	import AdminOperationsPanel from '$lib/components/admin/AdminOperationsPanel.svelte';
 	import AdminOverviewPanel from '$lib/components/admin/AdminOverviewPanel.svelte';
 	import BrandLogo from '$lib/components/BrandLogo.svelte';
-	import { uploadAdminImage, type AdminOrderRecord } from '$lib/admin';
-	import { apiBase } from '$lib/api-base';
+	import {
+		clearAdminGetCache,
+		requestAdmin,
+		uploadAdminImage,
+		type AdminOrderRecord
+	} from '$lib/admin';
 	import { allCategories, formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
 	import { nativeImpact, pickImageFile } from '$lib/native/capacitor';
 	import { isStaffRole, roleLabel, staffRoles, type AppRole } from '$lib/roles';
-	import { getAuthorizationHeaders } from '$lib/supabase-auth';
 	import {
 		Activity,
 		ArrowUpRight,
@@ -43,7 +46,6 @@
 		X
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
 	import { fade, fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
@@ -54,27 +56,6 @@
 	type Notice = {
 		tone: 'error' | 'success' | 'info';
 		text: string;
-	};
-
-	type AdminRequestOptions = {
-		cache?: boolean;
-		force?: boolean;
-	};
-
-	type AdminGetCacheEntry<T = unknown> = {
-		expiresAt: number;
-		value?: T;
-		pending?: Promise<T>;
-	};
-
-	type AdminRequestIssue = {
-		path?: Array<string | number>;
-		message?: string;
-	};
-
-	type AdminErrorBody = {
-		error?: string;
-		issues?: AdminRequestIssue[];
 	};
 
 	type AdminAnalytics = {
@@ -499,10 +480,7 @@
 	let productSearchTimer: number | null = null;
 	const PRODUCT_PAGE_SIZE = 60;
 	const SHEET_ALL_PAGE_SIZE = 100;
-	const ADMIN_GET_CACHE_TTL_MS = 90_000;
-	const ADMIN_GET_CACHE_MAX_ENTRIES = 80;
 	const ADMIN_WARMUP_DELAY_MS = 450;
-	const adminGetCache = new SvelteMap<string, AdminGetCacheEntry>();
 	let selectedProductId = $state<string | 'new' | null>(null);
 	let productEditor = $state<ProductEditorState>(emptyProductEditor());
 	let productSaving = $state(false);
@@ -1507,85 +1485,6 @@
 		});
 	}
 
-	function adminIssueMessage(issue: AdminRequestIssue) {
-		const path = issue.path && issue.path.length > 0 ? issue.path.join('.') : 'request';
-		return issue.message ? `${path}: ${issue.message}` : path;
-	}
-
-	function adminErrorMessage(body: AdminErrorBody | null) {
-		const base = body?.error ?? 'Admin request failed';
-		if (!body?.issues?.length) return base;
-		return `${base}: ${body.issues.slice(0, 3).map(adminIssueMessage).join('; ')}`;
-	}
-
-	function trimAdminGetCache() {
-		while (adminGetCache.size > ADMIN_GET_CACHE_MAX_ENTRIES) {
-			const oldest = adminGetCache.keys().next().value;
-			if (!oldest) return;
-			adminGetCache.delete(oldest);
-		}
-	}
-
-	function clearAdminGetCache() {
-		adminGetCache.clear();
-	}
-
-	async function fetchAdmin<T>(path: string, init?: RequestInit): Promise<T> {
-		const response = await fetch(`${apiBase}${path}`, {
-			...init,
-			headers: {
-				'Content-Type': 'application/json',
-				...(await getAuthorizationHeaders()),
-				...init?.headers
-			}
-		});
-		const body = (await response.json().catch(() => null)) as (T & AdminErrorBody) | null;
-		if (!response.ok) throw new Error(adminErrorMessage(body));
-		return (body ?? {}) as T;
-	}
-
-	async function requestAdmin<T>(
-		path: string,
-		init?: RequestInit,
-		options: AdminRequestOptions = {}
-	): Promise<T> {
-		const method = (init?.method ?? 'GET').toUpperCase();
-		const canCache = method === 'GET' && options.cache !== false;
-
-		if (!canCache) {
-			const result = await fetchAdmin<T>(path, init);
-			if (method !== 'GET') clearAdminGetCache();
-			return result;
-		}
-
-		const now = Date.now();
-		const cached = adminGetCache.get(path) as AdminGetCacheEntry<T> | undefined;
-		if (!options.force && cached?.value !== undefined && cached.expiresAt > now) {
-			adminGetCache.delete(path);
-			adminGetCache.set(path, cached);
-			return cached.value;
-		}
-		if (!options.force && cached?.pending) return cached.pending;
-
-		const pending = fetchAdmin<T>(path, init)
-			.then((value) => {
-				adminGetCache.set(path, {
-					expiresAt: Date.now() + ADMIN_GET_CACHE_TTL_MS,
-					value
-				});
-				trimAdminGetCache();
-				return value;
-			})
-			.catch((error) => {
-				adminGetCache.delete(path);
-				throw error;
-			});
-
-		adminGetCache.set(path, { expiresAt: now + ADMIN_GET_CACHE_TTL_MS, pending });
-		trimAdminGetCache();
-		return pending;
-	}
-
 	async function loadAnalytics(force = false) {
 		try {
 			overviewError = null;
@@ -1943,6 +1842,43 @@
 		if (nextView === 'promos') void loadCoupons();
 	}
 
+	function prefetchSectionData(nextView: AdminView) {
+		if (nextView === 'overview') {
+			void requestAdmin<AdminAnalytics>('/admin/analytics').catch(() => null);
+			return;
+		}
+		if (nextView === 'operations') {
+			void Promise.all([
+				requestAdmin('/admin/orders?page=1&pageSize=50'),
+				requestAdmin('/manual-fulfillment/account'),
+				requestAdmin('/admin/fulfillment/orders')
+			]).catch(() => null);
+			return;
+		}
+		if (nextView === 'catalog') {
+			void requestAdmin(
+				`/admin/products?${productListParams(productPage, PRODUCT_PAGE_SIZE)}`
+			).catch(() => null);
+			return;
+		}
+		if (nextView === 'users') {
+			void requestAdmin('/admin/users').catch(() => null);
+			return;
+		}
+		if (nextView === 'promos') {
+			void Promise.all([requestAdmin('/admin/promotions'), requestAdmin('/admin/coupons')]).catch(
+				() => null
+			);
+			return;
+		}
+		if (nextView === 'support') {
+			void Promise.all([
+				requestAdmin('/admin/product-questions'),
+				requestAdmin('/admin/stock-notification-events')
+			]).catch(() => null);
+		}
+	}
+
 	function clearAdminWarmupTimers() {
 		for (const timerId of adminWarmTimerIds) window.clearTimeout(timerId);
 		adminWarmTimerIds = [];
@@ -1962,8 +1898,7 @@
 			const timerId = window.setTimeout(
 				() => {
 					adminWarmTimerIds = adminWarmTimerIds.filter((id) => id !== timerId);
-					mountAdminView(nextView);
-					loadSectionData(nextView);
+					prefetchSectionData(nextView);
 				},
 				ADMIN_WARMUP_DELAY_MS + index * 350
 			);
@@ -2067,6 +2002,7 @@
 	function scheduleAdminRealtimeRefresh(
 		targets: Partial<typeof pendingRealtimeRefresh> = { analytics: true }
 	) {
+		clearAdminGetCache();
 		pendingRealtimeRefresh = {
 			analytics: pendingRealtimeRefresh.analytics || Boolean(targets.analytics),
 			products: pendingRealtimeRefresh.products || Boolean(targets.products),
@@ -2535,6 +2471,15 @@
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () =>
 				scheduleAdminRealtimeRefresh({ analytics: true })
 			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_events' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'order_invoices' }, () =>
+				scheduleAdminRealtimeRefresh({ analytics: true })
+			)
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () =>
 				scheduleAdminRealtimeRefresh({ analytics: true, products: true })
 			)
@@ -2549,6 +2494,14 @@
 			)
 			.on('postgres_changes', { event: '*', schema: 'public', table: 'coupon_redemptions' }, () =>
 				scheduleAdminRealtimeRefresh({ analytics: true, coupons: true })
+			)
+			.on('postgres_changes', { event: '*', schema: 'public', table: 'product_questions' }, () =>
+				clearAdminGetCache()
+			)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'stock_notification_events' },
+				() => clearAdminGetCache()
 			)
 			.on(
 				'postgres_changes',

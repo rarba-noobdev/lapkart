@@ -32,10 +32,16 @@
 	}: Props = $props();
 
 	let fullscreen = $state(false);
+	let mountedSections = $state<OperationsSection[]>([]);
 
 	const activeSectionLabel = $derived(
 		sections.find((section) => section.id === operationsSection)?.label ?? 'Operations'
 	);
+
+	$effect(() => {
+		if (mountedSections.includes(operationsSection)) return;
+		mountedSections = [...mountedSections, operationsSection];
+	});
 
 	function toggleFullscreen() {
 		fullscreen = !fullscreen;
@@ -132,25 +138,32 @@
 	</div>
 
 	<div class={fullscreen ? 'operations-fs-body' : ''}>
-		{#if operationsSection === 'orders'}
-			<AdminOrdersManager
-				{initialFilter}
-				{initialSearch}
-				{initialSelectId}
-				title="Orders"
-				subtitle="Shipments, returns, refunds"
-			/>
-		{:else if operationsSection === 'returns'}
-			<AdminOrdersManager
-				initialFilter="returns"
-				initialSearch={null}
-				initialSelectId={null}
-				title="Returns"
-				subtitle="Return requests, RTO, refunds"
-			/>
-		{:else}
-			<FulfillmentQueue />
-		{/if}
+		{#each mountedSections as mountedSection (mountedSection)}
+			<div
+				hidden={operationsSection !== mountedSection}
+				aria-hidden={operationsSection !== mountedSection}
+			>
+				{#if mountedSection === 'orders'}
+					<AdminOrdersManager
+						{initialFilter}
+						{initialSearch}
+						{initialSelectId}
+						title="Orders"
+						subtitle="Shipments, returns, refunds"
+					/>
+				{:else if mountedSection === 'returns'}
+					<AdminOrdersManager
+						initialFilter="returns"
+						initialSearch={null}
+						initialSelectId={null}
+						title="Returns"
+						subtitle="Return requests, RTO, refunds"
+					/>
+				{:else}
+					<FulfillmentQueue />
+				{/if}
+			</div>
+		{/each}
 	</div>
 </div>
 

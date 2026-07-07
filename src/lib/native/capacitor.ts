@@ -1,6 +1,8 @@
+import { env } from '$env/dynamic/public';
 import { runWhenIdle } from '$lib/performance';
 
 const APP_HOSTS = new Set(['www.lapkart.store', 'lapkart.store']);
+export const nativePushEnabled = env.PUBLIC_NATIVE_PUSH_ENABLED === 'true';
 
 type PluginListenerHandle = {
 	remove: () => Promise<void>;
@@ -37,7 +39,7 @@ export async function setupNativeAppShell(options: NativeSetupOptions) {
 					document.documentElement.dataset.lapkartDevice = info.platform;
 				})
 				.catch(() => {});
-			void registerPushNotifications({ prompt: false });
+			if (nativePushEnabled) void registerPushNotifications({ prompt: false });
 		},
 		{ timeout: 3500 }
 	);
@@ -285,11 +287,24 @@ export async function requestLocationPermission(): Promise<boolean> {
 }
 
 export async function registerPushNotifications(options: { prompt: boolean }) {
+	if (!nativePushEnabled) return null;
+
 	const { Capacitor } = await import('@capacitor/core');
 	if (!Capacitor.isNativePlatform()) return null;
 
 	try {
-		const { PushNotifications } = await import('@capacitor/push-notifications');
+		const pushPluginPackage = '@capacitor/push-notifications';
+		const { PushNotifications } = (await import(pushPluginPackage)) as {
+			PushNotifications: {
+				checkPermissions: () => Promise<{ receive: string }>;
+				requestPermissions: () => Promise<{ receive: string }>;
+				addListener: (
+					eventName: 'registration' | 'registrationError',
+					listenerFunc: (result: { value: string }) => void
+				) => Promise<PluginListenerHandle>;
+				register: () => Promise<void>;
+			};
+		};
 		let permission = await PushNotifications.checkPermissions();
 		if (permission.receive === 'prompt' && options.prompt) {
 			permission = await PushNotifications.requestPermissions();

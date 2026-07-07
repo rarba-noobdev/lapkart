@@ -45,6 +45,10 @@ dist-ssr
 skills-lock.json
 supabase/.temp/
 android/local.properties
+android/key.properties
+android/release/
+android/**/*.jks
+android/**/*.keystore
 android/.gradle/
 android/**/build/
 www/

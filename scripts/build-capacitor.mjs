@@ -17,8 +17,10 @@ const capacitorEnv = {
 };
 
 async function main() {
-	if (!['web', 'sync', 'apk', 'release', 'install'].includes(mode)) {
-		throw new Error(`Unknown mode "${mode}". Use web, sync, apk, release, or install.`);
+	if (!['web', 'sync', 'apk', 'bundle', 'release', 'release-apk', 'install'].includes(mode)) {
+		throw new Error(
+			`Unknown mode "${mode}". Use web, sync, apk, bundle, release, release-apk, or install.`
+		);
 	}
 
 	if (mode === 'web' || process.env.CAP_BUNDLE === 'true') {
@@ -39,7 +41,13 @@ async function main() {
 	if (mode === 'sync') return;
 
 	const gradleTask =
-		mode === 'install' ? 'installDebug' : mode === 'release' ? 'assembleRelease' : 'assembleDebug';
+		mode === 'install'
+			? 'installDebug'
+			: mode === 'release' || mode === 'bundle'
+				? 'bundleRelease'
+				: mode === 'release-apk'
+					? 'assembleRelease'
+					: 'assembleDebug';
 	await run(gradleCmd, [gradleTask, '--console=plain'], {
 		cwd: join(root, 'android'),
 		env: process.env

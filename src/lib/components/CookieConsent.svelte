@@ -1,8 +1,21 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { cookieConsent, setCookieConsent } from '$lib/cookie-consent.svelte';
+	import { onMount } from 'svelte';
+	import { cookieConsent, loadStoredConsent, setCookieConsent } from '$lib/cookie-consent.svelte';
 
-	const show = $derived(cookieConsent.value === null);
+	let storageChecked = $state(false);
+	let legalChecked = $state(false);
+	const show = $derived(storageChecked && cookieConsent.value === null);
+
+	onMount(() => {
+		loadStoredConsent();
+		storageChecked = true;
+	});
+
+	function acceptAnalyticsCookies() {
+		if (!legalChecked) return;
+		setCookieConsent('granted');
+	}
 </script>
 
 {#if show}
@@ -12,30 +25,45 @@
 		aria-live="polite"
 		aria-label="Cookie consent"
 	>
-		<div
-			class="rounded-2xl border border-[var(--border-faint)] bg-white p-4 shadow-xl md:flex md:items-center md:gap-4"
-		>
-			<p class="text-sm text-[var(--text-secondary)] md:flex-1">
-				We use cookies for analytics to understand how the store is used and improve it. We never
-				set analytics cookies until you accept. See our
-				<a class="font-medium text-foreground underline" href={resolve('/privacy')}>Privacy Policy</a
-				>.
-			</p>
-			<div class="mt-3 flex gap-2 md:mt-0 md:shrink-0">
-				<button
-					type="button"
-					class="flex-1 rounded-full border border-[var(--border-faint)] px-4 py-2 text-sm font-medium text-foreground hover:bg-[var(--background-base)] md:flex-none"
-					onclick={() => setCookieConsent('denied')}
-				>
-					Reject
-				</button>
-				<button
-					type="button"
-					class="flex-1 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-90 md:flex-none"
-					onclick={() => setCookieConsent('granted')}
-				>
-					Accept
-				</button>
+		<div class="rounded-2xl border border-[var(--border-faint)] bg-white p-4 shadow-xl">
+			<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-4">
+				<div class="grid gap-2">
+					<p class="text-sm text-[var(--text-secondary)]">
+						We use analytics cookies only after you accept them.
+					</p>
+					<label class="flex items-start gap-2 text-[12px] leading-relaxed text-[var(--black-alpha-56)]">
+						<input
+							type="checkbox"
+							bind:checked={legalChecked}
+							class="mt-0.5 size-4 shrink-0 accent-[var(--heat-100)]"
+						/>
+						<span>
+							I have read the
+							<a class="font-medium text-foreground underline" href={resolve('/terms')}>Terms</a>
+							and
+							<a class="font-medium text-foreground underline" href={resolve('/privacy')}
+								>Privacy Policy</a
+							>.
+						</span>
+					</label>
+				</div>
+				<div class="flex gap-2 md:shrink-0">
+					<button
+						type="button"
+						class="flex-1 rounded-full border border-[var(--border-faint)] px-4 py-2 text-sm font-medium text-foreground hover:bg-[var(--background-base)] md:flex-none"
+						onclick={() => setCookieConsent('denied')}
+					>
+						Reject
+					</button>
+					<button
+						type="button"
+						class="flex-1 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 md:flex-none"
+						disabled={!legalChecked}
+						onclick={acceptAnalyticsCookies}
+					>
+						Accept
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>

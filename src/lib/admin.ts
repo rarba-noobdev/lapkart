@@ -1,5 +1,31 @@
+import { browser } from '$app/environment';
 import { apiBase } from '$lib/api-base';
 import { getAuthorizationHeaders } from '$lib/supabase-auth';
+
+export type AdminRequestOptions = {
+	cache?: boolean;
+	force?: boolean;
+};
+
+type AdminGetCacheEntry<T = unknown> = {
+	expiresAt: number;
+	value?: T;
+	pending?: Promise<T>;
+};
+
+type AdminRequestIssue = {
+	path?: Array<string | number>;
+	message?: string;
+};
+
+type AdminErrorBody = {
+	error?: string;
+	issues?: AdminRequestIssue[];
+};
+
+const ADMIN_GET_CACHE_TTL_MS = 90_000;
+const ADMIN_GET_CACHE_MAX_ENTRIES = 100;
+const adminGetCache = new Map<string, AdminGetCacheEntry>();
 
 export type TrackingActivity = {
 	date: string | null;
@@ -259,19 +285,91 @@ const blockedFulfillmentStatuses = new Set([
 	'refunded'
 ]);
 
-export async function requestAdmin<T>(path: string, init?: RequestInit): Promise<T> {
+function adminIssueMessage(issue: AdminRequestIssue) {
+	const path = issue.path && issue.path.length > 0 ? issue.path.join('.') : 'request';
+	return issue.message ? `${path}: ${issue.message}` : path;
+}
+
+function adminErrorMessage(body: AdminErrorBody | null) {
+	const base = body?.error ?? 'Admin request failed';
+	if (!body?.issues?.length) return base;
+	return `${base}: ${body.issues.slice(0, 3).map(adminIssueMessage).join('; ')}`;
+}
+
+function trimAdminGetCache() {
+	while (adminGetCache.size > ADMIN_GET_CACHE_MAX_ENTRIES) {
+		const oldest = adminGetCache.keys().next().value;
+		if (!oldest) return;
+		adminGetCache.delete(oldest);
+	}
+}
+
+export function clearAdminGetCache() {
+	adminGetCache.clear();
+}
+
+async function fetchAdmin<T>(
+	path: string,
+	init?: RequestInit,
+	authHeaders?: Record<string, string>
+): Promise<T> {
+	const resolvedAuthHeaders = authHeaders ?? (await getAuthorizationHeaders());
 	const response = await fetch(`${apiBase}${path}`, {
 		...init,
 		headers: {
 			'Content-Type': 'application/json',
-			...(await getAuthorizationHeaders()),
+			...resolvedAuthHeaders,
 			...init?.headers
 		}
 	});
 
-	const body = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
-	if (!response.ok) throw new Error(body?.error ?? 'Admin request failed');
+	const body = (await response.json().catch(() => null)) as (T & AdminErrorBody) | null;
+	if (!response.ok) throw new Error(adminErrorMessage(body));
 	return (body ?? {}) as T;
+}
+
+export async function requestAdmin<T>(
+	path: string,
+	init?: RequestInit,
+	options: AdminRequestOptions = {}
+): Promise<T> {
+	const method = (init?.method ?? 'GET').toUpperCase();
+	const authHeaders = await getAuthorizationHeaders();
+	const canCache = browser && method === 'GET' && options.cache !== false;
+	const cacheKey = `${authHeaders.Authorization ?? 'anonymous'}\n${path}`;
+
+	if (!canCache) {
+		const result = await fetchAdmin<T>(path, init, authHeaders);
+		if (method !== 'GET') clearAdminGetCache();
+		return result;
+	}
+
+	const now = Date.now();
+	const cached = adminGetCache.get(cacheKey) as AdminGetCacheEntry<T> | undefined;
+	if (!options.force && cached?.value !== undefined && cached.expiresAt > now) {
+		adminGetCache.delete(cacheKey);
+		adminGetCache.set(cacheKey, cached);
+		return cached.value;
+	}
+	if (!options.force && cached?.pending) return cached.pending;
+
+	const pending = fetchAdmin<T>(path, init, authHeaders)
+		.then((value) => {
+			adminGetCache.set(cacheKey, {
+				expiresAt: Date.now() + ADMIN_GET_CACHE_TTL_MS,
+				value
+			});
+			trimAdminGetCache();
+			return value;
+		})
+		.catch((error) => {
+			adminGetCache.delete(cacheKey);
+			throw error;
+		});
+
+	adminGetCache.set(cacheKey, { expiresAt: now + ADMIN_GET_CACHE_TTL_MS, pending });
+	trimAdminGetCache();
+	return pending;
 }
 
 export type AdminImageUploadResponse = {
@@ -437,8 +535,7 @@ export function canTransitionManualOrderStatusClient(order: AdminOrderRecord, ne
 		return !['cancelled', 'returned', 'delivered', 'rto'].includes(currentStatus);
 	}
 	if (currentStatus === 'on_hold') return ['confirmed', 'cancelled'].includes(nextStatus);
-	if (nextStatus === 'cancelled')
-		return !['out_for_delivery', 'delivered'].includes(currentStatus);
+	if (nextStatus === 'cancelled') return !['out_for_delivery', 'delivered'].includes(currentStatus);
 	if (nextStatus === 'returned') return currentStatus === 'delivered';
 	if (nextStatus === 'rto')
 		return ['ready_for_delivery', 'packed', 'shipped', 'out_for_delivery'].includes(currentStatus);
@@ -459,7 +556,8 @@ export function nextProgressiveOrderStatus(order: AdminOrderRecord) {
 	const progressiveStates = ['pending', 'processing', 'confirmed', 'out_for_delivery', 'delivered'];
 	const currentStatus = order.status.toLowerCase();
 	if (currentStatus === 'on_hold') return null;
-	if (['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus)) return 'out_for_delivery';
+	if (['ready_for_delivery', 'packed', 'shipped'].includes(currentStatus))
+		return 'out_for_delivery';
 
 	const currentIndex = progressiveStates.indexOf(currentStatus);
 	if (currentIndex === -1 || currentIndex >= progressiveStates.length - 1) return null;

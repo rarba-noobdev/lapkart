@@ -2,7 +2,16 @@
 	import { onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import { ChevronRight, Download, FileText, Filter, Package, RotateCcw, Search, X } from '@lucide/svelte';
+	import {
+		ChevronRight,
+		Download,
+		FileText,
+		Filter,
+		Package,
+		RotateCcw,
+		Search,
+		X
+	} from '@lucide/svelte';
 	import { apiBase } from '$lib/api-base';
 	import { formatINR } from '$lib/catalog';
 	import { getAuthContext } from '$lib/auth-context';
@@ -12,6 +21,7 @@
 		canAdminCancelOrder,
 		canAdminReturnOrder,
 		canTransitionManualOrderStatusClient,
+		clearAdminGetCache,
 		emptyOrderEditor,
 		emptyRefundEditor,
 		isTerminalOrder,
@@ -225,7 +235,7 @@
 		confirmingManualState = false;
 	}
 
-	async function loadOrders(showLoading = orders.length === 0) {
+	async function loadOrders(showLoading = orders.length === 0, force = false) {
 		try {
 			if (showLoading) loading = true;
 			error = null;
@@ -240,7 +250,7 @@
 			const response = await requestAdmin<{
 				orders: AdminOrderRecord[];
 				pagination?: { page: number; total: number; totalPages: number };
-			}>(`/admin/orders?${params}`);
+			}>(`/admin/orders?${params}`, undefined, { force });
 			const nextOrders = response.orders ?? [];
 			orders = nextOrders;
 			total = response.pagination?.total ?? nextOrders.length;
@@ -278,9 +288,10 @@
 	}
 
 	function scheduleOrdersRefresh(delay = 350) {
+		clearAdminGetCache();
 		if (realtimeRefreshTimer) window.clearTimeout(realtimeRefreshTimer);
 		realtimeRefreshTimer = window.setTimeout(() => {
-			void loadOrders(false);
+			void loadOrders(false, true);
 		}, delay);
 	}
 
@@ -630,7 +641,7 @@
 			type="button"
 			class="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--border-muted)] bg-white px-3.5 text-[13px] font-medium text-[var(--black-alpha-64)] transition-colors hover:border-[var(--heat-100)] hover:text-[var(--heat-100)] disabled:opacity-50"
 			disabled={loading}
-			onclick={() => void loadOrders()}
+			onclick={() => void loadOrders(true, true)}
 		>
 			<RotateCcw class="size-3.5" strokeWidth={2} />
 			{loading ? 'Refreshing...' : 'Refresh'}
